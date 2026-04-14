@@ -3,10 +3,15 @@ Tạo QR PNG cho từng trạm trong stations.json.
 Mỗi QR chứa tên trạm dạng plaintext (VD: "Cổng A").
 Output: output/<tên_trạm>.png
 """
+import sys
 import json
 import os
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
+
+# Fix Unicode output trên Windows (cp1252 không encode được tiếng Việt)
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 STATIONS_FILE = os.path.join(os.path.dirname(__file__), "stations.json")
