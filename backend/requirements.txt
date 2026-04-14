@@ -1,0 +1,9 @@
+flask==3.0.3
+flask-cors==4.0.1
+sqlalchemy==2.0.30
+psycopg2-binary==2.9.9
+python-dotenv==1.0.1
+resend==2.0.0
+gunicorn==22.0.0
+pytest==8.2.2
+pytest-mock==3.14.0

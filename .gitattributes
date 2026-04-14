@@ -1,0 +1,9 @@
+# Normalize line endings — tránh CRLF/LF conflict giữa Windows và Linux (Render/Vercel)
+* text=auto eol=lf
+
+# Binary files — không normalize
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+*.pdf binary
