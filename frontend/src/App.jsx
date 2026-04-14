@@ -1,6 +1,7 @@
-import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
+import { BrowserRouter, Routes, Route, NavLink, useParams } from "react-router-dom";
 import ScanPage from "./pages/ScanPage";
 import HistoryPage from "./pages/HistoryPage";
+import StationDisplayPage from "./pages/StationDisplayPage";
 
 function NavBar() {
   const base = "px-4 py-2 rounded-lg text-sm font-medium transition-colors";
@@ -24,18 +25,35 @@ function NavBar() {
   );
 }
 
+// Wrapper để lấy :name từ URL params
+function StationDisplayRoute() {
+  const { name } = useParams();
+  return <StationDisplayPage stationName={decodeURIComponent(name)} />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col">
-        <NavBar />
-        <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6">
-          <Routes>
-            <Route path="/" element={<ScanPage />} />
-            <Route path="/history" element={<HistoryPage />} />
-          </Routes>
-        </main>
-      </div>
+      <Routes>
+        {/* Trang màn hình trạm — fullscreen, không có NavBar */}
+        <Route path="/station/:name" element={<StationDisplayRoute />} />
+
+        {/* Trang nhân viên — có NavBar */}
+        <Route
+          path="/*"
+          element={
+            <div className="min-h-screen flex flex-col">
+              <NavBar />
+              <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6">
+                <Routes>
+                  <Route path="/" element={<ScanPage />} />
+                  <Route path="/history" element={<HistoryPage />} />
+                </Routes>
+              </main>
+            </div>
+          }
+        />
+      </Routes>
     </BrowserRouter>
   );
 }
