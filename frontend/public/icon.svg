@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="80" fill="#0f172a"/>
+  <!-- QR corners -->
+  <rect x="80" y="80" width="140" height="140" rx="16" fill="none" stroke="#38bdf8" stroke-width="28"/>
+  <rect x="292" y="80" width="140" height="140" rx="16" fill="none" stroke="#38bdf8" stroke-width="28"/>
+  <rect x="80" y="292" width="140" height="140" rx="16" fill="none" stroke="#38bdf8" stroke-width="28"/>
+  <rect x="116" y="116" width="68" height="68" rx="8" fill="#38bdf8"/>
+  <rect x="328" y="116" width="68" height="68" rx="8" fill="#38bdf8"/>
+  <rect x="116" y="328" width="68" height="68" rx="8" fill="#38bdf8"/>
+  <!-- QR dots -->
+  <rect x="292" y="292" width="32" height="32" rx="4" fill="#38bdf8"/>
+  <rect x="340" y="292" width="32" height="32" rx="4" fill="#38bdf8"/>
+  <rect x="388" y="292" width="32" height="32" rx="4" fill="#38bdf8"/>
+  <rect x="292" y="340" width="32" height="32" rx="4" fill="#38bdf8"/>
+  <rect x="388" y="340" width="32" height="32" rx="4" fill="#38bdf8"/>
+  <rect x="292" y="388" width="32" height="32" rx="4" fill="#38bdf8"/>
+  <rect x="340" y="388" width="32" height="32" rx="4" fill="#38bdf8"/>
+  <rect x="388" y="388" width="32" height="32" rx="4" fill="#38bdf8"/>
+</svg>
