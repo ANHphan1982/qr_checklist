@@ -76,10 +76,26 @@ def validate_token(station_name: str, token: str) -> bool:
 def parse_qr_content(raw: str) -> tuple[str, str | None]:
     """
     Parse nội dung QR.
-    - Format mới: "STATION_NAME|TOKEN" → trả về (station_name, token)
-    - Format cũ:  "STATION_NAME"       → trả về (station_name, None)
+    - Format mới:  "STATION_NAME|TOKEN" → trả về (station_name, token)
+    - Format cũ:   "STATION_NAME"       → trả về (station_name, None)
+    - Format alias: nội dung QR bất kỳ được map trong QR_ALIAS_MAP
+                    → trả về (mapped_station_name, None)
     """
-    parts = raw.strip().split("|", 1)
+    from services.stations_config import QR_ALIAS_MAP
+
+    raw = raw.strip()
+
+    # Kiểm tra alias trước — QR cũ dùng cho mục đích khác
+    if raw in QR_ALIAS_MAP:
+        return QR_ALIAS_MAP[raw], None
+
+    # Kiểm tra alias theo suffix URL (nếu QR là URL dài, chỉ cần map phần path)
+    for alias, station in QR_ALIAS_MAP.items():
+        if alias.startswith("/") and raw.endswith(alias):
+            return station, None
+
+    # Format chuẩn của app
+    parts = raw.split("|", 1)
     if len(parts) == 2:
         return parts[0].strip(), parts[1].strip()
     return parts[0].strip(), None
