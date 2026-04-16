@@ -42,9 +42,9 @@ export default function App() {
         <Route
           path="/*"
           element={
-            <div className="min-h-screen flex flex-col">
+            <div className="min-h-[100dvh] flex flex-col">
               <NavBar />
-              <main className="flex-1 max-w-lg mx-auto w-full px-4 py-6">
+              <main className="flex-1 max-w-lg mx-auto w-full px-4 py-5 overflow-y-auto">
                 <Routes>
                   <Route path="/" element={<ScanPage />} />
                   <Route path="/history" element={<HistoryPage />} />

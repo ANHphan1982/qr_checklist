@@ -2,9 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Prevent iOS Safari auto-zoom on inputs */
+/* Prevent iOS Safari auto-zoom on inputs (requires font-size >= 16px) */
 input, select, textarea {
   font-size: 16px;
+}
+
+/* Prevent double-tap zoom on buttons/links (Android Chrome) */
+button, a {
+  touch-action: manipulation;
+}
+
+/* Prevent horizontal scroll bleed on mobile */
+html, body {
+  overflow-x: hidden;
+  overscroll-behavior: none;
 }
 
 body {

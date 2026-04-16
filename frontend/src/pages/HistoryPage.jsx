@@ -50,7 +50,7 @@ export default function HistoryPage() {
           value={date}
           max={todayVN()}
           onChange={(e) => setDate(e.target.value)}
-          className="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-slate-300 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
           onClick={() => fetchLogs(date)}
