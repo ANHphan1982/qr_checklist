@@ -4,21 +4,22 @@ export default function ScanResult({ result, onDismiss }) {
   if (!result) return null;
 
   const isOk = result.status === "ok";
+  const isOffline = result.status === "offline";
   const isOutOfRange = result.outOfRange;
 
+  const cardStyle = isOk
+    ? "bg-green-50 border-green-200 text-green-900"
+    : isOffline
+    ? "bg-blue-50 border-blue-200 text-blue-900"
+    : isOutOfRange
+    ? "bg-orange-50 border-orange-200 text-orange-900"
+    : "bg-red-50 border-red-200 text-red-900";
+
   return (
-    <div
-      className={`rounded-xl border p-4 flex flex-col gap-3 ${
-        isOk
-          ? "bg-green-50 border-green-200 text-green-900"
-          : isOutOfRange
-          ? "bg-orange-50 border-orange-200 text-orange-900"
-          : "bg-red-50 border-red-200 text-red-900"
-      }`}
-    >
+    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${cardStyle}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 font-semibold text-lg">
-          {isOk ? "✅" : isOutOfRange ? "📍" : "❌"} {result.message}
+          {isOk ? "✅" : isOffline ? "💾" : isOutOfRange ? "📍" : "❌"} {result.message}
         </div>
         <button
           onClick={onDismiss}
@@ -29,7 +30,7 @@ export default function ScanResult({ result, onDismiss }) {
         </button>
       </div>
 
-      {isOk && (
+      {(isOk || isOffline) && (
         <div className="text-base space-y-1.5">
           {result.location && (
             <p>

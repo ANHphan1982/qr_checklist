@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { QRScanner } from "../components/QRScanner";
 import ScanResult from "../components/ScanResult";
-import { postScan, pingServer } from "../lib/api";
+import { postScan, postQueuedScan, pingServer } from "../lib/api";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission } from "../lib/geolocation";
+import { enqueue, flushQueue, queueSize } from "../lib/offlineQueue";
 
 /**
  * 6 bước của một lần check-in:
@@ -15,12 +16,11 @@ import { getCurrentPosition, checkGpsPermission } from "../lib/geolocation";
  *  done       → thành công, hiện card kết quả
  */
 
-// Trạng thái quyền GPS → label hiển thị ở hint banner
 const PERMISSION_LABEL = {
-  granted:  { icon: "✅", text: "GPS đã sẵn sàng",             bg: "bg-green-50 border-green-200 text-green-800" },
-  prompt:   { icon: "📍", text: "Sẽ hỏi quyền GPS khi scan",   bg: "bg-blue-50 border-blue-200 text-blue-800" },
-  denied:   { icon: "⚠️", text: "GPS bị từ chối — check-in vẫn hoạt động, không xác thực vị trí", bg: "bg-yellow-50 border-yellow-200 text-yellow-800" },
-  unknown:  { icon: "📡", text: "Không kiểm tra được GPS",      bg: "bg-slate-50 border-slate-200 text-slate-600" },
+  granted: { icon: "✅", text: "GPS đã sẵn sàng",             bg: "bg-green-50 border-green-200 text-green-800" },
+  prompt:  { icon: "📍", text: "Sẽ hỏi quyền GPS khi scan",   bg: "bg-blue-50 border-blue-200 text-blue-800" },
+  denied:  { icon: "⚠️", text: "GPS bị từ chối — check-in vẫn hoạt động, không xác thực vị trí", bg: "bg-yellow-50 border-yellow-200 text-yellow-800" },
+  unknown: { icon: "📡", text: "Không kiểm tra được GPS",      bg: "bg-slate-50 border-slate-200 text-slate-600" },
 };
 
 const BUSY_LABEL = {
@@ -31,14 +31,54 @@ const BUSY_LABEL = {
 
 export default function ScanPage() {
   const [step, setStep] = useState("idle");
-  const [gpsPermission, setGpsPermission] = useState(null); // null | 'granted' | 'prompt' | 'denied' | 'unknown'
+  const [gpsPermission, setGpsPermission] = useState(null);
   const [result, setResult] = useState(null);
   const [coldStart, setColdStart] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingCount, setPendingCount] = useState(queueSize());
+  const [syncMsg, setSyncMsg] = useState(null); // thông báo sau khi sync
 
-  // Ping server khi mount — wake up Render free tier trước khi user scan
-  useEffect(() => { pingServer(); }, []);
+  // ---------------------------------------------------------------------------
+  // Offline queue sync
+  // ---------------------------------------------------------------------------
 
-  // Kiểm tra quyền GPS lúc mount (passive — không xin quyền thật)
+  const syncQueue = useCallback(async () => {
+    if (queueSize() === 0) return;
+    try {
+      const { success, failed } = await flushQueue(postQueuedScan);
+      setPendingCount(queueSize());
+      if (success > 0) {
+        setSyncMsg(`📤 Đã đồng bộ ${success} lần scan offline${failed > 0 ? `, ${failed} lỗi` : ""}`);
+        setTimeout(() => setSyncMsg(null), 5000);
+      }
+    } catch {
+      // im lặng, thử lại lần sau
+    }
+  }, []);
+
+  // Theo dõi trạng thái mạng
+  useEffect(() => {
+    const goOnline = () => {
+      setIsOnline(true);
+      syncQueue(); // tự đồng bộ ngay khi có mạng
+    };
+    const goOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, [syncQueue]);
+
+  // Ping server + thử sync khi mount
+  useEffect(() => {
+    pingServer();
+    if (navigator.onLine) syncQueue();
+  }, [syncQueue]);
+
+  // Kiểm tra quyền GPS lúc mount
   useEffect(() => {
     checkGpsPermission().then(setGpsPermission);
   }, []);
@@ -50,17 +90,12 @@ export default function ScanPage() {
   const handleStart = async () => {
     setResult(null);
     setStep("permission");
-
-    // Refresh permission state (< 200ms, không xin quyền thật)
     const perm = await checkGpsPermission();
     setGpsPermission(perm);
-
     setStep("scanning");
   };
 
-  const handleStop = () => {
-    setStep("idle");
-  };
+  const handleStop = () => setStep("idle");
 
   const handleScan = async (qrText) => {
     const location = qrText.trim();
@@ -68,36 +103,80 @@ export default function ScanPage() {
 
     setResult(null);
 
-    // Bước 4 — lấy GPS
+    // Lấy GPS
     setStep("gps");
     let gpsData = null;
     try {
       gpsData = await getCurrentPosition();
     } catch (gpsErr) {
-      // Không block check-in — chỉ ghi log, geo_status sẽ là 'no_gps'
       console.warn("[GPS]", gpsErr.message);
     }
 
-    // Bước 5 — gửi API
+    const scannedAt = new Date().toISOString();
+
+    // Nếu không có mạng → lưu offline ngay
+    if (!navigator.onLine) {
+      const item = {
+        location,
+        device_id: getDeviceId(),
+        scanned_at: scannedAt,
+        lat: gpsData?.lat ?? null,
+        lng: gpsData?.lng ?? null,
+        accuracy: gpsData?.accuracy ?? null,
+      };
+      enqueue(item);
+      setPendingCount(queueSize());
+      setResult({
+        status: "offline",
+        message: "Đã lưu offline — sẽ tự đồng bộ khi có mạng",
+        location,
+        scanned_at: scannedAt,
+      });
+      setStep("done");
+      return;
+    }
+
+    // Có mạng → gửi API bình thường
     setStep("sending");
     const coldTimer = setTimeout(() => setColdStart(true), 8000);
 
     try {
-      const data = await postScan(location, getDeviceId(), gpsData);
-      setResult({ status: "ok", location, scanned_at: new Date().toISOString(), ...data });
-      setStep("done");         // Bước 6
+      const data = await postScan(location, getDeviceId(), gpsData, scannedAt);
+      setResult({ status: "ok", location, scanned_at: scannedAt, ...data });
+      setStep("done");
     } catch (err) {
+      const isNetworkErr = !err.response; // không nhận được response → mất mạng
       const apiData = err?.response?.data || {};
       const isTimeout = err.code === "ECONNABORTED" || err.message?.includes("timeout");
-      setResult({
-        status: "error",
-        message: isTimeout
-          ? "Server khởi động chậm (cold start). Vui lòng thử lại sau 30 giây."
-          : apiData.message || err.message || "Lỗi kết nối server",
-        outOfRange: apiData.code === "OUT_OF_RANGE",
-        distance: apiData.distance,
-      });
-      setStep("idle");
+
+      if (isNetworkErr || isTimeout) {
+        // Mạng mất giữa chừng → lưu offline
+        const item = {
+          location,
+          device_id: getDeviceId(),
+          scanned_at: scannedAt,
+          lat: gpsData?.lat ?? null,
+          lng: gpsData?.lng ?? null,
+          accuracy: gpsData?.accuracy ?? null,
+        };
+        enqueue(item);
+        setPendingCount(queueSize());
+        setResult({
+          status: "offline",
+          message: "Mất kết nối — đã lưu offline, sẽ tự đồng bộ khi có mạng",
+          location,
+          scanned_at: scannedAt,
+        });
+        setStep("done");
+      } else {
+        setResult({
+          status: "error",
+          message: apiData.message || err.message || "Lỗi server",
+          outOfRange: apiData.code === "OUT_OF_RANGE",
+          distance: apiData.distance,
+        });
+        setStep("idle");
+      }
     } finally {
       clearTimeout(coldTimer);
       setColdStart(false);
@@ -138,8 +217,42 @@ export default function ScanPage() {
         </p>
       </div>
 
-      {/* GPS permission hint — hiện ở idle / done (không hiện khi đang busy) */}
-      {permInfo && !isBusy && (
+      {/* Trạng thái mạng */}
+      {!isOnline && (
+        <div className="rounded-xl border px-4 py-3 text-base flex items-center gap-2 bg-orange-50 border-orange-200 text-orange-800">
+          <span>📵</span>
+          <span>Không có mạng — scan vẫn hoạt động, dữ liệu lưu offline</span>
+        </div>
+      )}
+
+      {/* Scan đang chờ đồng bộ */}
+      {pendingCount > 0 && isOnline && (
+        <div className="rounded-xl border px-4 py-3 text-base flex items-center justify-between gap-2 bg-blue-50 border-blue-200 text-blue-800">
+          <span>🕐 {pendingCount} scan chờ đồng bộ...</span>
+          <button
+            onClick={syncQueue}
+            className="text-sm font-semibold underline"
+          >
+            Đồng bộ ngay
+          </button>
+        </div>
+      )}
+
+      {pendingCount > 0 && !isOnline && (
+        <div className="rounded-xl border px-4 py-3 text-base bg-slate-50 border-slate-200 text-slate-600">
+          🕐 {pendingCount} scan đang chờ — sẽ gửi khi có mạng
+        </div>
+      )}
+
+      {/* Thông báo sync thành công */}
+      {syncMsg && (
+        <div className="rounded-xl border px-4 py-3 text-base bg-green-50 border-green-200 text-green-800">
+          {syncMsg}
+        </div>
+      )}
+
+      {/* GPS permission hint */}
+      {permInfo && !isBusy && isOnline && (
         <div className={`rounded-xl border px-4 py-3 text-base flex items-center gap-2 ${permInfo.bg}`}>
           <span>{permInfo.icon}</span>
           <span>{permInfo.text}</span>
@@ -153,7 +266,7 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* Busy spinner + label */}
+      {/* Busy spinner */}
       {isBusy && (
         <div className="flex items-center justify-center gap-2 text-blue-600 text-base py-3">
           <svg className="animate-spin h-5 w-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
@@ -167,12 +280,12 @@ export default function ScanPage() {
       {/* Kết quả scan */}
       <ScanResult result={result} onDismiss={handleReset} />
 
-      {/* Camera (bước 3) */}
+      {/* Camera */}
       {isScanning && (
         <QRScanner onScan={handleScan} onError={handleScanError} />
       )}
 
-      {/* Nút hành động theo bước */}
+      {/* Nút hành động */}
       {step === "idle" && (
         <button
           onClick={handleStart}
@@ -211,7 +324,7 @@ export default function ScanPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Step indicator (visual progress 1–6)
+// Step indicator
 // ---------------------------------------------------------------------------
 
 const STEPS = [
