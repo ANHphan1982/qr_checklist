@@ -162,12 +162,14 @@ export default function ScanPage() {
       setResult({ status: "ok", location, scanned_at: scannedAt, ...data });
       setStep("done");
     } catch (err) {
-      const isNetworkErr = !err.response; // không nhận được response → mất mạng
-      const apiData = err?.response?.data || {};
-      const isTimeout = err.code === "ECONNABORTED" || err.message?.includes("timeout");
+      const httpStatus   = err?.response?.status;
+      const apiData      = err?.response?.data || {};
+      const isNetworkErr = !err.response;  // không có HTTP response → mất mạng hoàn toàn
+      const isTimeout    = err.code === "ECONNABORTED" || err.message?.includes("timeout");
+      const isServerDown = httpStatus != null && httpStatus >= 500; // 502/503 Render cold-start
 
-      if (isNetworkErr || isTimeout) {
-        // Mạng mất giữa chừng → lưu offline
+      if (isNetworkErr || isTimeout || isServerDown) {
+        // Mất mạng, timeout, hoặc server down (5xx) → lưu offline
         const item = {
           location,
           device_id: getDeviceId(),

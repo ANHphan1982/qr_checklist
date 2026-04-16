@@ -35,6 +35,7 @@ export function getCurrentPosition(options = {}) {
       return reject(new Error(GEO_ERRORS.UNSUPPORTED));
     }
 
+    const isOffline = !navigator.onLine;
     navigator.geolocation.getCurrentPosition(
       (pos) =>
         resolve({
@@ -52,10 +53,12 @@ export function getCurrentPosition(options = {}) {
         reject(new Error(msg));
       },
       {
-        enableHighAccuracy: true,
-        // Offline: không có A-GPS hỗ trợ → bắt vệ tinh thuần túy có thể mất 30-60s
-        timeout: navigator.onLine ? 10000 : 60000,
-        maximumAge: 30000, // chấp nhận vị trí cache tối đa 30s để tăng tốc
+        // Offline: tắt high-accuracy để ưu tiên trả cache nhanh hơn
+        enableHighAccuracy: !isOffline,
+        // Offline: 8s đủ để lấy cache, không chờ vệ tinh 60s
+        timeout: isOffline ? 8000 : 10000,
+        // Offline: chấp nhận cache cũ 5 phút thay vì 30s — trả kết quả ngay
+        maximumAge: isOffline ? 300000 : 30000,
         ...options,
       }
     );
