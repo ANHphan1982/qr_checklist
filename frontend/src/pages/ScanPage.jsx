@@ -47,9 +47,11 @@ export default function ScanPage() {
       const { success, failed } = await flushQueue(postQueuedScan);
       setPendingCount(queueSize());
       if (success > 0) {
-        setSyncMsg(`📤 Đã đồng bộ ${success} lần scan offline${failed > 0 ? `, ${failed} lỗi` : ""}`);
-        setTimeout(() => setSyncMsg(null), 5000);
+        setSyncMsg(`📤 Đã đồng bộ ${success} lần scan offline${failed > 0 ? ` — ${failed} lỗi, sẽ thử lại sau` : ""}`);
+      } else if (failed > 0) {
+        setSyncMsg(`⚠️ Chưa đồng bộ được (${failed} scan) — server chưa sẵn sàng, sẽ tự thử lại`);
       }
+      setTimeout(() => setSyncMsg(null), 6000);
     } catch {
       // im lặng, thử lại lần sau
     }
