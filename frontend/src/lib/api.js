@@ -64,10 +64,12 @@ export async function postQueuedScan(item) {
     const { data } = await api.post("/api/scan", payload);
     return data;
   } catch (err) {
-    const code = err?.response?.data?.code;
-    // Đây là kết quả "đã xử lý" ở server — xoá khỏi queue, không retry
-    if (code === "OUT_OF_RANGE" || code === "RATE_LIMITED") {
-      return err.response.data;
+    const httpStatus = err?.response?.status;
+    // Bất kỳ 4xx nào = server đã hiểu và từ chối — retry sẽ không giúp được gì.
+    // Xoá khỏi queue để tránh item bị kẹt vĩnh viễn.
+    // (OUT_OF_RANGE đã được lưu DB; các mã khác thì scan bị bỏ qua.)
+    if (httpStatus != null && httpStatus >= 400 && httpStatus < 500) {
+      return err.response?.data || {};
     }
     // Network error hoặc 5xx → ném lỗi để flushQueue giữ item và retry lần sau
     throw err;

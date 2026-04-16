@@ -21,7 +21,11 @@ def process_scan(
 
     if scanned_at:
         try:
-            dt = datetime.fromisoformat(scanned_at)
+            # Python ≤3.10 không nhận suffix "Z" — normalize trước khi parse
+            normalized = scanned_at.strip()
+            if normalized.endswith("Z"):
+                normalized = normalized[:-1] + "+00:00"
+            dt = datetime.fromisoformat(normalized)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
         except ValueError:
