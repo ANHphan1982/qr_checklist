@@ -22,10 +22,17 @@ html, body {
 
 html {
   font-size: 18px; /* scale toàn bộ rem — dễ nhìn hơn trên mobile */
+  /* smooth transition khi toggle dark/light */
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Dark mode base */
+.dark body {
+  @apply bg-slate-900 text-slate-100;
 }
 
 /* PWA standalone: padding cho notch và navigation bar */

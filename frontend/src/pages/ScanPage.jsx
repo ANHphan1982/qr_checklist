@@ -17,10 +17,10 @@ import { enqueue, flushQueue, queueSize } from "../lib/offlineQueue";
  */
 
 const PERMISSION_LABEL = {
-  granted: { icon: "✅", text: "GPS đã sẵn sàng",             bg: "bg-green-50 border-green-200 text-green-800" },
-  prompt:  { icon: "📍", text: "Sẽ hỏi quyền GPS khi scan",   bg: "bg-blue-50 border-blue-200 text-blue-800" },
-  denied:  { icon: "⚠️", text: "GPS bị từ chối — check-in vẫn hoạt động, không xác thực vị trí", bg: "bg-yellow-50 border-yellow-200 text-yellow-800" },
-  unknown: { icon: "📡", text: "Không kiểm tra được GPS",      bg: "bg-slate-50 border-slate-200 text-slate-600" },
+  granted: { icon: "✅", text: "GPS đã sẵn sàng",             bg: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300" },
+  prompt:  { icon: "📍", text: "Sẽ hỏi quyền GPS khi scan",   bg: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300" },
+  denied:  { icon: "⚠️", text: "GPS bị từ chối — check-in vẫn hoạt động, không xác thực vị trí", bg: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300" },
+  unknown: { icon: "📡", text: "Không kiểm tra được GPS",      bg: "bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400" },
 };
 
 const BUSY_LABEL = {
@@ -228,15 +228,15 @@ export default function ScanPage() {
 
       {/* Header */}
       <div className="text-center">
-        <h1 className="text-3xl font-bold text-slate-800">Quét QR Check-in</h1>
-        <p className="text-base text-slate-500 mt-1">
+        <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Quét QR Check-in</h1>
+        <p className="text-base text-slate-500 dark:text-slate-400 mt-1">
           Hướng camera vào mã QR tại trạm kiểm tra
         </p>
       </div>
 
       {/* Trạng thái mạng */}
       {!isOnline && (
-        <div className="rounded-xl border px-4 py-3 text-base flex items-center gap-2 bg-orange-50 border-orange-200 text-orange-800">
+        <div className="rounded-xl border px-4 py-3 text-base flex items-center gap-2 bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-700 dark:text-orange-300">
           <span>📵</span>
           <span>Không có mạng — scan vẫn hoạt động, dữ liệu lưu offline</span>
         </div>
@@ -244,7 +244,7 @@ export default function ScanPage() {
 
       {/* Scan đang chờ đồng bộ */}
       {pendingCount > 0 && isOnline && (
-        <div className="rounded-xl border px-4 py-3 text-base flex items-center justify-between gap-2 bg-blue-50 border-blue-200 text-blue-800">
+        <div className="rounded-xl border px-4 py-3 text-base flex items-center justify-between gap-2 bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300">
           <span>🕐 {pendingCount} scan chờ đồng bộ</span>
           <button
             onClick={syncQueue}
@@ -265,7 +265,7 @@ export default function ScanPage() {
       )}
 
       {pendingCount > 0 && !isOnline && (
-        <div className="rounded-xl border px-4 py-3 text-base bg-slate-50 border-slate-200 text-slate-600">
+        <div className="rounded-xl border px-4 py-3 text-base bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
           🕐 {pendingCount} scan đang chờ — sẽ gửi khi có mạng
         </div>
       )}
@@ -274,8 +274,8 @@ export default function ScanPage() {
       {syncMsg && (
         <div className={`rounded-xl border px-4 py-3 text-base ${
           syncMsg.ok
-            ? "bg-green-50 border-green-200 text-green-800"
-            : "bg-red-50 border-red-200 text-red-800"
+            ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300"
+            : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300"
         }`}>
           {syncMsg.text}
         </div>
@@ -291,14 +291,14 @@ export default function ScanPage() {
 
       {/* Cold-start warning */}
       {coldStart && (
-        <div className="rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-base px-4 py-3">
+        <div className="rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300 text-base px-4 py-3">
           ⏳ Server đang khởi động (cold start ~30s), vui lòng chờ...
         </div>
       )}
 
       {/* Busy spinner */}
       {isBusy && (
-        <div className="flex flex-col items-center gap-1 text-blue-600 py-3">
+        <div className="flex flex-col items-center gap-1 text-blue-600 dark:text-blue-400 py-3">
           <div className="flex items-center gap-2 text-base">
             <svg className="animate-spin h-5 w-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -309,7 +309,7 @@ export default function ScanPage() {
               : BUSY_LABEL[step]}
           </div>
           {step === "gps" && !isOnline && (
-            <p className="text-xs text-slate-500">Không có mạng — có thể mất 30-60 giây, vui lòng chờ</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Không có mạng — có thể mất 30-60 giây, vui lòng chờ</p>
           )}
         </div>
       )}
@@ -335,7 +335,7 @@ export default function ScanPage() {
       {isScanning && (
         <button
           onClick={handleStop}
-          className="w-full min-h-[56px] py-4 rounded-2xl bg-slate-100 text-slate-700 font-bold text-lg"
+          className="w-full min-h-[56px] py-4 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-lg active:bg-slate-200 dark:active:bg-slate-600 transition-colors"
         >
           ⏹ Dừng Camera
         </button>
@@ -353,7 +353,7 @@ export default function ScanPage() {
       {/* Step indicator */}
       <StepIndicator step={step} />
 
-      <p className="text-center text-sm text-slate-400">
+      <p className="text-center text-sm text-slate-400 dark:text-slate-500">
         Yêu cầu HTTPS · Camera · GPS giúp xác thực vị trí
       </p>
     </div>
@@ -389,13 +389,13 @@ function StepIndicator({ step }) {
                   ? "bg-green-500 text-white"
                   : isActive
                   ? "bg-blue-600 text-white"
-                  : "bg-slate-200 text-slate-400"
+                  : "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
               }`}
             >
               {isDone ? "✓" : i + 1}
             </div>
             {i < STEPS.length - 1 && (
-              <div className={`w-4 h-0.5 ${isDone ? "bg-green-400" : "bg-slate-200"}`} />
+              <div className={`w-4 h-0.5 ${isDone ? "bg-green-400" : "bg-slate-200 dark:bg-slate-700"}`} />
             )}
           </div>
         );

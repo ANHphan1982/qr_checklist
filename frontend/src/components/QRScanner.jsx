@@ -108,17 +108,17 @@ export function QRScanner({ onScan, onError }) {
           <button
             disabled={!canZoomOut}
             onClick={() => applyZoom(Math.max(zoomRange.min, +(zoom - step).toFixed(1)))}
-            className="w-14 h-14 rounded-full bg-slate-200 text-3xl font-bold disabled:opacity-30 active:bg-slate-300 transition-colors"
+            className="w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-3xl font-bold disabled:opacity-30 active:bg-slate-300 dark:active:bg-slate-600 transition-colors"
           >
             −
           </button>
-          <span className="text-lg text-slate-600 w-16 text-center font-medium">
+          <span className="text-lg text-slate-600 dark:text-slate-300 w-16 text-center font-medium">
             {zoom.toFixed(1)}×
           </span>
           <button
             disabled={!canZoomIn}
             onClick={() => applyZoom(Math.min(zoomRange.max, +(zoom + step).toFixed(1)))}
-            className="w-14 h-14 rounded-full bg-slate-200 text-3xl font-bold disabled:opacity-30 active:bg-slate-300 transition-colors"
+            className="w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-3xl font-bold disabled:opacity-30 active:bg-slate-300 dark:active:bg-slate-600 transition-colors"
           >
             +
           </button>

@@ -3,27 +3,27 @@ import { formatDateTime } from "../lib/utils";
 export default function ScanResult({ result, onDismiss }) {
   if (!result) return null;
 
-  const isOk = result.status === "ok";
-  const isOffline = result.status === "offline";
+  const isOk        = result.status === "ok";
+  const isOffline   = result.status === "offline";
   const isOutOfRange = result.outOfRange;
 
   const cardStyle = isOk
-    ? "bg-green-50 border-green-200 text-green-900"
+    ? "bg-green-50 border-green-200 text-green-900 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300"
     : isOffline
-    ? "bg-blue-50 border-blue-200 text-blue-900"
+    ? "bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300"
     : isOutOfRange
-    ? "bg-orange-50 border-orange-200 text-orange-900"
-    : "bg-red-50 border-red-200 text-red-900";
+    ? "bg-orange-50 border-orange-200 text-orange-900 dark:bg-orange-900/20 dark:border-orange-700 dark:text-orange-300"
+    : "bg-red-50 border-red-200 text-red-900 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300";
 
   return (
-    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${cardStyle}`}>
+    <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${cardStyle}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 font-semibold text-lg">
           {isOk ? "✅" : isOffline ? "💾" : isOutOfRange ? "📍" : "❌"} {result.message}
         </div>
         <button
           onClick={onDismiss}
-          className="text-slate-400 hover:text-slate-600 text-xl leading-none flex-shrink-0"
+          className="text-current opacity-40 hover:opacity-70 text-2xl leading-none flex-shrink-0 transition-opacity"
           aria-label="Đóng"
         >
           ×
@@ -45,8 +45,8 @@ export default function ScanResult({ result, onDismiss }) {
           )}
           {isOk && (
             result.scan_id
-              ? <p className="text-xs text-green-700 font-bold">✅ Đã lưu DB — ID: #{result.scan_id}</p>
-              : <p className="text-xs text-yellow-700 font-bold">⚠️ Ghi nhận nhưng không có xác nhận ID</p>
+              ? <p className="text-xs font-bold opacity-70">✅ Đã lưu DB — ID: #{result.scan_id}</p>
+              : <p className="text-xs font-bold opacity-60">⚠️ Ghi nhận nhưng không có xác nhận ID</p>
           )}
         </div>
       )}
