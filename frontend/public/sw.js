@@ -1,4 +1,4 @@
-const CACHE = "qr-checklist-v1";
+const CACHE = "qr-checklist-v2";
 const OFFLINE_ASSETS = ["/", "/index.html"];
 
 self.addEventListener("install", (e) => {
