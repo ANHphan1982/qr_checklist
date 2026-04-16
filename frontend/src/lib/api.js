@@ -1,16 +1,27 @@
 import axios from "axios";
 
+const BASE = import.meta.env.VITE_API_URL || "";
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "",
-  timeout: 45000, // 45s — Render free tier cold start có thể mất ~30s
+  baseURL: BASE,
+  timeout: 90000, // 90s — Render free tier cold start có thể mất 30-60s
   headers: { "Content-Type": "application/json" },
 });
 
 /**
+ * Ping server để wake up Render free tier trước khi scan.
+ * Gọi khi app load — không block UI, không throw.
+ */
+export async function pingServer() {
+  try {
+    await axios.get(`${BASE}/health`, { timeout: 60000 });
+  } catch (_) {
+    // bỏ qua — chỉ để wake up
+  }
+}
+
+/**
  * Ghi nhận lượt scan QR, kèm GPS nếu có.
- * @param {string} location
- * @param {string} deviceId
- * @param {{ lat, lng, accuracy }|null} gpsData
  */
 export async function postScan(location, deviceId, gpsData = null) {
   const payload = {
@@ -31,7 +42,6 @@ export async function postScan(location, deviceId, gpsData = null) {
 
 /**
  * Lấy danh sách scan theo ngày.
- * @param {string} [date]  - YYYY-MM-DD, mặc định hôm nay
  */
 export async function getReports(date) {
   const params = date ? { date } : {};

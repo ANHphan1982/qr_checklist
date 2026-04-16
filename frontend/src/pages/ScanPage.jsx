@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { QRScanner } from "../components/QRScanner";
 import ScanResult from "../components/ScanResult";
-import { postScan } from "../lib/api";
+import { postScan, pingServer } from "../lib/api";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission } from "../lib/geolocation";
 
@@ -34,6 +34,9 @@ export default function ScanPage() {
   const [gpsPermission, setGpsPermission] = useState(null); // null | 'granted' | 'prompt' | 'denied' | 'unknown'
   const [result, setResult] = useState(null);
   const [coldStart, setColdStart] = useState(false);
+
+  // Ping server khi mount — wake up Render free tier trước khi user scan
+  useEffect(() => { pingServer(); }, []);
 
   // Kiểm tra quyền GPS lúc mount (passive — không xin quyền thật)
   useEffect(() => {
@@ -77,7 +80,7 @@ export default function ScanPage() {
 
     // Bước 5 — gửi API
     setStep("sending");
-    const coldTimer = setTimeout(() => setColdStart(true), 5000);
+    const coldTimer = setTimeout(() => setColdStart(true), 8000);
 
     try {
       const data = await postScan(location, getDeviceId(), gpsData);
@@ -85,9 +88,12 @@ export default function ScanPage() {
       setStep("done");         // Bước 6
     } catch (err) {
       const apiData = err?.response?.data || {};
+      const isTimeout = err.code === "ECONNABORTED" || err.message?.includes("timeout");
       setResult({
         status: "error",
-        message: apiData.message || err.message || "Lỗi kết nối server",
+        message: isTimeout
+          ? "Server khởi động chậm (cold start). Vui lòng thử lại sau 30 giây."
+          : apiData.message || err.message || "Lỗi kết nối server",
         outOfRange: apiData.code === "OUT_OF_RANGE",
         distance: apiData.distance,
       });
