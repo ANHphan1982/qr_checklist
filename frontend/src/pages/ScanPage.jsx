@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { QRScanner } from "../components/QRScanner";
 import ScanResult from "../components/ScanResult";
 import { postScan, postQueuedScan, pingServer } from "../lib/api";
@@ -35,7 +35,9 @@ export default function ScanPage() {
   const [coldStart, setColdStart] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(queueSize());
-  const [syncMsg, setSyncMsg] = useState(null); // thông báo sau khi sync
+  const [syncMsg, setSyncMsg]     = useState(null);  // { text, ok }
+  const [isSyncing, setIsSyncing] = useState(false);
+  const isSyncingRef              = useRef(false);   // ref để guard trong callback
 
   // ---------------------------------------------------------------------------
   // Offline queue sync
@@ -43,19 +45,33 @@ export default function ScanPage() {
 
   const syncQueue = useCallback(async () => {
     if (queueSize() === 0) return;
+    if (isSyncingRef.current) return; // tránh double-click
+
+    isSyncingRef.current = true;
+    setIsSyncing(true);
+    setSyncMsg(null);
     try {
       const { success, failed } = await flushQueue(postQueuedScan);
       setPendingCount(queueSize());
       if (success > 0) {
-        setSyncMsg(`📤 Đã đồng bộ ${success} lần scan offline${failed > 0 ? ` — ${failed} lỗi, sẽ thử lại sau` : ""}`);
+        setSyncMsg({
+          ok: true,
+          text: `📤 Đã đồng bộ ${success} scan offline${failed > 0 ? ` — ${failed} lỗi, sẽ thử lại` : ""}`,
+        });
       } else if (failed > 0) {
-        setSyncMsg(`⚠️ Chưa đồng bộ được (${failed} scan) — server chưa sẵn sàng, sẽ tự thử lại`);
+        setSyncMsg({
+          ok: false,
+          text: `⚠️ Không đồng bộ được (${failed} scan) — kiểm tra mạng hoặc thử lại`,
+        });
       }
-      setTimeout(() => setSyncMsg(null), 6000);
-    } catch {
-      // im lặng, thử lại lần sau
+    } catch (err) {
+      setSyncMsg({ ok: false, text: `⚠️ Lỗi khi đồng bộ: ${err?.message || "không xác định"}` });
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
+      setTimeout(() => setSyncMsg(null), 8000);
     }
-  }, []);
+  }, []); // deps rỗng — dùng ref để guard, tránh re-run các effect
 
   // Theo dõi trạng thái mạng
   useEffect(() => {
@@ -229,12 +245,21 @@ export default function ScanPage() {
       {/* Scan đang chờ đồng bộ */}
       {pendingCount > 0 && isOnline && (
         <div className="rounded-xl border px-4 py-3 text-base flex items-center justify-between gap-2 bg-blue-50 border-blue-200 text-blue-800">
-          <span>🕐 {pendingCount} scan chờ đồng bộ...</span>
+          <span>🕐 {pendingCount} scan chờ đồng bộ</span>
           <button
             onClick={syncQueue}
-            className="text-sm font-semibold underline"
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 active:bg-blue-700 transition-colors"
           >
-            Đồng bộ ngay
+            {isSyncing ? (
+              <>
+                <svg className="animate-spin h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Đang gửi...
+              </>
+            ) : "Đồng bộ ngay"}
           </button>
         </div>
       )}
@@ -245,10 +270,14 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* Thông báo sync thành công */}
+      {/* Thông báo kết quả sync */}
       {syncMsg && (
-        <div className="rounded-xl border px-4 py-3 text-base bg-green-50 border-green-200 text-green-800">
-          {syncMsg}
+        <div className={`rounded-xl border px-4 py-3 text-base ${
+          syncMsg.ok
+            ? "bg-green-50 border-green-200 text-green-800"
+            : "bg-red-50 border-red-200 text-red-800"
+        }`}>
+          {syncMsg.text}
         </div>
       )}
 
