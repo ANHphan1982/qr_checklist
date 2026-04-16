@@ -56,10 +56,12 @@ def send_scan_email(
     geo_distance: float | None = None,
     geo_status: str = "no_gps",
     token_valid: bool = False,
-) -> bool:
+) -> tuple[bool, str]:
+    """Trả về (ok, error_message). error_message = "" nếu thành công."""
     if not RESEND_API_KEY:
-        print("[email] RESEND_API_KEY chưa cấu hình, bỏ qua.")
-        return False
+        msg = "RESEND_API_KEY chưa cấu hình"
+        print(f"[email] {msg}")
+        return False, msg
 
     device_label = (
         (device_id[:30] + "...") if device_id and len(device_id) > 30
@@ -118,9 +120,10 @@ def send_scan_email(
         print(f"[email] Gửi đến {EMAIL_TO} from={EMAIL_FROM} subject={params['subject']!r}")
         resp = resend.Emails.send(params)
         print(f"[email] OK — response: {resp}")
-        return True
+        return True, ""
     except Exception as exc:
         import traceback
-        print(f"[email] FAIL: {type(exc).__name__}: {exc}")
+        err_msg = f"{type(exc).__name__}: {exc}"
+        print(f"[email] FAIL: {err_msg}")
         traceback.print_exc()
-        return False
+        return False, err_msg

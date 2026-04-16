@@ -43,6 +43,11 @@ export async function postScan(location, deviceId, gpsData = null, scannedAt = n
 /**
  * Gửi 1 item từ offline queue lên server.
  * Item có dạng: { location, device_id, scanned_at, lat?, lng?, accuracy? }
+ *
+ * Resolve (không throw) với các 4xx "expected":
+ *  - 403 OUT_OF_RANGE : scan đã được lưu DB, chỉ cảnh báo vị trí → xoá khỏi queue
+ *  - 400 RATE_LIMITED : đã check-in quá nhiều lần → bỏ qua, không retry mãi
+ * Các lỗi network / 5xx → vẫn throw để giữ item trong queue và retry sau.
  */
 export async function postQueuedScan(item) {
   const payload = {
@@ -55,8 +60,18 @@ export async function postQueuedScan(item) {
     payload.lng = item.lng;
     payload.accuracy = item.accuracy;
   }
-  const { data } = await api.post("/api/scan", payload);
-  return data;
+  try {
+    const { data } = await api.post("/api/scan", payload);
+    return data;
+  } catch (err) {
+    const code = err?.response?.data?.code;
+    // Đây là kết quả "đã xử lý" ở server — xoá khỏi queue, không retry
+    if (code === "OUT_OF_RANGE" || code === "RATE_LIMITED") {
+      return err.response.data;
+    }
+    // Network error hoặc 5xx → ném lỗi để flushQueue giữ item và retry lần sau
+    throw err;
+  }
 }
 
 /**

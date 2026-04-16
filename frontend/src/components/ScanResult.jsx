@@ -43,10 +43,10 @@ export default function ScanResult({ result, onDismiss }) {
               {formatDateTime(result.scanned_at)}
             </p>
           )}
-          {isOk && (
-            result.scan_id
-              ? <p className="text-xs font-bold opacity-70">✅ Đã lưu DB — ID: #{result.scan_id}</p>
-              : <p className="text-xs font-bold opacity-60">⚠️ Ghi nhận nhưng không có xác nhận ID</p>
+          {isOk && result.email_sent === false && (
+            <p className="text-sm font-semibold text-orange-600 dark:text-orange-400 mt-1">
+              ⚠️ Email chưa gửi được — kiểm tra cấu hình Resend
+            </p>
           )}
         </div>
       )}

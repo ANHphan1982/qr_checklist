@@ -35,6 +35,10 @@ def process_scan(
         if rate_err:
             return rate_err
 
+        # Auto-purge TRƯỚC khi insert — tránh xóa nhầm offline scan cũ vừa được đồng bộ
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        session.query(ScanLog).filter(ScanLog.scanned_at < cutoff).delete(synchronize_session=False)
+
         log = ScanLog(
             location=location.strip(),
             device_id=device_id,
@@ -52,7 +56,7 @@ def process_scan(
         scan_id = log.id
 
         # Gửi email cho tất cả trạng thái (kể cả out_of_range để quản lý biết gian dối)
-        email_ok = send_scan_email(
+        email_ok, email_err = send_scan_email(
             location=location.strip(),
             scanned_at=dt,
             device_id=device_id,
@@ -64,14 +68,16 @@ def process_scan(
         )
         log.email_sent = email_ok
 
-        # Auto-purge: xóa các log cũ hơn 24h
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-        session.query(ScanLog).filter(ScanLog.scanned_at < cutoff).delete(synchronize_session=False)
-
         session.commit()
+
+    if email_ok:
+        msg = "Đã ghi nhận và gửi email"
+    else:
+        msg = f"Đã ghi nhận (email lỗi: {email_err})"
 
     return {
         "status": "ok",
         "scan_id": scan_id,
-        "message": "Đã ghi nhận và gửi email" if email_ok else "Đã ghi nhận (email chưa gửi được)",
+        "message": msg,
+        "email_sent": email_ok,
     }
