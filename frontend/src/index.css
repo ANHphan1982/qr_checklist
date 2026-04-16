@@ -12,18 +12,20 @@ button, a {
   touch-action: manipulation;
 }
 
-/* Prevent horizontal scroll bleed on mobile */
-html, body {
-  width: 100%;
-  max-width: 100vw;
-  overflow-x: hidden;
-  overscroll-behavior: none;
-}
-
 html {
   font-size: 18px; /* scale toàn bộ rem — dễ nhìn hơn trên mobile */
   /* smooth transition khi toggle dark/light */
   transition: background-color 0.2s ease, color 0.2s ease;
+  /* KHÔNG đặt overflow-x:hidden trên html — sẽ biến html thành scroll
+     container thay vì viewport, gây bug 2-ngón trên Android Chrome */
+}
+
+/* Prevent horizontal scroll bleed — chỉ đặt trên body, KHÔNG trên html */
+body {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  overscroll-behavior-x: none; /* chỉ block horizontal overscroll */
 }
 
 body {
