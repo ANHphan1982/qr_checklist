@@ -7,7 +7,7 @@ services:
 
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --workers 2 --timeout 120
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
 
     # Health check — Render dùng để biết app đã sẵn sàng
     healthCheckPath: /health
@@ -31,3 +31,24 @@ services:
 
       - key: CORS_ORIGIN
         sync: false            # điền sau khi biết URL Vercel
+
+      - key: QR_SECRET
+        sync: false
+
+      - key: QR_WINDOW_SECONDS
+        value: "300"
+
+      - key: REQUIRE_ROTATING_QR
+        value: "false"
+
+      - key: REQUIRE_GPS
+        value: "false"
+
+      - key: MAX_GPS_ACCURACY_METERS
+        value: "200"
+
+      - key: RATE_LIMIT_WINDOW_MINUTES
+        value: "60"
+
+      - key: RATE_LIMIT_MAX_SCANS
+        value: "3"
