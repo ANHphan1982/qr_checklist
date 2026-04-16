@@ -85,8 +85,14 @@ export function QRScanner({ onScan, onError }) {
       }
     );
 
+    // E2E test hook — only available in dev builds
+    if (import.meta.env.DEV) {
+      window.__triggerQRScan = (text) => onScan(text);
+    }
+
     return () => {
       clearInterval(pollRef.current);
+      if (import.meta.env.DEV) window.__triggerQRScan = undefined;
       if (scannerRef.current) {
         scannerRef.current.clear().catch(console.error);
       }
