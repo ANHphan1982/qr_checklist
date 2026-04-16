@@ -3,6 +3,12 @@ import { Html5QrcodeScanner } from "html5-qrcode";
 
 const SCANNER_ID = "qr-reader";
 
+export const SCANNER_CONFIG = {
+  fps: 10,
+  qrbox: { width: 250, height: 250 },
+  videoConstraints: { facingMode: "environment" },
+};
+
 /**
  * QR Scanner dùng Html5QrcodeScanner (SKILL.md pattern).
  * - div#qr-reader phải tồn tại trong DOM trước khi init
@@ -14,7 +20,7 @@ export function QRScanner({ onScan, onError }) {
   useEffect(() => {
     scannerRef.current = new Html5QrcodeScanner(
       SCANNER_ID,
-      { fps: 10, qrbox: { width: 250, height: 250 } },
+      SCANNER_CONFIG,
       /* verbose= */ false
     );
 
