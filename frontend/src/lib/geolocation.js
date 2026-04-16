@@ -52,9 +52,10 @@ export function getCurrentPosition(options = {}) {
         reject(new Error(msg));
       },
       {
-        enableHighAccuracy: true, // dùng GPS thật, không dùng IP
-        timeout: 10000,           // 10s timeout
-        maximumAge: 0,            // không dùng cache vị trí cũ
+        enableHighAccuracy: true,
+        // Offline: không có A-GPS hỗ trợ → bắt vệ tinh thuần túy có thể mất 30-60s
+        timeout: navigator.onLine ? 10000 : 60000,
+        maximumAge: 30000, // chấp nhận vị trí cache tối đa 30s để tăng tốc
         ...options,
       }
     );
