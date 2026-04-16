@@ -1,11 +1,13 @@
 {
+  "id": "/",
   "name": "QR Checklist Nhân Sự",
   "short_name": "QR Checklist",
   "description": "Scan QR checklist tại các trạm kiểm tra",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f172a",
+  "background_color": "#f8fafc",
   "theme_color": "#0f172a",
   "icons": [
     {
