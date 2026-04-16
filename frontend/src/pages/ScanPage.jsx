@@ -132,15 +132,15 @@ export default function ScanPage() {
 
       {/* Header */}
       <div className="text-center">
-        <h1 className="text-2xl font-bold text-slate-800">Quét QR Check-in</h1>
-        <p className="text-sm text-slate-500 mt-1">
+        <h1 className="text-3xl font-bold text-slate-800">Quét QR Check-in</h1>
+        <p className="text-base text-slate-500 mt-1">
           Hướng camera vào mã QR tại trạm kiểm tra
         </p>
       </div>
 
       {/* GPS permission hint — hiện ở idle / done (không hiện khi đang busy) */}
       {permInfo && !isBusy && (
-        <div className={`rounded-xl border px-4 py-2.5 text-sm flex items-center gap-2 ${permInfo.bg}`}>
+        <div className={`rounded-xl border px-4 py-3 text-base flex items-center gap-2 ${permInfo.bg}`}>
           <span>{permInfo.icon}</span>
           <span>{permInfo.text}</span>
         </div>
@@ -148,15 +148,15 @@ export default function ScanPage() {
 
       {/* Cold-start warning */}
       {coldStart && (
-        <div className="rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm px-4 py-3">
+        <div className="rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-base px-4 py-3">
           ⏳ Server đang khởi động (cold start ~30s), vui lòng chờ...
         </div>
       )}
 
       {/* Busy spinner + label */}
       {isBusy && (
-        <div className="flex items-center justify-center gap-2 text-blue-600 text-sm py-2">
-          <svg className="animate-spin h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+        <div className="flex items-center justify-center gap-2 text-blue-600 text-base py-3">
+          <svg className="animate-spin h-5 w-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
           </svg>
@@ -176,7 +176,7 @@ export default function ScanPage() {
       {step === "idle" && (
         <button
           onClick={handleStart}
-          className="w-full min-h-[44px] py-3 rounded-xl bg-blue-600 text-white font-semibold text-base active:bg-blue-700 transition-colors"
+          className="w-full min-h-[56px] py-4 rounded-2xl bg-blue-600 text-white font-bold text-lg active:bg-blue-700 transition-colors"
         >
           📷 Bắt đầu Scan
         </button>
@@ -185,7 +185,7 @@ export default function ScanPage() {
       {isScanning && (
         <button
           onClick={handleStop}
-          className="w-full min-h-[44px] py-3 rounded-xl bg-slate-100 text-slate-700 font-semibold text-base"
+          className="w-full min-h-[56px] py-4 rounded-2xl bg-slate-100 text-slate-700 font-bold text-lg"
         >
           ⏹ Dừng Camera
         </button>
@@ -194,7 +194,7 @@ export default function ScanPage() {
       {isDone && (
         <button
           onClick={handleReset}
-          className="w-full min-h-[44px] py-3 rounded-xl bg-blue-600 text-white font-semibold text-base active:bg-blue-700 transition-colors"
+          className="w-full min-h-[56px] py-4 rounded-2xl bg-blue-600 text-white font-bold text-lg active:bg-blue-700 transition-colors"
         >
           📷 Quét tiếp
         </button>
@@ -203,7 +203,7 @@ export default function ScanPage() {
       {/* Step indicator */}
       <StepIndicator step={step} />
 
-      <p className="text-center text-xs text-slate-400">
+      <p className="text-center text-sm text-slate-400">
         Yêu cầu HTTPS · Camera · GPS giúp xác thực vị trí
       </p>
     </div>

@@ -17,7 +17,7 @@ export default function ScanResult({ result, onDismiss }) {
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 font-semibold text-base">
+        <div className="flex items-center gap-2 font-semibold text-lg">
           {isOk ? "✅" : isOutOfRange ? "📍" : "❌"} {result.message}
         </div>
         <button
@@ -30,7 +30,7 @@ export default function ScanResult({ result, onDismiss }) {
       </div>
 
       {isOk && (
-        <div className="text-sm space-y-1">
+        <div className="text-base space-y-1.5">
           {result.location && (
             <p>
               <span className="font-medium">Trạm:</span> {result.location}
@@ -55,8 +55,8 @@ export default function ScanResult({ result, onDismiss }) {
       </p>
 
       {isOutOfRange && result.distance && (
-        <p className="text-sm">
-          Khoảng cách hiện tại: <span className="font-medium">{result.distance}m</span>
+        <p className="text-base font-medium">
+          Khoảng cách hiện tại: <span className="font-bold">{result.distance}m</span>
         </p>
       )}
     </div>
