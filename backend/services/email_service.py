@@ -33,7 +33,7 @@ EMAIL_TEMPLATE = """
     </tr>
     <tr style="background: #f9fafb;">
       <td style="padding: 8px 12px; font-weight: bold;">Trạng thái:</td>
-      <td style="padding: 8px 12px; color: #16a34a; font-weight: bold;">✅ Đã check-in</td>
+      <td style="padding: 8px 12px; font-weight: bold;">{status_info}</td>
     </tr>
   </table>
   <p style="color: #6b7280; font-size: 11px; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 12px;">
@@ -69,10 +69,20 @@ def send_scan_email(
     # GPS info
     if geo_status == "ok" and geo_distance is not None:
         geo_info = f"✅ Đúng trạm (cách {geo_distance:.0f}m)"
+    elif geo_status == "out_of_range" and geo_distance is not None:
+        geo_info = f"🚨 NGOÀI PHẠM VI (cách {geo_distance:.0f}m)"
     elif geo_status == "no_gps":
         geo_info = "⚠️ Không có GPS"
     else:
         geo_info = f"⚠️ {geo_status}"
+
+    # Trạng thái check-in
+    if geo_status == "ok":
+        status_info = '<span style="color:#16a34a;">✅ Đã check-in đúng vị trí</span>'
+    elif geo_status == "out_of_range":
+        status_info = '<span style="color:#dc2626;">🚨 CẢNH BÁO: Không đúng vị trí trạm!</span>'
+    else:
+        status_info = '<span style="color:#d97706;">⚠️ Đã check-in (không có GPS)</span>'
 
     maps_link = ""
     if lat is not None and lng is not None:
@@ -88,10 +98,11 @@ def send_scan_email(
         token_info = "⚠️ QR tĩnh (không xác thực thời gian)"
 
     subject_time = scanned_at.astimezone(VN_TZ).strftime("%d/%m/%Y %H:%M")
+    subject_prefix = "🚨 [CẢNH BÁO]" if geo_status == "out_of_range" else "[Checklist]"
     params = {
         "from": EMAIL_FROM,
         "to": [EMAIL_TO],
-        "subject": f"[Checklist] {location} — {subject_time}",
+        "subject": f"{subject_prefix} {location} — {subject_time}",
         "html": EMAIL_TEMPLATE.format(
             location=location,
             scanned_at=_format_dt(scanned_at),
@@ -99,6 +110,7 @@ def send_scan_email(
             geo_info=geo_info,
             maps_link=maps_link,
             token_info=token_info,
+            status_info=status_info,
         ),
     }
 

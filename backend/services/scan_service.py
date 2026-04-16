@@ -51,19 +51,17 @@ def process_scan(
         session.flush()
         scan_id = log.id
 
-        # Chỉ gửi email khi đứng đúng vị trí
-        email_ok = False
-        if geo_status != "out_of_range":
-            email_ok = send_scan_email(
-                location=location.strip(),
-                scanned_at=dt,
-                device_id=device_id,
-                lat=lat,
-                lng=lng,
-                geo_distance=geo_distance,
-                geo_status=geo_status,
-                token_valid=token_valid,
-            )
+        # Gửi email cho tất cả trạng thái (kể cả out_of_range để quản lý biết gian dối)
+        email_ok = send_scan_email(
+            location=location.strip(),
+            scanned_at=dt,
+            device_id=device_id,
+            lat=lat,
+            lng=lng,
+            geo_distance=geo_distance,
+            geo_status=geo_status,
+            token_valid=token_valid,
+        )
         log.email_sent = email_ok
 
         # Auto-purge: xóa các log cũ hơn 24h
