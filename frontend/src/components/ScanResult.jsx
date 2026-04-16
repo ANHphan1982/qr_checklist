@@ -42,11 +42,17 @@ export default function ScanResult({ result, onDismiss }) {
               {formatDateTime(result.scanned_at)}
             </p>
           )}
-          {result.scan_id && (
-            <p className="text-xs text-green-700">ID: #{result.scan_id}</p>
-          )}
+          {result.scan_id
+            ? <p className="text-xs text-green-700 font-bold">✅ Đã lưu DB — ID: #{result.scan_id}</p>
+            : <p className="text-xs text-red-600 font-bold">⚠️ Không có scan_id — chưa lưu DB!</p>
+          }
         </div>
       )}
+
+      {/* Debug: luôn hiển thị message gốc từ server */}
+      <p className="text-xs opacity-60 break-all">
+        Server: {result.message || "(không có message)"}
+      </p>
 
       {isOutOfRange && result.distance && (
         <p className="text-sm">
