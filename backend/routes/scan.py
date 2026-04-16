@@ -55,13 +55,9 @@ def create_scan():
     if scan_lat is not None and scan_lng is not None:
         geo_result = validate_location(location, float(scan_lat), float(scan_lng), STATIONS)
         if not geo_result["valid"]:
-            return jsonify({
-                "status": "error",
-                "code": "OUT_OF_RANGE",
-                "message": geo_result["message"],
-                "distance": geo_result["distance"],
-            }), 403
-        geo_status = "ok"
+            geo_status = "out_of_range"
+        else:
+            geo_status = "ok"
 
     # --- Process (bao gồm rate limiting bên trong) ---
     try:
@@ -76,6 +72,15 @@ def create_scan():
             geo_status=geo_status,
             token_valid=token_valid,
         )
+        # OUT_OF_RANGE: đã lưu DB nhưng trả 403 để frontend hiện cảnh báo
+        if geo_status == "out_of_range":
+            return jsonify({
+                "status": "error",
+                "code": "OUT_OF_RANGE",
+                "message": geo_result["message"],
+                "distance": geo_result["distance"],
+                "scan_id": result.get("scan_id"),
+            }), 403
         status_code = 200 if result["status"] == "ok" else 400
         return jsonify(result), status_code
     except Exception as exc:
