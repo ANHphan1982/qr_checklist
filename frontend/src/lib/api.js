@@ -2,7 +2,7 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "",
-  timeout: 15000, // 15s — đủ cho Render cold start ~30s nhưng UI sẽ hiện warning sau 5s
+  timeout: 45000, // 45s — Render free tier cold start có thể mất ~30s
   headers: { "Content-Type": "application/json" },
 });
 

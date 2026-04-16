@@ -7,8 +7,9 @@ from routes.reports import reports_bp
 from routes.qr_token import qr_token_bp
 
 app = Flask(__name__)
-CORS(app, origins=[CORS_ORIGIN], methods=["GET", "POST", "OPTIONS"],
-     allow_headers=["Content-Type"])
+_origins = [CORS_ORIGIN] if CORS_ORIGIN and CORS_ORIGIN != "http://localhost:5173" else "*"
+CORS(app, origins=_origins, methods=["GET", "POST", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization"])
 
 app.register_blueprint(scan_bp, url_prefix="/api")
 app.register_blueprint(reports_bp, url_prefix="/api")
