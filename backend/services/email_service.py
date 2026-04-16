@@ -103,8 +103,12 @@ def send_scan_email(
     }
 
     try:
-        resend.Emails.send(params)
+        print(f"[email] Gửi đến {EMAIL_TO} from={EMAIL_FROM} subject={params['subject']!r}")
+        resp = resend.Emails.send(params)
+        print(f"[email] OK — response: {resp}")
         return True
     except Exception as exc:
-        print(f"[email] Gửi email thất bại: {exc}")
+        import traceback
+        print(f"[email] FAIL: {type(exc).__name__}: {exc}")
+        traceback.print_exc()
         return False
