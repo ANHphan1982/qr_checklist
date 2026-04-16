@@ -3,8 +3,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from config import RESEND_API_KEY, EMAIL_FROM, EMAIL_TO
 
-resend.api_key = RESEND_API_KEY
-
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 EMAIL_TEMPLATE = """
@@ -63,6 +61,16 @@ def send_scan_email(
         print(f"[email] {msg}")
         return False, msg
 
+    # Resend v2.x: dùng client-based API thay vì global resend.api_key
+    client = resend.Resend(api_key=RESEND_API_KEY)
+
+    # Hỗ trợ nhiều địa chỉ email phân cách bằng dấu phẩy
+    to_list = [e.strip() for e in EMAIL_TO.split(",") if e.strip()] if EMAIL_TO else []
+    if not to_list:
+        msg = "EMAIL_TO chưa cấu hình"
+        print(f"[email] {msg}")
+        return False, msg
+
     device_label = (
         (device_id[:30] + "...") if device_id and len(device_id) > 30
         else (device_id or "Không rõ")
@@ -101,9 +109,9 @@ def send_scan_email(
 
     subject_time = scanned_at.astimezone(VN_TZ).strftime("%d/%m/%Y %H:%M")
     subject_prefix = "🚨 [CẢNH BÁO]" if geo_status == "out_of_range" else "[Checklist]"
-    params = {
+    params: resend.Emails.SendParams = {
         "from": EMAIL_FROM,
-        "to": [EMAIL_TO],
+        "to": to_list,
         "subject": f"{subject_prefix} {location} — {subject_time}",
         "html": EMAIL_TEMPLATE.format(
             location=location,
@@ -117,9 +125,9 @@ def send_scan_email(
     }
 
     try:
-        print(f"[email] Gửi đến {EMAIL_TO} from={EMAIL_FROM} subject={params['subject']!r}")
-        resp = resend.Emails.send(params)
-        print(f"[email] OK — response: {resp}")
+        print(f"[email] Gửi đến {to_list} from={EMAIL_FROM} subject={params['subject']!r}")
+        resp = client.emails.send(params)
+        print(f"[email] OK — id={getattr(resp, 'id', resp)}")
         return True, ""
     except Exception as exc:
         import traceback
