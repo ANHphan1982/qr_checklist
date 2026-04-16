@@ -10,7 +10,7 @@ function NavBar() {
 
   return (
     <nav className="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-sm">
-      <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="w-full px-4 py-3 flex items-center justify-between">
         <span className="font-bold text-lg text-slate-800">QR Checklist</span>
         <div className="flex gap-2">
           <NavLink to="/" end className={({ isActive }) => (isActive ? active : inactive)}>
@@ -44,7 +44,7 @@ export default function App() {
           element={
             <div className="min-h-[100dvh] flex flex-col">
               <NavBar />
-              <main className="flex-1 max-w-2xl mx-auto w-full px-3 py-4 overflow-y-auto">
+              <main className="flex-1 w-full px-3 py-4 overflow-y-auto">
                 <Routes>
                   <Route path="/" element={<ScanPage />} />
                   <Route path="/history" element={<HistoryPage />} />
