@@ -20,6 +20,10 @@ html, body {
   overscroll-behavior: none;
 }
 
+html {
+  font-size: 18px; /* scale toàn bộ rem — dễ nhìn hơn trên mobile */
+}
+
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
