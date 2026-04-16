@@ -110,9 +110,9 @@ export default function App() {
         <Route
           path="/*"
           element={
-            <div className="min-h-[100dvh] flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
+            <div className="min-h-[100dvh] bg-slate-50 dark:bg-slate-900 transition-colors">
               <NavBar dark={dark} onToggleDark={() => setDark((d) => !d)} />
-              <main className="flex-1 w-full px-3 py-4 overflow-y-auto">
+              <main className="w-full px-3 py-4">
                 <Routes>
                   <Route path="/" element={<ScanPage />} />
                   <Route path="/history" element={<HistoryPage />} />
