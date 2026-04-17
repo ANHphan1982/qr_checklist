@@ -1,10 +1,11 @@
 """
-Debug endpoint — kiểm tra email config và gửi test email.
+Debug endpoint — kiểm tra email config, gửi test email, và chẩn đoán connectivity.
 Chỉ dùng để chẩn đoán, không cần xác thực vì không lộ data nhạy cảm.
 """
 from flask import Blueprint, request, jsonify
-from config import RESEND_API_KEY, EMAIL_FROM, EMAIL_TO
+from config import RESEND_API_KEY, EMAIL_FROM, EMAIL_TO, CORS_ORIGIN
 import resend
+import os
 
 debug_bp = Blueprint("debug", __name__)
 
@@ -39,3 +40,21 @@ def email_test():
         return jsonify({"ok": True, "resend_id": getattr(resp, "id", str(resp))})
     except Exception as exc:
         return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+
+
+@debug_bp.route("/debug/connectivity", methods=["GET", "OPTIONS"])
+def connectivity():
+    """
+    Chẩn đoán kết nối từ mobile — trả về Origin, CORS config, env check.
+    Gọi từ: GET /api/debug/connectivity
+    """
+    origin = request.headers.get("Origin", "(không có Origin header)")
+    return jsonify({
+        "ok": True,
+        "request_origin": origin,
+        "cors_origin_env": CORS_ORIGIN or "(chưa set)",
+        "database_url_set": bool(os.getenv("DATABASE_URL")),
+        "resend_key_set": bool(RESEND_API_KEY),
+        "flask_env": os.getenv("FLASK_ENV", "development"),
+        "note": "Nếu thấy response này tức là CORS đã pass và server đang chạy",
+    })

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { QRScanner } from "../components/QRScanner";
 import ScanResult from "../components/ScanResult";
-import { postScan, postQueuedScan, pingServer } from "../lib/api";
+import { postScan, postQueuedScan, pingServer, checkConnectivity } from "../lib/api";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission } from "../lib/geolocation";
 import { enqueue, flushQueue, queueSize } from "../lib/offlineQueue";
@@ -39,6 +39,8 @@ export default function ScanPage() {
   const [syncMsg, setSyncMsg]     = useState(null);  // { text, ok }
   const [isSyncing, setIsSyncing] = useState(false);
   const isSyncingRef              = useRef(false);   // ref để guard trong callback
+  const [connTest, setConnTest]   = useState(null);  // { ok, detail } — kết quả test kết nối
+  const [isTestingConn, setIsTestingConn] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Offline queue sync
@@ -62,11 +64,14 @@ export default function ScanPage() {
       } else if (failed > 0) {
         setSyncMsg({
           ok: false,
-          text: `⚠️ Không đồng bộ được (${failed} scan) — kiểm tra mạng hoặc thử lại`,
+          text: `⚠️ Không đồng bộ được (${failed} scan) — nhấn "Test kết nối" để chẩn đoán`,
         });
       }
     } catch (err) {
-      setSyncMsg({ ok: false, text: `⚠️ Lỗi khi đồng bộ: ${err?.message || "không xác định"}` });
+      const detail = err?.response?.status
+        ? `HTTP ${err.response.status}`
+        : err?.code === "ECONNABORTED" ? "Timeout" : (err?.message || "không xác định");
+      setSyncMsg({ ok: false, text: `⚠️ Lỗi đồng bộ: ${detail} — nhấn "Test kết nối" để chẩn đoán` });
     } finally {
       isSyncingRef.current = false;
       setIsSyncing(false);
@@ -104,6 +109,15 @@ export default function ScanPage() {
   // ---------------------------------------------------------------------------
   // Handlers
   // ---------------------------------------------------------------------------
+
+  const handleTestConn = async () => {
+    setIsTestingConn(true);
+    setConnTest(null);
+    const result = await checkConnectivity();
+    setConnTest(result);
+    setIsTestingConn(false);
+    setTimeout(() => setConnTest(null), 20000);
+  };
 
   const handleStart = async () => {
     setResult(null);
@@ -277,6 +291,28 @@ export default function ScanPage() {
             : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300"
         }`}>
           {syncMsg.text}
+        </div>
+      )}
+
+      {/* Nút và kết quả Test kết nối — hiện khi có scan chờ hoặc sync thất bại */}
+      {(pendingCount > 0 || syncMsg?.ok === false) && (
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={handleTestConn}
+            disabled={isTestingConn}
+            className="w-full py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold disabled:opacity-60 active:bg-slate-100 dark:active:bg-slate-700 transition-colors"
+          >
+            {isTestingConn ? "⏳ Đang kiểm tra..." : "🔌 Test kết nối server"}
+          </button>
+          {connTest && (
+            <div className={`rounded-xl border px-4 py-3 text-sm font-mono break-all ${
+              connTest.ok
+                ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300"
+                : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300"
+            }`}>
+              {connTest.ok ? "✅ " : "❌ "}{connTest.detail}
+            </div>
+          )}
         </div>
       )}
 

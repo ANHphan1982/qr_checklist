@@ -8,7 +8,16 @@ from routes.qr_token import qr_token_bp
 from routes.debug import debug_bp
 
 app = Flask(__name__)
-_origins = [CORS_ORIGIN] if CORS_ORIGIN and CORS_ORIGIN != "http://localhost:5173" else "*"
+
+# CORS_ORIGIN hỗ trợ nhiều origins cách nhau bởi dấu phẩy
+# VD: "https://qr-checklist.vercel.app,https://qr-checklist-git-main.vercel.app"
+def _parse_origins(raw: str):
+    if not raw or raw == "http://localhost:5173":
+        return "*"
+    parts = [o.strip() for o in raw.split(",") if o.strip()]
+    return parts if len(parts) > 1 else parts[0] if parts else "*"
+
+_origins = _parse_origins(CORS_ORIGIN)
 CORS(app, origins=_origins, methods=["GET", "POST", "OPTIONS"],
      allow_headers=["Content-Type", "Authorization"])
 

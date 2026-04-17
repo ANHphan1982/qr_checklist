@@ -84,3 +84,19 @@ export async function getReports(date) {
   const { data } = await api.get("/api/reports", { params });
   return data;
 }
+
+/**
+ * Kiểm tra kết nối đến backend — dùng để chẩn đoán lỗi mạng.
+ * @returns {{ ok: boolean, detail: string }}
+ */
+export async function checkConnectivity() {
+  try {
+    const { data } = await api.get("/api/debug/connectivity", { timeout: 15000 });
+    return { ok: true, detail: `Server OK · Origin: ${data.request_origin} · CORS env: ${data.cors_origin_env}` };
+  } catch (err) {
+    const status = err?.response?.status;
+    if (status) return { ok: false, detail: `HTTP ${status} — server phản hồi nhưng báo lỗi` };
+    if (err.code === "ECONNABORTED") return { ok: false, detail: "Timeout — server không phản hồi trong 15 giây" };
+    return { ok: false, detail: `Không có phản hồi — CORS hoặc server down (${err.message})` };
+  }
+}
