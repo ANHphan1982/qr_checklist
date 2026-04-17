@@ -46,13 +46,16 @@ export default function ScanPage() {
   // Offline queue sync
   // ---------------------------------------------------------------------------
 
-  const syncQueue = useCallback(async () => {
+  // isAuto=true → im lặng khi lỗi (auto-sync khi mount/online)
+  // isAuto=false → hiện thông báo lỗi (manual sync khi bấm nút)
+  const syncQueue = useCallback(async (isAuto = false) => {
     if (queueSize() === 0) return;
     if (isSyncingRef.current) return; // tránh double-click
 
     isSyncingRef.current = true;
     setIsSyncing(true);
     setSyncMsg(null);
+    let didSetMsg = false;
     try {
       const { success, failed } = await flushQueue(postQueuedScan);
       setPendingCount(queueSize());
@@ -61,21 +64,27 @@ export default function ScanPage() {
           ok: true,
           text: `📤 Đã đồng bộ ${success} scan offline${failed > 0 ? ` — ${failed} lỗi, sẽ thử lại` : ""}`,
         });
-      } else if (failed > 0) {
+        didSetMsg = true;
+      } else if (failed > 0 && !isAuto) {
+        // Chỉ hiện lỗi khi user bấm nút — auto sync im lặng để tránh nhiễu
         setSyncMsg({
           ok: false,
-          text: `⚠️ Không đồng bộ được (${failed} scan) — nhấn "Test kết nối" để chẩn đoán`,
+          text: `⚠️ Không đồng bộ được (${failed} scan) — server chưa sẵn sàng, sẽ tự thử lại`,
         });
+        didSetMsg = true;
       }
     } catch (err) {
-      const detail = err?.response?.status
-        ? `HTTP ${err.response.status}`
-        : err?.code === "ECONNABORTED" ? "Timeout" : (err?.message || "không xác định");
-      setSyncMsg({ ok: false, text: `⚠️ Lỗi đồng bộ: ${detail} — nhấn "Test kết nối" để chẩn đoán` });
+      if (!isAuto) {
+        const detail = err?.response?.status
+          ? `HTTP ${err.response.status}`
+          : err?.code === "ECONNABORTED" ? "Timeout" : (err?.message || "không xác định");
+        setSyncMsg({ ok: false, text: `⚠️ Lỗi đồng bộ: ${detail} — nhấn "Test kết nối" để chẩn đoán` });
+        didSetMsg = true;
+      }
     } finally {
       isSyncingRef.current = false;
       setIsSyncing(false);
-      setTimeout(() => setSyncMsg(null), 8000);
+      if (didSetMsg) setTimeout(() => setSyncMsg(null), 8000);
     }
   }, []); // deps rỗng — dùng ref để guard, tránh re-run các effect
 
@@ -83,7 +92,7 @@ export default function ScanPage() {
   useEffect(() => {
     const goOnline = () => {
       setIsOnline(true);
-      syncQueue(); // tự đồng bộ ngay khi có mạng
+      syncQueue(true); // auto sync — im lặng khi lỗi
     };
     const goOffline = () => setIsOnline(false);
 
@@ -98,7 +107,7 @@ export default function ScanPage() {
   // Ping server + thử sync khi mount
   useEffect(() => {
     pingServer();
-    if (navigator.onLine) syncQueue();
+    if (navigator.onLine) syncQueue(true); // auto sync lúc mount — im lặng khi lỗi
   }, [syncQueue]);
 
   // Kiểm tra quyền GPS lúc mount
