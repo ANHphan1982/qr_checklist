@@ -135,7 +135,8 @@ test.describe("Online scan flow", () => {
 
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
     await expect(sp.resultCard).toContainText("💾");
-    await expect(sp.resultCard).toContainText("Mất kết nối");
+    // 5xx từ server → "Server gặp lỗi" (phân biệt với mất mạng hoàn toàn)
+    await expect(sp.resultCard).toContainText("Server gặp lỗi");
     // Item should be queued — pending badge appears
     await expect(sp.pendingBadge).toBeVisible();
   });

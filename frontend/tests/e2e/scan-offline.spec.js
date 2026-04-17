@@ -268,6 +268,27 @@ test.describe("Offline scan flow", () => {
 
     await expect(sp.resultCard).toBeVisible({ timeout: 15_000 });
     await expect(sp.resultCard).toContainText("💾");
-    await expect(sp.resultCard).toContainText("Mất kết nối");
+    // Phone is online (navigator.onLine=true) but request failed → "server không phản hồi"
+    // Playwright abort() with online=true → classifyApiError → server_unreachable
+    await expect(sp.resultCard).toContainText("kết nối");
+  });
+
+  test("scan while phone truly offline (navigator.onLine=false) shows đã lưu offline", async ({ page, context }) => {
+    const sp = new ScanPagePOM(page);
+    await mockApiSuccess(page);
+    await sp.goto();
+    await sp.clearStorage();
+
+    // Go offline — navigator.onLine becomes false
+    await context.setOffline(true);
+    await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+
+    await sp.startButton.click();
+    await sp.triggerScan("Cổng A");
+
+    await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
+    await expect(sp.resultCard).toContainText("💾");
+    // navigator.onLine=false → skip API call entirely → "Đã lưu offline"
+    await expect(sp.resultCard).toContainText("Đã lưu offline");
   });
 });
