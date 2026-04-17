@@ -5,6 +5,7 @@ import { postScan, postQueuedScan, pingServer } from "../lib/api";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission } from "../lib/geolocation";
 import { enqueue, flushQueue, queueSize } from "../lib/offlineQueue";
+import { classifyApiError } from "../lib/apiError";
 
 /**
  * 6 bước của một lần check-in:
@@ -162,14 +163,9 @@ export default function ScanPage() {
       setResult({ status: "ok", location, scanned_at: scannedAt, ...data });
       setStep("done");
     } catch (err) {
-      const httpStatus   = err?.response?.status;
-      const apiData      = err?.response?.data || {};
-      const isNetworkErr = !err.response;  // không có HTTP response → mất mạng hoàn toàn
-      const isTimeout    = err.code === "ECONNABORTED" || err.message?.includes("timeout");
-      const isServerDown = httpStatus != null && httpStatus >= 500; // 502/503 Render cold-start
+      const classified = classifyApiError(err, navigator.onLine);
 
-      if (isNetworkErr || isTimeout || isServerDown) {
-        // Mất mạng, timeout, hoặc server down (5xx) → lưu offline
+      if (classified.shouldQueue) {
         const item = {
           location,
           device_id: getDeviceId(),
@@ -182,15 +178,16 @@ export default function ScanPage() {
         setPendingCount(queueSize());
         setResult({
           status: "offline",
-          message: "Mất kết nối — đã lưu offline, sẽ tự đồng bộ khi có mạng",
+          message: classified.message,
           location,
           scanned_at: scannedAt,
         });
         setStep("done");
       } else {
+        const apiData = classified.data || {};
         setResult({
           status: "error",
-          message: apiData.message || err.message || "Lỗi server",
+          message: classified.message,
           outOfRange: apiData.code === "OUT_OF_RANGE",
           distance: apiData.distance,
         });
