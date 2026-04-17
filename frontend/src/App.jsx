@@ -52,6 +52,57 @@ function MoonIcon() {
 }
 
 // ---------------------------------------------------------------------------
+// PWA Install Banner
+// ---------------------------------------------------------------------------
+function useInstallPrompt() {
+  const [prompt, setPrompt] = useState(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const install = async () => {
+    if (!prompt) return;
+    prompt.prompt();
+    await prompt.userChoice;
+    setPrompt(null);
+  };
+
+  return { canInstall: !!prompt, install };
+}
+
+function InstallBanner({ onInstall, onDismiss }) {
+  return (
+    <div className="bg-blue-600 text-white px-4 py-3 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <span>📲</span>
+        <span>Cài đặt app để dùng nhanh hơn, hỗ trợ offline</span>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <button
+          onClick={onInstall}
+          className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-sm font-bold active:bg-blue-50 transition-colors"
+        >
+          Cài đặt
+        </button>
+        <button
+          onClick={onDismiss}
+          className="p-1.5 text-blue-200 hover:text-white transition-colors"
+          aria-label="Bỏ qua"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // NavBar
 // ---------------------------------------------------------------------------
 function NavBar({ dark, onToggleDark }) {
@@ -99,6 +150,22 @@ function StationDisplayRoute() {
 // ---------------------------------------------------------------------------
 export default function App() {
   const [dark, setDark] = useDarkMode();
+  const { canInstall, install } = useInstallPrompt();
+  const [bannerDismissed, setBannerDismissed] = useState(
+    () => sessionStorage.getItem("pwa-dismissed") === "1"
+  );
+
+  const handleInstall = async () => {
+    await install();
+    setBannerDismissed(true);
+  };
+
+  const handleDismiss = () => {
+    sessionStorage.setItem("pwa-dismissed", "1");
+    setBannerDismissed(true);
+  };
+
+  const showBanner = canInstall && !bannerDismissed;
 
   return (
     <BrowserRouter>
@@ -112,6 +179,9 @@ export default function App() {
           element={
             <div className="min-h-[100dvh] bg-slate-50 dark:bg-slate-900 transition-colors">
               <NavBar dark={dark} onToggleDark={() => setDark((d) => !d)} />
+              {showBanner && (
+                <InstallBanner onInstall={handleInstall} onDismiss={handleDismiss} />
+              )}
               <main className="w-full px-3 py-4">
                 <Routes>
                   <Route path="/" element={<ScanPage />} />
