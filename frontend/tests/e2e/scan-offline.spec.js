@@ -214,6 +214,79 @@ test.describe("Offline scan flow", () => {
     await expect(sp.pendingBadge).toHaveCount(0, { timeout: 5_000 });
   });
 
+  // ── Auto-sync silence (isAuto fix) ────────────────────────────────────
+
+  test("auto-sync on mount failure is silent — no error banner", async ({ page }) => {
+    // Seed queue before navigation so auto-sync fires on mount
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "qr_offline_queue",
+        JSON.stringify([{
+          location: "Cổng A",
+          device_id: "test-id",
+          scanned_at: new Date(Date.now() - 60_000).toISOString(),
+          queued_at: new Date(Date.now() - 60_000).toISOString(),
+          lat: null, lng: null, accuracy: null,
+        }])
+      );
+    });
+
+    // Server always returns 500 → auto-sync will fail silently
+    await page.route("**/api/scan", (r) =>
+      r.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "error", message: "Server error" }),
+      })
+    );
+
+    const sp = new ScanPagePOM(page);
+    await sp.goto();
+
+    // Queue badge must still show (items not cleared)
+    await expect(sp.pendingBadge).toBeVisible({ timeout: 5_000 });
+
+    // Wait enough time for auto-sync to complete and any message to appear
+    await page.waitForTimeout(3_000);
+
+    // Auto-sync failure must be silent — no red error banner
+    await expect(page.locator("text=/Không đồng bộ được|Lỗi đồng bộ/")).toHaveCount(0);
+  });
+
+  test("auto-sync when network returns and server is down is silent", async ({ page, context }) => {
+    const sp = new ScanPagePOM(page);
+    await mockApiSuccess(page);
+    await sp.goto();
+    await sp.clearStorage();
+
+    // Scan offline
+    await goOffline(page, context);
+    await sp.startButton.click();
+    await sp.triggerScan("Cổng A");
+    await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
+    await sp.continueButton.click();
+    await expect(sp.pendingOffline).toBeVisible();
+
+    // Go back online but server returns 500 → auto-sync will fail
+    await page.unroute("**/api/scan");
+    await page.route("**/api/scan", (r) =>
+      r.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "error", message: "Server error" }),
+      })
+    );
+    await goOnline(page, context);
+
+    // Wait enough time for auto-sync to complete
+    await page.waitForTimeout(3_000);
+
+    // No error banner — auto-sync is silent on failure
+    await expect(page.locator("text=/Không đồng bộ được|Lỗi đồng bộ/")).toHaveCount(0);
+    // Item still in queue
+    await expect(sp.pendingBadge).toBeVisible();
+  });
+
   test("sync failure shows error message and keeps items in queue", async ({ page }) => {
     const sp = new ScanPagePOM(page);
 
@@ -246,6 +319,8 @@ test.describe("Offline scan flow", () => {
     await sp.goto();
 
     await expect(sp.pendingBadge).toBeVisible({ timeout: 5_000 });
+    // Đợi auto-sync im lặng hoàn tất rồi mới bấm thủ công
+    await expect(sp.syncButton).toBeVisible({ timeout: 5_000 });
     await sp.syncButton.click();
 
     await expect(sp.syncMsg).toBeVisible({ timeout: 8_000 });

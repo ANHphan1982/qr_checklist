@@ -277,7 +277,7 @@ export default function ScanPage() {
           <span>🕐 {pendingCount} scan chờ đồng bộ</span>
           <div className="flex items-center gap-2">
             <button
-              onClick={syncQueue}
+              onClick={() => syncQueue(false)}
               disabled={isSyncing}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 active:bg-blue-700 transition-colors"
             >
