@@ -28,15 +28,20 @@ def email_test():
     if not RESEND_API_KEY:
         return jsonify({"ok": False, "error": "RESEND_API_KEY chưa cấu hình"}), 500
 
-    client = resend.Resend(api_key=RESEND_API_KEY)
     to_list = [e.strip() for e in EMAIL_TO.split(",") if e.strip()] if EMAIL_TO else []
+    params = {
+        "from": EMAIL_FROM,
+        "to": to_list,
+        "subject": "[QR Checklist] Test email — cấu hình OK",
+        "html": "<p>Email test thành công! Hệ thống QR Checklist đã cấu hình email đúng.</p>",
+    }
     try:
-        resp = client.emails.send({
-            "from": EMAIL_FROM,
-            "to": to_list,
-            "subject": "[QR Checklist] Test email — cấu hình OK",
-            "html": "<p>Email test thành công! Hệ thống QR Checklist đã cấu hình email đúng.</p>",
-        })
+        if hasattr(resend, "Resend"):
+            client = resend.Resend(api_key=RESEND_API_KEY)
+            resp = client.emails.send(params)
+        else:
+            resend.api_key = RESEND_API_KEY
+            resp = resend.Emails.send(params)
         return jsonify({"ok": True, "resend_id": getattr(resp, "id", str(resp))})
     except Exception as exc:
         return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500

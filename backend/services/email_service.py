@@ -61,9 +61,6 @@ def send_scan_email(
         print(f"[email] {msg}")
         return False, msg
 
-    # Resend v2.x: dùng client-based API thay vì global resend.api_key
-    client = resend.Resend(api_key=RESEND_API_KEY)
-
     # Hỗ trợ nhiều địa chỉ email phân cách bằng dấu phẩy
     to_list = [e.strip() for e in EMAIL_TO.split(",") if e.strip()] if EMAIL_TO else []
     if not to_list:
@@ -126,7 +123,15 @@ def send_scan_email(
 
     try:
         print(f"[email] Gửi đến {to_list} from={EMAIL_FROM} subject={params['subject']!r}")
-        resp = client.emails.send(params)
+        # Hỗ trợ cả resend >=2.7 (global API) lẫn resend 2.0.x (client API)
+        if hasattr(resend, "Resend"):
+            # resend 2.0.x client-based API
+            client = resend.Resend(api_key=RESEND_API_KEY)
+            resp = client.emails.send(params)
+        else:
+            # resend >=2.7 global API (giống v1)
+            resend.api_key = RESEND_API_KEY
+            resp = resend.Emails.send(params)
         print(f"[email] OK — id={getattr(resp, 'id', resp)}")
         return True, ""
     except Exception as exc:
