@@ -4,7 +4,7 @@ import ScanResult from "../components/ScanResult";
 import { postScan, postQueuedScan, pingServer, checkConnectivity } from "../lib/api";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission } from "../lib/geolocation";
-import { enqueue, flushQueue, queueSize } from "../lib/offlineQueue";
+import { enqueue, flushQueue, queueSize, clearQueue } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
 
 /**
@@ -117,6 +117,13 @@ export default function ScanPage() {
     setConnTest(result);
     setIsTestingConn(false);
     setTimeout(() => setConnTest(null), 20000);
+  };
+
+  const handleClearQueue = () => {
+    if (!window.confirm(`Xóa ${pendingCount} scan đang chờ? Dữ liệu sẽ mất vĩnh viễn.`)) return;
+    clearQueue();
+    setPendingCount(0);
+    setSyncMsg(null);
   };
 
   const handleStart = async () => {
@@ -259,21 +266,31 @@ export default function ScanPage() {
       {pendingCount > 0 && isOnline && (
         <div className="rounded-xl border px-4 py-3 text-base flex items-center justify-between gap-2 bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300">
           <span>🕐 {pendingCount} scan chờ đồng bộ</span>
-          <button
-            onClick={syncQueue}
-            disabled={isSyncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 active:bg-blue-700 transition-colors"
-          >
-            {isSyncing ? (
-              <>
-                <svg className="animate-spin h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-                Đang gửi...
-              </>
-            ) : "Đồng bộ ngay"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={syncQueue}
+              disabled={isSyncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 active:bg-blue-700 transition-colors"
+            >
+              {isSyncing ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Đang gửi...
+                </>
+              ) : "Đồng bộ ngay"}
+            </button>
+            <button
+              onClick={handleClearQueue}
+              disabled={isSyncing}
+              className="px-3 py-1.5 rounded-lg bg-red-100 text-red-700 text-sm font-semibold disabled:opacity-60 active:bg-red-200 transition-colors dark:bg-red-900/30 dark:text-red-300"
+              title="Xóa tất cả scan đang chờ"
+            >
+              Xóa
+            </button>
+          </div>
         </div>
       )}
 

@@ -21,8 +21,8 @@ export function enqueue(item) {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
 }
 
-/** Xóa toàn bộ queue sau khi đồng bộ xong */
-function clearQueue() {
+/** Xóa toàn bộ queue */
+export function clearQueue() {
   localStorage.removeItem(QUEUE_KEY);
 }
 
