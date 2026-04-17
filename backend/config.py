@@ -15,6 +15,7 @@ EMAIL_FROM = os.getenv("EMAIL_FROM", "checklist@yourdomain.com")
 EMAIL_TO = os.getenv("EMAIL_TO", "manager@company.com")
 FLASK_ENV = os.getenv("FLASK_ENV", "development")
 CORS_ORIGIN = os.getenv("CORS_ORIGIN", "http://localhost:5173")
+ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
 
 Base = declarative_base()
 

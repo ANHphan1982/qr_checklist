@@ -81,7 +81,8 @@ def parse_qr_content(raw: str) -> tuple[str, str | None]:
     - Format alias: nội dung QR bất kỳ được map trong QR_ALIAS_MAP
                     → trả về (mapped_station_name, None)
     """
-    from services.stations_config import QR_ALIAS_MAP
+    from services.stations_db import get_qr_aliases
+    QR_ALIAS_MAP = get_qr_aliases()
 
     raw = raw.strip()
 

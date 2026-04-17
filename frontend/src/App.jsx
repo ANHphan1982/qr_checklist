@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, useParams } from "react-router-d
 import ScanPage from "./pages/ScanPage";
 import HistoryPage from "./pages/HistoryPage";
 import StationDisplayPage from "./pages/StationDisplayPage";
+import AdminPage from "./pages/AdminPage";
 
 // ---------------------------------------------------------------------------
 // Dark mode hook — đọc localStorage, fallback về prefers-color-scheme
@@ -186,6 +187,7 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<ScanPage />} />
                   <Route path="/history" element={<HistoryPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
                 </Routes>
               </main>
             </div>

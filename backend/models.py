@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Float, func
+from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Float, Integer, func
 from config import Base
 
 
@@ -31,4 +31,44 @@ class ScanLog(Base):
             "token_valid": self.token_valid,
             "scanned_at": self.scanned_at.isoformat() if self.scanned_at else None,
             "email_sent": self.email_sent,
+        }
+
+
+class Station(Base):
+    __tablename__ = "stations"
+
+    id         = Column(BigInteger, primary_key=True, index=True)
+    name       = Column(String(100), nullable=False, unique=True)
+    lat        = Column(Float, nullable=False)
+    lng        = Column(Float, nullable=False)
+    radius     = Column(Integer, default=300)
+    active     = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "lat": self.lat,
+            "lng": self.lng,
+            "radius": self.radius,
+            "active": self.active,
+        }
+
+
+class QrAlias(Base):
+    __tablename__ = "qr_aliases"
+
+    id           = Column(BigInteger, primary_key=True, index=True)
+    qr_content   = Column(String(500), nullable=False, unique=True)
+    station_name = Column(String(100), nullable=False)
+    note         = Column(String(200))
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "qr_content": self.qr_content,
+            "station_name": self.station_name,
+            "note": self.note or "",
         }

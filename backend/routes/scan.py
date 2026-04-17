@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from services.scan_service import process_scan
 from services.geo_service import validate_location
-from services.stations_config import STATIONS
+from services.stations_db import get_stations, get_qr_aliases
 from services.qr_token_service import parse_qr_content, validate_token
 from services.anti_fraud_service import check_gps_enforcement
 import os
@@ -53,7 +53,7 @@ def create_scan():
     geo_status = "no_gps"
 
     if scan_lat is not None and scan_lng is not None:
-        geo_result = validate_location(location, float(scan_lat), float(scan_lng), STATIONS)
+        geo_result = validate_location(location, float(scan_lat), float(scan_lng), get_stations())
         if not geo_result["valid"]:
             geo_status = "out_of_range"
         else:
