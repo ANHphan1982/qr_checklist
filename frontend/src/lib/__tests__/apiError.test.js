@@ -45,9 +45,9 @@ describe("classifyApiError — phone offline", () => {
     expect(result.type).toBe("offline_phone");
   });
 
-  it("message mentions mất kết nối when phone is offline", () => {
+  it("message confirms offline save when phone is offline", () => {
     const result = classifyApiError(makeAxiosNetworkErr(), false);
-    expect(result.message.toLowerCase()).toMatch(/mất kết nối/);
+    expect(result.message.toLowerCase()).toMatch(/lưu offline/);
   });
 
   it("returns shouldQueue=true when phone offline", () => {

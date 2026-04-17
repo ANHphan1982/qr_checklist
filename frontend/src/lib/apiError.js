@@ -28,23 +28,23 @@ export function classifyApiError(err, isOnline) {
     return {
       type: "server_error",
       shouldQueue: true,
-      message: "Server gặp lỗi — đã lưu offline, sẽ tự đồng bộ khi server ổn định",
+      message: "Đã lưu offline — server tạm lỗi, sẽ tự đồng bộ khi ổn định",
     };
   }
 
   // Không có HTTP response (network error, CORS, timeout, DNS fail...)
-  // Phân biệt bằng navigator.onLine để hiện đúng thông báo
+  // Đều lưu offline và hiện thông báo tích cực — "Đã lưu offline" là thông điệp chính
   if (isOnline) {
     return {
       type: "server_unreachable",
       shouldQueue: true,
-      message: "Không kết nối được server — đã lưu offline, sẽ tự đồng bộ khi server sẵn sàng",
+      message: "Đã lưu offline — không kết nối được server, sẽ tự đồng bộ khi có mạng",
     };
   }
 
   return {
     type: "offline_phone",
     shouldQueue: true,
-    message: "Mất kết nối — đã lưu offline, sẽ tự đồng bộ khi có mạng",
+    message: "Đã lưu offline — sẽ tự đồng bộ khi có mạng",
   };
 }
