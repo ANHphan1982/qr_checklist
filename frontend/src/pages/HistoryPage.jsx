@@ -42,8 +42,8 @@ export default function HistoryPage() {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        <label className="text-sm font-medium text-slate-600 dark:text-slate-300" htmlFor="date-picker">
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="text-base font-medium text-slate-600 dark:text-slate-300" htmlFor="date-picker">
           Ngày:
         </label>
         <input
@@ -52,11 +52,11 @@ export default function HistoryPage() {
           value={date}
           max={todayVN()}
           onChange={(e) => setDate(e.target.value)}
-          className="border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
         />
         <button
           onClick={() => fetchLogs(date)}
-          className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium active:bg-blue-700 transition-colors"
+          className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-base font-semibold active:bg-blue-700 transition-colors min-h-[44px]"
         >
           Tải
         </button>

@@ -279,7 +279,7 @@ export default function ScanPage() {
             <button
               onClick={() => syncQueue(false)}
               disabled={isSyncing}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 active:bg-blue-700 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 active:bg-blue-700 transition-colors min-h-[44px]"
             >
               {isSyncing ? (
                 <>
@@ -294,7 +294,7 @@ export default function ScanPage() {
             <button
               onClick={handleClearQueue}
               disabled={isSyncing}
-              className="px-3 py-1.5 rounded-lg bg-red-100 text-red-700 text-sm font-semibold disabled:opacity-60 active:bg-red-200 transition-colors dark:bg-red-900/30 dark:text-red-300"
+              className="px-4 py-2.5 rounded-xl bg-red-100 text-red-700 text-sm font-semibold disabled:opacity-60 active:bg-red-200 transition-colors dark:bg-red-900/30 dark:text-red-300 min-h-[44px]"
               title="Xóa tất cả scan đang chờ"
             >
               Xóa
@@ -326,7 +326,7 @@ export default function ScanPage() {
           <button
             onClick={handleTestConn}
             disabled={isTestingConn}
-            className="w-full py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold disabled:opacity-60 active:bg-slate-100 dark:active:bg-slate-700 transition-colors"
+            className="w-full py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-base font-semibold disabled:opacity-60 active:bg-slate-100 dark:active:bg-slate-700 transition-colors min-h-[48px]"
           >
             {isTestingConn ? "⏳ Đang kiểm tra..." : "🔌 Test kết nối server"}
           </button>

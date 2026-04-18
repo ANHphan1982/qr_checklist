@@ -23,7 +23,7 @@ export default function ScanResult({ result, onDismiss }) {
         </div>
         <button
           onClick={onDismiss}
-          className="text-current opacity-40 hover:opacity-70 text-2xl leading-none flex-shrink-0 transition-opacity"
+          className="text-current opacity-40 hover:opacity-70 text-2xl leading-none flex-shrink-0 transition-opacity min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label="Đóng"
         >
           ×
