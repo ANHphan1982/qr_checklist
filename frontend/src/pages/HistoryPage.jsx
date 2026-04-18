@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import ScanHistory from "../components/ScanHistory";
 import { getReports } from "../lib/api";
+import { buildHistoryRows, exportToExcel } from "../lib/exportExcel";
 
 function todayVN() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
@@ -31,15 +32,25 @@ export default function HistoryPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">
           Lịch sử Check-in
         </h1>
-        {!loading && (
-          <span className="text-sm text-slate-500 dark:text-slate-400">
-            {total} lượt
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {!loading && (
+            <span className="text-sm text-slate-500 dark:text-slate-400">
+              {total} lượt
+            </span>
+          )}
+          {logs.length > 0 && (
+            <button
+              onClick={() => exportToExcel(buildHistoryRows(logs), `checkin-${date}.xlsx`, "Lịch sử")}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold active:bg-green-700 transition-colors min-h-[44px]"
+            >
+              📥 Excel
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

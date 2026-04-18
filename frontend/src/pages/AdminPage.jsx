@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import { buildStationsRows, buildAliasesRows, exportToExcel } from "../lib/exportExcel";
 
 const BASE = import.meta.env.VITE_API_URL || "";
 const SESSION_KEY = "admin_authed";
@@ -118,19 +119,33 @@ function AdminDashboard({ adminKey, onLogout }) {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 mx-4 mt-4">
-        {["stations", "aliases"].map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              tab === t ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-            }`}
-          >
-            {t === "stations" ? `📍 Trạm (${stations.length})` : `🔗 QR Alias (${aliases.length})`}
-          </button>
-        ))}
+      {/* Tabs + Export */}
+      <div className="flex items-center justify-between gap-2 mx-4 mt-4 flex-wrap">
+        <div className="flex gap-1">
+          {["stations", "aliases"].map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors min-h-[44px] ${
+                tab === t ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+              }`}
+            >
+              {t === "stations" ? `📍 Trạm (${stations.length})` : `🔗 QR Alias (${aliases.length})`}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => {
+            if (tab === "stations") {
+              exportToExcel(buildStationsRows(stations), "tram-checkpoint.xlsx", "Trạm");
+            } else {
+              exportToExcel(buildAliasesRows(aliases), "qr-alias.xlsx", "QR Alias");
+            }
+          }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold active:bg-green-700 transition-colors min-h-[44px]"
+        >
+          📥 Xuất Excel
+        </button>
       </div>
 
       <div className="mx-4 mt-4 space-y-4">
