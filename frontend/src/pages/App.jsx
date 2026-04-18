@@ -1,0 +1,282 @@
+import { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, NavLink, useParams } from "react-router-dom";
+import ScanPage from "./pages/ScanPage";
+import HistoryPage from "./pages/HistoryPage";
+import StationDisplayPage from "./pages/StationDisplayPage";
+import AdminPage from "./pages/AdminPage";
+
+// ---------------------------------------------------------------------------
+// Dark mode hook
+// ---------------------------------------------------------------------------
+function useDarkMode() {
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved) return saved === "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+    localStorage.setItem("theme", dark ? "dark" : "light");
+  }, [dark]);
+
+  return [dark, setDark];
+}
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+function SunIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  );
+}
+
+function MoonIcon({ className = "w-5 h-5" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function QRIcon({ className = "w-6 h-6" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2"/>
+      <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2"/>
+      <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2"/>
+      <rect x="6" y="6" width="1.5" height="1.5" fill="currentColor"/>
+      <rect x="17" y="6" width="1.5" height="1.5" fill="currentColor"/>
+      <rect x="6" y="17" width="1.5" height="1.5" fill="currentColor"/>
+      <rect x="14" y="14" width="3" height="3" fill="currentColor"/>
+      <rect x="19" y="14" width="2" height="2" fill="currentColor"/>
+      <rect x="14" y="19" width="2" height="2" fill="currentColor"/>
+      <rect x="18" y="18" width="3" height="3" fill="currentColor"/>
+    </svg>
+  );
+}
+
+function HistoryIcon({ className = "w-6 h-6" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path d="M3 12a9 9 0 1 0 3-6.7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M3 4v4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M12 8v4l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PWA Install Prompt
+// ---------------------------------------------------------------------------
+function useInstallPrompt() {
+  const [prompt, setPrompt] = useState(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const install = async () => {
+    if (!prompt) return;
+    prompt.prompt();
+    await prompt.userChoice;
+    setPrompt(null);
+  };
+
+  return { canInstall: !!prompt, install };
+}
+
+// ---------------------------------------------------------------------------
+// Install Banner
+// ---------------------------------------------------------------------------
+function InstallBanner({ onInstall, onDismiss }) {
+  return (
+    <div className="mx-3 mt-3 rounded-2xl bg-blue-600 text-white px-4 py-3 flex items-center gap-3">
+      <div className="text-2xl flex-shrink-0" aria-hidden>📲</div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[15px] font-bold leading-tight">Cài đặt app</div>
+        <div className="text-[13px] text-blue-100 leading-tight mt-0.5">
+          Dùng nhanh, hỗ trợ offline
+        </div>
+      </div>
+      <button
+        onClick={onInstall}
+        className="min-h-[40px] px-4 bg-white text-blue-700 rounded-xl text-[14px] font-bold active:bg-blue-50 transition-colors flex-shrink-0"
+      >
+        Cài đặt
+      </button>
+      <button
+        onClick={onDismiss}
+        aria-label="Bỏ qua"
+        className="w-10 h-10 rounded-xl bg-blue-700/60 text-white flex items-center justify-center active:bg-blue-700/80 transition-colors flex-shrink-0"
+      >
+        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
+          <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NavBar — logo trái, NavLinks desktop + dark toggle phải
+// ---------------------------------------------------------------------------
+function NavBar({ dark, onToggleDark }) {
+  const navLinkClass = ({ isActive }) =>
+    [
+      "hidden sm:flex items-center min-h-[40px] px-3 rounded-xl text-[14px] font-medium transition-colors",
+      isActive
+        ? "bg-blue-600 text-white"
+        : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700",
+    ].join(" ");
+
+  return (
+    <header className="sticky top-0 z-40 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+      <div className="px-4 h-14 flex items-center justify-between">
+        <span className="font-bold text-[18px] text-slate-900 dark:text-slate-100 tracking-tight">
+          QR Checklist
+        </span>
+        <div className="flex items-center gap-2">
+          <NavLink to="/" end className={navLinkClass}>Scan</NavLink>
+          <NavLink to="/history" className={navLinkClass}>Lịch sử</NavLink>
+          <button
+            onClick={onToggleDark}
+            aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+            className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 active:bg-slate-200 dark:active:bg-slate-600 flex items-center justify-center transition-colors"
+          >
+            {dark ? <SunIcon /> : <MoonIcon />}
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bottom tab bar — thumb-zone cho mobile
+// ---------------------------------------------------------------------------
+function BottomTabs() {
+  const tab = ({ isActive }) =>
+    [
+      "flex-1 min-h-[64px] flex flex-col items-center justify-center gap-1 transition-colors",
+      "text-[12px] font-semibold tracking-tight",
+      isActive
+        ? "text-blue-600 dark:text-blue-400"
+        : "text-slate-500 dark:text-slate-400 active:text-slate-700 dark:active:text-slate-200",
+    ].join(" ");
+
+  return (
+    <nav
+      className="sticky bottom-0 z-40 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
+      <div className="flex">
+        <NavLink to="/" end className={tab}>
+          {({ isActive }) => (
+            <>
+              <div className={[
+                "w-14 h-8 rounded-full flex items-center justify-center transition-colors",
+                isActive ? "bg-blue-100 dark:bg-blue-500/20" : ""
+              ].join(" ")}>
+                <QRIcon className="w-6 h-6"/>
+              </div>
+              <span>Scan</span>
+            </>
+          )}
+        </NavLink>
+        <NavLink to="/history" className={tab}>
+          {({ isActive }) => (
+            <>
+              <div className={[
+                "w-14 h-8 rounded-full flex items-center justify-center transition-colors",
+                isActive ? "bg-blue-100 dark:bg-blue-500/20" : ""
+              ].join(" ")}>
+                <HistoryIcon className="w-6 h-6"/>
+              </div>
+              <span>Lịch sử</span>
+            </>
+          )}
+        </NavLink>
+      </div>
+    </nav>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Wrapper để lấy :name từ URL params
+// ---------------------------------------------------------------------------
+function StationDisplayRoute() {
+  const { name } = useParams();
+  return <StationDisplayPage stationName={decodeURIComponent(name)} />;
+}
+
+// ---------------------------------------------------------------------------
+// App
+// ---------------------------------------------------------------------------
+export default function App() {
+  const [dark, setDark] = useDarkMode();
+  const { canInstall, install } = useInstallPrompt();
+  const [bannerDismissed, setBannerDismissed] = useState(
+    () => sessionStorage.getItem("pwa-dismissed") === "1"
+  );
+
+  const handleInstall = async () => {
+    await install();
+    setBannerDismissed(true);
+  };
+
+  const handleDismiss = () => {
+    sessionStorage.setItem("pwa-dismissed", "1");
+    setBannerDismissed(true);
+  };
+
+  const showBanner = canInstall && !bannerDismissed;
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Trang màn hình trạm — fullscreen, không có chrome */}
+        <Route path="/station/:name" element={<StationDisplayRoute />} />
+
+        {/* Trang nhân viên — có NavBar + BottomTabs */}
+        <Route
+          path="/*"
+          element={
+            <div className="min-h-[100dvh] flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
+              <NavBar dark={dark} onToggleDark={() => setDark((d) => !d)} />
+              {showBanner && (
+                <InstallBanner onInstall={handleInstall} onDismiss={handleDismiss} />
+              )}
+              <main className="flex-1 w-full px-4 py-4">
+                <Routes>
+                  <Route path="/" element={<ScanPage />} />
+                  <Route path="/history" element={<HistoryPage />} />
+                  <Route path="/admin" element={<AdminPage />} />
+                </Routes>
+              </main>
+              <BottomTabs />
+            </div>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
+}
