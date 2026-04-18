@@ -7,6 +7,7 @@ from routes.reports import reports_bp
 from routes.qr_token import qr_token_bp
 from routes.debug import debug_bp
 from routes.admin import admin_bp
+from routes.summary import summary_bp
 
 app = Flask(__name__)
 
@@ -27,6 +28,7 @@ app.register_blueprint(reports_bp, url_prefix="/api")
 app.register_blueprint(qr_token_bp, url_prefix="/api")
 app.register_blueprint(debug_bp, url_prefix="/api")
 app.register_blueprint(admin_bp, url_prefix="/api")
+app.register_blueprint(summary_bp, url_prefix="/api")
 
 
 @app.route("/health")
