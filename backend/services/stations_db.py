@@ -8,17 +8,18 @@ from services.stations_config import STATIONS as _STATIC_STATIONS, QR_ALIAS_MAP 
 
 
 def get_stations() -> dict:
-    """Trả về dict {name: {lat, lng, radius}} — ưu tiên DB, fallback file."""
+    """Trả về dict {name: {lat, lng, radius}} — merge DB + static (DB thắng khi trùng tên)."""
+    merged = dict(_STATIC_STATIONS)  # luôn bắt đầu từ static config
     if SessionLocal is None:
-        return _STATIC_STATIONS
+        return merged
     try:
         with SessionLocal() as s:
             rows = s.query(Station).filter(Station.active == True).all()
-        if rows:
-            return {r.name: {"lat": r.lat, "lng": r.lng, "radius": r.radius} for r in rows}
+        for r in rows:
+            merged[r.name] = {"lat": r.lat, "lng": r.lng, "radius": r.radius}
     except Exception as e:
         print(f"[stations_db] get_stations DB error: {e}")
-    return _STATIC_STATIONS
+    return merged
 
 
 def get_qr_aliases() -> dict:

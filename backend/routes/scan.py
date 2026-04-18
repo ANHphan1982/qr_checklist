@@ -56,8 +56,10 @@ def create_scan():
         geo_result = validate_location(location, float(scan_lat), float(scan_lng), get_stations())
         if not geo_result["valid"]:
             geo_status = "out_of_range"
-        else:
+        elif not geo_result.get("skipped"):
+            # skipped=True nghĩa là trạm chưa có tọa độ trong config → không xác nhận được
             geo_status = "ok"
+        # else: giữ nguyên geo_status = "no_gps"
 
     # --- Process (bao gồm rate limiting bên trong) ---
     try:
