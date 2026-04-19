@@ -14,7 +14,10 @@ describe("SCANNER_CONFIG — camera sau", () => {
     expect(SCANNER_CONFIG.fps).toBe(10);
   });
 
-  it("giữ nguyên qrbox 250x250", () => {
-    expect(SCANNER_CONFIG.qrbox).toEqual({ width: 250, height: 250 });
+  it("qrbox là object với width và height (responsive, tối đa 360px)", () => {
+    expect(SCANNER_CONFIG.qrbox).toHaveProperty("width");
+    expect(SCANNER_CONFIG.qrbox).toHaveProperty("height");
+    expect(SCANNER_CONFIG.qrbox.width).toBeLessThanOrEqual(360);
+    expect(SCANNER_CONFIG.qrbox.height).toBeLessThanOrEqual(360);
   });
 });
