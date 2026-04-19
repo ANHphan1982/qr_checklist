@@ -387,7 +387,7 @@ export default function ScanPage() {
       {step === "idle" && (
         <button
           onClick={handleStart}
-          className="w-full min-h-[56px] py-4 rounded-2xl bg-blue-600 text-white font-bold text-lg active:bg-blue-700 transition-colors"
+          className="w-full min-h-[68px] py-5 rounded-2xl bg-blue-600 text-white font-bold text-xl active:bg-blue-700 transition-colors"
         >
           📷 Bắt đầu Scan
         </button>
@@ -396,7 +396,7 @@ export default function ScanPage() {
       {isScanning && (
         <button
           onClick={handleStop}
-          className="w-full min-h-[56px] py-4 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-lg active:bg-slate-200 dark:active:bg-slate-600 transition-colors"
+          className="w-full min-h-[68px] py-5 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xl active:bg-slate-200 dark:active:bg-slate-600 transition-colors"
         >
           ⏹ Dừng Camera
         </button>
@@ -405,7 +405,7 @@ export default function ScanPage() {
       {isDone && (
         <button
           onClick={handleReset}
-          className="w-full min-h-[56px] py-4 rounded-2xl bg-blue-600 text-white font-bold text-lg active:bg-blue-700 transition-colors"
+          className="w-full min-h-[68px] py-5 rounded-2xl bg-blue-600 text-white font-bold text-xl active:bg-blue-700 transition-colors"
         >
           📷 Quét tiếp
         </button>

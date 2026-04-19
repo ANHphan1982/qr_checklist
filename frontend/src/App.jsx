@@ -164,8 +164,8 @@ function NavBar({ dark, onToggleDark }) {
 function BottomTabs() {
   const tabClass = ({ isActive }) =>
     [
-      "flex-1 min-h-[64px] flex flex-col items-center justify-center gap-1 transition-colors select-none",
-      "text-[13px] font-semibold tracking-tight",
+      "flex-1 min-h-[76px] flex flex-col items-center justify-center gap-1.5 transition-colors select-none",
+      "text-[15px] font-bold tracking-tight",
       isActive
         ? "text-blue-600 dark:text-blue-400"
         : "text-slate-500 dark:text-slate-400 active:text-slate-700 dark:active:text-slate-200",
@@ -182,10 +182,10 @@ function BottomTabs() {
           {({ isActive }) => (
             <>
               <div className={[
-                "w-14 h-8 rounded-full flex items-center justify-center transition-colors",
+                "w-16 h-10 rounded-full flex items-center justify-center transition-colors",
                 isActive ? "bg-blue-100 dark:bg-blue-500/20" : "",
               ].join(" ")}>
-                <QRIcon className="w-6 h-6" />
+                <QRIcon className="w-7 h-7" />
               </div>
               <span>Scan</span>
             </>
@@ -195,10 +195,10 @@ function BottomTabs() {
           {({ isActive }) => (
             <>
               <div className={[
-                "w-14 h-8 rounded-full flex items-center justify-center transition-colors",
+                "w-16 h-10 rounded-full flex items-center justify-center transition-colors",
                 isActive ? "bg-blue-100 dark:bg-blue-500/20" : "",
               ].join(" ")}>
-                <HistoryIcon className="w-6 h-6" />
+                <HistoryIcon className="w-7 h-7" />
               </div>
               <span>Lịch sử</span>
             </>
