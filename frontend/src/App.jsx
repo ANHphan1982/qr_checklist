@@ -6,6 +6,26 @@ import StationDisplayPage from "./pages/StationDisplayPage";
 import AdminPage from "./pages/AdminPage";
 
 // ---------------------------------------------------------------------------
+// PWA display mode hook — thêm class pwa-mode lên <html> khi chạy standalone
+// Xử lý iOS Safari (navigator.standalone) mà CSS media query không detect được
+// ---------------------------------------------------------------------------
+function useDisplayMode() {
+  useEffect(() => {
+    const mq = window.matchMedia("(display-mode: standalone)");
+
+    const apply = (isStandalone) => {
+      document.documentElement.classList.toggle("pwa-mode", isStandalone);
+    };
+
+    // iOS Safari dùng navigator.standalone, Android dùng matchMedia
+    apply(mq.matches || window.navigator.standalone === true);
+
+    mq.addEventListener("change", (e) => apply(e.matches));
+    return () => mq.removeEventListener("change", (e) => apply(e.matches));
+  }, []);
+}
+
+// ---------------------------------------------------------------------------
 // Dark mode hook
 // ---------------------------------------------------------------------------
 function useDarkMode() {
@@ -182,10 +202,10 @@ function BottomTabs() {
           {({ isActive }) => (
             <>
               <div className={[
-                "w-16 h-10 rounded-full flex items-center justify-center transition-colors",
+                "tab-pill w-16 h-10 rounded-full flex items-center justify-center transition-colors",
                 isActive ? "bg-blue-100 dark:bg-blue-500/20" : "",
               ].join(" ")}>
-                <QRIcon className="w-7 h-7" />
+                <QRIcon className="tab-icon w-7 h-7" />
               </div>
               <span>Scan</span>
             </>
@@ -221,6 +241,7 @@ function StationDisplayRoute() {
 // App
 // ---------------------------------------------------------------------------
 export default function App() {
+  useDisplayMode();
   const [dark, setDark] = useDarkMode();
   const { canInstall, install } = useInstallPrompt();
   const [bannerDismissed, setBannerDismissed] = useState(

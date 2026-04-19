@@ -387,6 +387,7 @@ export default function ScanPage() {
       {step === "idle" && (
         <button
           onClick={handleStart}
+          data-scan-btn
           className="w-full min-h-[68px] py-5 rounded-2xl bg-blue-600 text-white font-bold text-xl active:bg-blue-700 transition-colors"
         >
           📷 Bắt đầu Scan
@@ -396,6 +397,7 @@ export default function ScanPage() {
       {isScanning && (
         <button
           onClick={handleStop}
+          data-scan-btn
           className="w-full min-h-[68px] py-5 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xl active:bg-slate-200 dark:active:bg-slate-600 transition-colors"
         >
           ⏹ Dừng Camera
@@ -405,6 +407,7 @@ export default function ScanPage() {
       {isDone && (
         <button
           onClick={handleReset}
+          data-scan-btn
           className="w-full min-h-[68px] py-5 rounded-2xl bg-blue-600 text-white font-bold text-xl active:bg-blue-700 transition-colors"
         >
           📷 Quét tiếp
