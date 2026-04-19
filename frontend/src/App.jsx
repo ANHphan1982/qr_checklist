@@ -229,6 +229,63 @@ function BottomTabs() {
 }
 
 // ---------------------------------------------------------------------------
+// PWA Debug Badge — tap logo 5 lần để bật, tap badge để tắt
+// Hiển thị toàn bộ detection values để kiểm tra trên điện thoại
+// ---------------------------------------------------------------------------
+function PWADebugBadge() {
+  const [show, setShow] = useState(false);
+  const [info, setInfo] = useState(null);
+
+  useEffect(() => {
+    if (!show) return;
+    const html = document.documentElement;
+    const computed = getComputedStyle(html).fontSize;
+    setInfo({
+      matchMedia: window.matchMedia("(display-mode: standalone)").matches,
+      navStandalone: window.navigator.standalone,
+      hasPwaMode: html.classList.contains("pwa-mode"),
+      inlineSize: html.style.fontSize || "(none)",
+      computedSize: computed,
+      userAgent: navigator.userAgent.slice(0, 60),
+    });
+  }, [show]);
+
+  return (
+    <>
+      {/* Invisible tap zone góc trên phải — tap 5 lần để bật debug */}
+      <button
+        onClick={() => setShow((s) => !s)}
+        className="fixed top-0 right-0 w-16 h-16 z-[9999] opacity-0"
+        aria-label="Toggle debug"
+      />
+      {show && info && (
+        <div
+          className="fixed inset-x-3 top-20 z-[9999] rounded-2xl bg-slate-900 text-white text-[12px] font-mono p-4 shadow-2xl"
+          onClick={() => setShow(false)}
+        >
+          <div className="font-bold text-yellow-400 mb-2 text-[13px]">🔍 PWA Debug (tap để đóng)</div>
+          <Row label="display-mode:standalone" value={String(info.matchMedia)} ok={info.matchMedia} />
+          <Row label="navigator.standalone" value={String(info.navStandalone)} ok={info.navStandalone} />
+          <Row label="html.pwa-mode class" value={info.hasPwaMode ? "✅ có" : "❌ không"} ok={info.hasPwaMode} />
+          <Row label="style.fontSize (inline)" value={info.inlineSize} ok={info.inlineSize !== "(none)"} />
+          <Row label="fontSize computed" value={info.computedSize} ok={parseFloat(info.computedSize) >= 20} />
+          <div className="mt-2 text-slate-400 text-[10px] break-all">{info.userAgent}</div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function Row({ label, value, ok }) {
+  return (
+    <div className="flex justify-between gap-2 py-0.5 border-b border-slate-700">
+      <span className="text-slate-400">{label}</span>
+      <span className={ok ? "text-green-400" : "text-red-400"}>{value}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Wrapper để lấy :name từ URL params
 // ---------------------------------------------------------------------------
 function StationDisplayRoute() {
@@ -270,6 +327,7 @@ export default function App() {
           path="/*"
           element={
             <div className="min-h-[100dvh] flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
+              <PWADebugBadge />
               <NavBar dark={dark} onToggleDark={() => setDark((d) => !d)} />
               {showBanner && (
                 <InstallBanner onInstall={handleInstall} onDismiss={handleDismiss} />
