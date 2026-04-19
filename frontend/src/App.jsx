@@ -235,6 +235,7 @@ function BottomTabs() {
 function PWADebugBadge() {
   const [show, setShow] = useState(false);
   const [info, setInfo] = useState(null);
+  const [tapCount, setTapCount] = useState(0);
 
   useEffect(() => {
     if (!show) return;
@@ -250,12 +251,24 @@ function PWADebugBadge() {
     });
   }, [show]);
 
+  const handleTap = () => {
+    const next = tapCount + 1;
+    if (next >= 5) {
+      setShow((s) => !s);
+      setTapCount(0);
+    } else {
+      setTapCount(next);
+      // reset counter nếu không tap tiếp trong 2 giây
+      setTimeout(() => setTapCount(0), 2000);
+    }
+  };
+
   return (
     <>
-      {/* Invisible tap zone góc trên phải — tap 5 lần để bật debug */}
+      {/* Invisible tap zone góc trên TRÁI (trên logo) — tap 5 lần để bật debug */}
       <button
-        onClick={() => setShow((s) => !s)}
-        className="fixed top-0 right-0 w-16 h-16 z-[9999] opacity-0"
+        onClick={handleTap}
+        className="fixed top-0 left-0 w-16 h-16 z-[9999] opacity-0"
         aria-label="Toggle debug"
       />
       {show && info && (
