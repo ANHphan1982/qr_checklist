@@ -170,7 +170,7 @@ function NavBar({ dark, onToggleDark }) {
           aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
           className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 active:bg-slate-200 dark:active:bg-slate-600 flex items-center justify-center transition-colors"
         >
-          {dark ? <SunIcon /> : <MoonIcon />}
+          {dark ? <MoonIcon /> : <SunIcon />}
         </button>
       </div>
     </header>
