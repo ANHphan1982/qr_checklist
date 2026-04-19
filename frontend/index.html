@@ -12,6 +12,23 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="manifest" href="/manifest.json" />
+  <!--
+    PWA standalone detection — chạy TRƯỚC React để không bị flash.
+    Inline style có độ ưu tiên cao hơn mọi CSS class/media-query.
+    iOS Safari dùng navigator.standalone; Android Chrome dùng matchMedia.
+  -->
+  <script>
+    (function () {
+      var standalone =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        window.navigator.standalone === true;
+      if (standalone) {
+        var html = document.documentElement;
+        html.classList.add("pwa-mode");
+        html.style.fontSize = "20px";
+      }
+    })();
+  </script>
   </head>
   <body>
     <div id="root"></div>

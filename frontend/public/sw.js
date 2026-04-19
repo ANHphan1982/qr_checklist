@@ -1,4 +1,4 @@
-const CACHE = "qr-checklist-v3";
+const CACHE = "qr-checklist-v4";
 
 // Install: chỉ cache shell index.html để offline hoạt động
 self.addEventListener("install", (e) => {

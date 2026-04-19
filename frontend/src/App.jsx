@@ -11,17 +11,16 @@ import AdminPage from "./pages/AdminPage";
 // ---------------------------------------------------------------------------
 function useDisplayMode() {
   useEffect(() => {
+    // Initial state đã được set bởi inline script trong index.html (chạy trước React).
+    // Hook này chỉ cần sync lại khi display-mode thay đổi runtime (hiếm gặp).
     const mq = window.matchMedia("(display-mode: standalone)");
-
     const apply = (isStandalone) => {
       document.documentElement.classList.toggle("pwa-mode", isStandalone);
+      document.documentElement.style.fontSize = isStandalone ? "20px" : "";
     };
-
-    // iOS Safari dùng navigator.standalone, Android dùng matchMedia
-    apply(mq.matches || window.navigator.standalone === true);
-
-    mq.addEventListener("change", (e) => apply(e.matches));
-    return () => mq.removeEventListener("change", (e) => apply(e.matches));
+    const handler = (e) => apply(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 }
 
