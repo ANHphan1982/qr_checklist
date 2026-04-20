@@ -39,51 +39,51 @@ STATIONS: dict[str, dict] = {
     "TK-5201A": {
         "lat": 15.408751,
         "lng": 108.814616,
-        "radius": 300,   # mét — nới rộng cho GPS trong nhà máy
+        "radius": 50,   # mét — nới rộng cho GPS trong nhà máy
     },
     "TK-5203A": {
         "lat": 15.406914,
         "lng": 108.816316,
-        "radius": 300,
+        "radius": 50,
     },
     "TK-5207A": {
         "lat": 15.406821,
         "lng": 108.813247,
-        "radius": 300,
+        "radius": 50,
     },
     "TK-5205A": {
         "lat": 15.409161,
         "lng": 108.812188,
-        "radius": 300,
+        "radius": 50,
     },
     "TK-5211A": {
         "lat": 15.408173,
         "lng": 108.813046,
-        "radius": 300,
+        "radius": 50,
     },
     "TK-5214": {
         "lat": 15.410666,
         "lng": 108.812386,
-        "radius": 300,
+        "radius": 50,
     },
     "TK-5212A": {
         "lat": 15.409491,
         "lng": 108.814421,
-        "radius": 300,
+        "radius": 50,
     },
     "TK-5213A": {
         "lat": 15.410587,
         "lng": 108.813307,
-        "radius": 300,
+        "radius": 50,
     },
     "A-5205": {
         "lat": 15.411037,
         "lng": 108.812547,
-        "radius": 300,
+        "radius": 50,
     },
     "A-5250": {
         "lat": 15.409714,
         "lng": 108.811921,
-        "radius": 300,
+        "radius": 50,
     },
 }
