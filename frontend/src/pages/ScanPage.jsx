@@ -110,9 +110,21 @@ export default function ScanPage() {
     if (navigator.onLine) syncQueue(true); // auto sync lúc mount — im lặng khi lỗi
   }, [syncQueue]);
 
-  // Kiểm tra quyền GPS lúc mount
+  // Kiểm tra + warm-up GPS lúc mount
+  // Gọi getCurrentPosition ngay để trình duyệt hỏi quyền sớm — sau khi user Allow 1 lần
+  // thì browser nhớ mãi, các lần scan sau không hỏi lại.
   useEffect(() => {
-    checkGpsPermission().then(setGpsPermission);
+    checkGpsPermission().then((perm) => {
+      setGpsPermission(perm);
+      if (perm === "prompt") {
+        // Trigger popup hỏi quyền ngay khi vào app, không chờ đến lúc scan
+        navigator.geolocation?.getCurrentPosition(
+          () => checkGpsPermission().then(setGpsPermission),
+          () => checkGpsPermission().then(setGpsPermission),
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+        );
+      }
+    });
   }, []);
 
   // ---------------------------------------------------------------------------
