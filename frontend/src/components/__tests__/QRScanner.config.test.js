@@ -1,6 +1,6 @@
 /**
  * TDD — QRScanner config
- * Verify: camera sau (environment) được chọn mặc định
+ * Verify: camera sau (environment), autofocus liên tục
  */
 import { describe, it, expect } from "vitest";
 import { SCANNER_CONFIG } from "../QRScanner.jsx";
@@ -19,5 +19,9 @@ describe("SCANNER_CONFIG — camera sau", () => {
     expect(SCANNER_CONFIG.qrbox).toHaveProperty("height");
     expect(SCANNER_CONFIG.qrbox.width).toBeLessThanOrEqual(360);
     expect(SCANNER_CONFIG.qrbox.height).toBeLessThanOrEqual(360);
+  });
+
+  it("bật autofocus liên tục (focusMode = continuous)", () => {
+    expect(SCANNER_CONFIG.videoConstraints?.focusMode).toBe("continuous");
   });
 });

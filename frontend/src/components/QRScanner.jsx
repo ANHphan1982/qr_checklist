@@ -12,7 +12,10 @@ function getQrBoxSize() {
 export const SCANNER_CONFIG = {
   fps: 10,
   qrbox: getQrBoxSize(),
-  videoConstraints: { facingMode: "environment" },
+  videoConstraints: {
+    facingMode: "environment",
+    focusMode: "continuous", // autofocus — browser bỏ qua nếu không hỗ trợ
+  },
 };
 
 /**
@@ -47,6 +50,15 @@ export function QRScanner({ onScan, onError }) {
         const step = caps.zoom.step ?? 0.5;
         setZoomRange({ min, max, step });
         setZoom(min);
+      }
+
+      // Bật autofocus liên tục nếu device hỗ trợ
+      if (caps?.focusMode?.includes?.("continuous")) {
+        try {
+          track.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+        } catch {
+          // device từ chối — im lặng
+        }
       }
     }, 500);
 
