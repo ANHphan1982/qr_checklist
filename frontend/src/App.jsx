@@ -4,6 +4,7 @@ import ScanPage from "./pages/ScanPage";
 import HistoryPage from "./pages/HistoryPage";
 import StationDisplayPage from "./pages/StationDisplayPage";
 import AdminPage from "./pages/AdminPage";
+import MdmCheckPage from "./pages/MdmCheckPage";
 
 // ---------------------------------------------------------------------------
 // PWA display mode hook — thêm class pwa-mode lên <html> khi chạy standalone
@@ -350,6 +351,7 @@ export default function App() {
                   <Route path="/" element={<ScanPage />} />
                   <Route path="/history" element={<HistoryPage />} />
                   <Route path="/admin" element={<AdminPage />} />
+                  <Route path="/mdm-check" element={<MdmCheckPage />} />
                 </Routes>
               </main>
               <BottomTabs />
