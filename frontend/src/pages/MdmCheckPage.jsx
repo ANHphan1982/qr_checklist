@@ -32,17 +32,31 @@ function useChecks() {
     );
 
     // 2. Backend connectivity
+    // Phân biệt 3 trạng thái:
+    //  - PASS : server OK
+    //  - WARN : thiết bị offline (airplane mode / mất mạng) — KHÔNG phải lỗi MDM,
+    //           app có offline queue xử lý tiếp, không cần IT can thiệp
+    //  - FAIL : online nhưng gọi backend fail → nghi ngờ CORS/firewall/SSL
     set("network", STATUS.RUNNING, "Đang kết nối...");
     try {
-      const { ok, detail } = await checkConnectivity();
-      set(
-        "network",
-        ok ? STATUS.PASS : STATUS.FAIL,
-        ok
-          ? detail
-          : `Không thể kết nối backend — ${detail}. ` +
-            `Kiểm tra Web Content Filter trong MDM: cho phép domain backend`
-      );
+      const { ok, offline, detail } = await checkConnectivity();
+      let nextStatus;
+      let nextDetail;
+      if (ok) {
+        nextStatus = STATUS.PASS;
+        nextDetail = detail;
+      } else if (offline) {
+        nextStatus = STATUS.WARN;
+        nextDetail =
+          `${detail}. ` +
+          `App vẫn hoạt động offline — scan sẽ lưu vào queue và tự đồng bộ khi có mạng`;
+      } else {
+        nextStatus = STATUS.FAIL;
+        nextDetail =
+          `Không thể kết nối backend — ${detail}. ` +
+          `Kiểm tra Web Content Filter trong MDM: cho phép domain backend`;
+      }
+      set("network", nextStatus, nextDetail);
     } catch (e) {
       const msg = e?.message || "unknown";
       const isCert = msg.includes("certificate") || msg.includes("ssl") || msg.includes("SSL");

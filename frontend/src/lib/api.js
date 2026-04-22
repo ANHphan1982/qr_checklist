@@ -97,6 +97,7 @@ export async function checkConnectivity() {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     return {
       ok: false,
+      offline: true,
       detail: "Thiết bị đang offline (chế độ máy bay / mất mạng) — tắt airplane mode hoặc bật WiFi/4G rồi thử lại",
     };
   }

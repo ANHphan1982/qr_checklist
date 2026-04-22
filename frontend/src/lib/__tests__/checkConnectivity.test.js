@@ -48,6 +48,14 @@ describe("checkConnectivity — offline (airplane mode)", () => {
     expect(result.detail.toLowerCase()).toMatch(/offline|máy bay|airplane/);
   });
 
+  it("khi offline → trả offline: true để UI biết show WARN thay vì FAIL", async () => {
+    setOnline(false);
+
+    const result = await checkConnectivity();
+
+    expect(result.offline).toBe(true);
+  });
+
   it("vẫn gọi HTTP bình thường khi onLine === true", async () => {
     setOnline(true);
     axiosInstance.get.mockResolvedValue({
@@ -58,9 +66,10 @@ describe("checkConnectivity — offline (airplane mode)", () => {
 
     expect(axiosInstance.get).toHaveBeenCalledTimes(1);
     expect(result.ok).toBe(true);
+    expect(result.offline).toBeFalsy();
   });
 
-  it("khi onLine === true và server không phản hồi → message cũ", async () => {
+  it("khi onLine === true và server không phản hồi → message cũ, offline=false", async () => {
     setOnline(true);
     const err = new Error("Network Error");
     err.response = undefined;
@@ -69,6 +78,7 @@ describe("checkConnectivity — offline (airplane mode)", () => {
     const result = await checkConnectivity();
 
     expect(result.ok).toBe(false);
+    expect(result.offline).toBeFalsy();
     expect(result.detail).toMatch(/CORS|server down|Không có phản hồi/);
   });
 });
