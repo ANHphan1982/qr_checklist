@@ -53,11 +53,13 @@ export function getCurrentPosition(options = {}) {
         reject(new Error(msg));
       },
       {
-        // Offline: tắt high-accuracy để ưu tiên trả cache nhanh hơn
-        enableHighAccuracy: !isOffline,
-        // Offline: 8s đủ để lấy cache, không chờ vệ tinh 60s
-        timeout: isOffline ? 8000 : 10000,
-        // Offline: chấp nhận cache cũ 5 phút thay vì 30s — trả kết quả ngay
+        // Offline = chế độ máy bay: WiFi/cell tắt, chỉ còn GPS vệ tinh hoạt động.
+        // Phải bật high-accuracy để browser dùng chip GPS thay vì network positioning.
+        enableHighAccuracy: true,
+        // Offline: GPS cold-fix không có A-GPS cần 30–60s, đặt 30s để kịp lấy tín hiệu.
+        // Online: 10s đủ vì có A-GPS hỗ trợ.
+        timeout: isOffline ? 30000 : 10000,
+        // Offline: ưu tiên cache cũ 5 phút để trả ngay nếu có, tránh phải chờ cold-fix.
         maximumAge: isOffline ? 300000 : 30000,
         ...options,
       }

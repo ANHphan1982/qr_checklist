@@ -115,6 +115,64 @@ describe("checkGpsPermission", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Airplane mode / offline — options must target satellite GPS
+// Khi bật chế độ máy bay, WiFi và cell đều tắt nên chỉ còn chip GPS.
+// enableHighAccuracy PHẢI là true và timeout đủ dài cho cold-fix không A-GPS.
+// ---------------------------------------------------------------------------
+
+describe("getCurrentPosition — airplane mode (offline)", () => {
+  function captureOptions(onlineValue) {
+    const spy = vi.fn((success) =>
+      success({ coords: { latitude: 0, longitude: 0, accuracy: 0 } })
+    );
+    Object.defineProperty(globalThis, "navigator", {
+      value: {
+        onLine: onlineValue,
+        geolocation: { getCurrentPosition: spy },
+      },
+      writable: true,
+    });
+    return spy;
+  }
+
+  it("enableHighAccuracy = true khi offline (chỉ GPS chip còn hoạt động)", async () => {
+    const spy = captureOptions(false);
+    await getCurrentPosition();
+    const options = spy.mock.calls[0][2];
+    expect(options.enableHighAccuracy).toBe(true);
+  });
+
+  it("timeout >= 20000ms khi offline (GPS cold-fix không có A-GPS cần lâu)", async () => {
+    const spy = captureOptions(false);
+    await getCurrentPosition();
+    const options = spy.mock.calls[0][2];
+    expect(options.timeout).toBeGreaterThanOrEqual(20000);
+  });
+
+  it("maximumAge rộng khi offline để ưu tiên cache nếu có", async () => {
+    const spy = captureOptions(false);
+    await getCurrentPosition();
+    const options = spy.mock.calls[0][2];
+    expect(options.maximumAge).toBeGreaterThanOrEqual(300000);
+  });
+
+  it("enableHighAccuracy = true khi online (mặc định high accuracy)", async () => {
+    const spy = captureOptions(true);
+    await getCurrentPosition();
+    const options = spy.mock.calls[0][2];
+    expect(options.enableHighAccuracy).toBe(true);
+  });
+
+  it("cho phép override options qua tham số", async () => {
+    const spy = captureOptions(false);
+    await getCurrentPosition({ timeout: 5000, enableHighAccuracy: false });
+    const options = spy.mock.calls[0][2];
+    expect(options.timeout).toBe(5000);
+    expect(options.enableHighAccuracy).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // GEO_ERRORS constants
 // ---------------------------------------------------------------------------
 
