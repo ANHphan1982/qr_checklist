@@ -87,9 +87,19 @@ export async function getReports(date) {
 
 /**
  * Kiểm tra kết nối đến backend — dùng để chẩn đoán lỗi mạng.
+ *
+ * Short-circuit khi thiết bị đang offline (airplane mode) để không đổ oan cho
+ * CORS/firewall: browser đã tự biết không có mạng, gọi HTTP chỉ lãng phí 15s.
+ *
  * @returns {{ ok: boolean, detail: string }}
  */
 export async function checkConnectivity() {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return {
+      ok: false,
+      detail: "Thiết bị đang offline (chế độ máy bay / mất mạng) — tắt airplane mode hoặc bật WiFi/4G rồi thử lại",
+    };
+  }
   try {
     const { data } = await api.get("/api/debug/connectivity", { timeout: 15000 });
     return { ok: true, detail: `Server OK · Origin: ${data.request_origin} · CORS env: ${data.cors_origin_env}` };
