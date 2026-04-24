@@ -5,6 +5,14 @@ export const GEO_ERRORS = {
   UNSUPPORTED: "Thiết bị không hỗ trợ GPS.",
 };
 
+// Geolocation options theo trạng thái mạng.
+// Offline (airplane/mất mạng): chỉ còn GPS vệ tinh, không có A-GPS — cold-fix lâu.
+// Online: có network positioning + A-GPS hỗ trợ.
+const GEO_OPTIONS = {
+  offline: { timeout: 30000, maximumAge: 10000 },
+  online:  { timeout: 10000, maximumAge: 30000 },
+};
+
 /**
  * Kiểm tra trạng thái quyền GPS qua Permissions API trước khi xin thật.
  * Dùng để hiện hint cho user trước khi mở camera.
@@ -35,7 +43,7 @@ export function getCurrentPosition(options = {}) {
       return reject(new Error(GEO_ERRORS.UNSUPPORTED));
     }
 
-    const isOffline = !navigator.onLine;
+    const preset = navigator.onLine ? GEO_OPTIONS.online : GEO_OPTIONS.offline;
     navigator.geolocation.getCurrentPosition(
       (pos) =>
         resolve({
@@ -52,17 +60,7 @@ export function getCurrentPosition(options = {}) {
           }[err.code] || "Lỗi GPS không xác định.";
         reject(new Error(msg));
       },
-      {
-        // Offline = chế độ máy bay: WiFi/cell tắt, chỉ còn GPS vệ tinh hoạt động.
-        // Phải bật high-accuracy để browser dùng chip GPS thay vì network positioning.
-        enableHighAccuracy: true,
-        // Offline: GPS cold-fix không có A-GPS cần 30–60s, đặt 30s để kịp lấy tín hiệu.
-        // Online: 10s đủ vì có A-GPS hỗ trợ.
-        timeout: isOffline ? 30000 : 10000,
-        // Offline: ưu tiên cache cũ 5 phút để trả ngay nếu có, tránh phải chờ cold-fix.
-        maximumAge: isOffline ? 300000 : 30000,
-        ...options,
-      }
+      { enableHighAccuracy: true, ...preset, ...options }
     );
   });
 }

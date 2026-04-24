@@ -149,11 +149,23 @@ describe("getCurrentPosition — airplane mode (offline)", () => {
     expect(options.timeout).toBeGreaterThanOrEqual(20000);
   });
 
-  it("maximumAge rộng khi offline để ưu tiên cache nếu có", async () => {
+  // Bug trước đây: maximumAge=300000 (5 phút) khi offline khiến browser trả
+  // cache của lần scan trước thay vì gọi GPS chip ở lần scan kế tiếp.
+  // Mỗi scan check-in phải là vị trí TẠI THỜI ĐIỂM đó, không được tái sử dụng.
+  it("maximumAge <= 15s khi offline — không tái sử dụng cache giữa 2 lần scan", async () => {
     const spy = captureOptions(false);
     await getCurrentPosition();
     const options = spy.mock.calls[0][2];
-    expect(options.maximumAge).toBeGreaterThanOrEqual(300000);
+    expect(options.maximumAge).toBeLessThanOrEqual(15000);
+  });
+
+  // Không đặt 0 hoàn toàn — cho phép tolerance ngắn để user double-tap
+  // không phải chờ cold-fix lần 2. 5-10s là đủ.
+  it("maximumAge > 0 khi offline — cho phép cache ngắn hạn tránh cold-fix double-tap", async () => {
+    const spy = captureOptions(false);
+    await getCurrentPosition();
+    const options = spy.mock.calls[0][2];
+    expect(options.maximumAge).toBeGreaterThan(0);
   });
 
   it("enableHighAccuracy = true khi online (mặc định high accuracy)", async () => {
