@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Html5QrcodeScanner } from "html5-qrcode";
+import { hasTorchSupport, setTorch } from "../lib/torch";
 
 const SCANNER_ID = "qr-reader";
 
@@ -31,6 +32,8 @@ export function QRScanner({ onScan, onError }) {
 
   const [zoom, setZoom]           = useState(1);
   const [zoomRange, setZoomRange] = useState(null); // { min, max, step }
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [torchOn, setTorchOn]               = useState(false);
 
   // Sau khi scanner render, poll cho đến khi video element + srcObject sẵn sàng
   useEffect(() => {
@@ -51,6 +54,9 @@ export function QRScanner({ onScan, onError }) {
         setZoomRange({ min, max, step });
         setZoom(min);
       }
+
+      // Đèn pin cho scan thiếu sáng — Android Chrome hỗ trợ, iOS Safari chưa
+      setTorchAvailable(hasTorchSupport(track));
 
       // Bật autofocus liên tục nếu device hỗ trợ
       if (caps?.focusMode?.includes?.("continuous")) {
@@ -75,6 +81,17 @@ export function QRScanner({ onScan, onError }) {
       }
     }
   }, []);
+
+  const toggleTorch = useCallback(async () => {
+    const next = !torchOn;
+    const ok = await setTorch(trackRef.current, next);
+    if (ok) {
+      setTorchOn(next);
+    } else {
+      // Device từ chối → ẩn nút để khỏi gây nhầm lẫn
+      setTorchAvailable(false);
+    }
+  }, [torchOn]);
 
   useEffect(() => {
     scannerRef.current = new Html5QrcodeScanner(
@@ -105,6 +122,10 @@ export function QRScanner({ onScan, onError }) {
     return () => {
       clearInterval(pollRef.current);
       if (import.meta.env.DEV) window.__triggerQRScan = undefined;
+      // Tắt đèn trước khi đóng camera, tránh torch còn bật sau khi dừng scan
+      if (trackRef.current) {
+        setTorch(trackRef.current, false).catch(() => {});
+      }
       if (scannerRef.current) {
         scannerRef.current.clear().catch(console.error);
       }
@@ -119,6 +140,24 @@ export function QRScanner({ onScan, onError }) {
     <div className="flex flex-col gap-3">
       {/* QUAN TRỌNG: div này phải render trước useEffect */}
       <div id={SCANNER_ID} className="w-full" />
+
+      {/* Đèn pin cho scan ban đêm / thiếu sáng — chỉ hiện nếu device hỗ trợ */}
+      {torchAvailable && (
+        <button
+          type="button"
+          onClick={toggleTorch}
+          aria-pressed={torchOn}
+          aria-label={torchOn ? "Tắt đèn pin" : "Bật đèn pin"}
+          className={`w-full min-h-[56px] py-3 rounded-2xl font-bold text-lg transition-colors flex items-center justify-center gap-2 ${
+            torchOn
+              ? "bg-yellow-400 text-slate-900 active:bg-yellow-500"
+              : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 active:bg-slate-300 dark:active:bg-slate-600"
+          }`}
+        >
+          <span>{torchOn ? "🔦" : "💡"}</span>
+          <span>{torchOn ? "Tắt đèn" : "Bật đèn (thiếu sáng)"}</span>
+        </button>
+      )}
 
       {/* Zoom controls — chỉ hiện nếu device hỗ trợ hardware zoom */}
       {zoomRange && (
