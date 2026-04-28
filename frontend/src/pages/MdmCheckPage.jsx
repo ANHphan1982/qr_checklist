@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { checkConnectivity } from "../lib/api";
 import { probeGps, STATUS } from "../lib/mdmProbes";
+import { probeCamera } from "../lib/cameraProbe";
 
 // ---------------------------------------------------------------------------
 // MDM Diagnostic Page — /mdm-check
@@ -72,24 +73,8 @@ function useChecks() {
 
     // 3. Camera
     set("camera", STATUS.RUNNING, "Đang xin quyền camera...");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      stream.getTracks().forEach((t) => t.stop());
-      set("camera", STATUS.PASS, "Camera hoạt động bình thường");
-    } catch (e) {
-      const denied = e.name === "NotAllowedError" || e.name === "PermissionDeniedError";
-      const noDevice = e.name === "NotFoundError" || e.name === "DevicesNotFoundError";
-      set(
-        "camera",
-        STATUS.FAIL,
-        denied
-          ? `Quyền camera bị từ chối — MDM Device Restriction Policy có thể đang chặn camera. ` +
-            `Kiểm tra: MDM → Restrictions → Allow Camera`
-          : noDevice
-          ? `Không tìm thấy camera trên thiết bị`
-          : `Lỗi camera: ${e.name} — ${e.message}`
-      );
-    }
+    const camReport = await probeCamera();
+    set("camera", camReport.status, camReport.detail);
 
     // 4. GPS — probe chi tiết để xác định đúng nguyên nhân
     set("gps", STATUS.RUNNING, "Đang chẩn đoán GPS...");
