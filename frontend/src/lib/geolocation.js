@@ -4,7 +4,7 @@ export const GEO_ERRORS = {
   TIMEOUT: "Lấy vị trí quá lâu. Kiểm tra GPS đã bật chưa.",
   UNSUPPORTED: "Thiết bị không hỗ trợ GPS.",
   LOW_ACCURACY:
-    "GPS không đủ chính xác (> ngưỡng cho phép). Hãy bật 'Location accuracy' hoặc ra ngoài trời.",
+    "GPS không đủ chính xác. Hãy ra ngoài trời hoặc gần cửa sổ để bắt tín hiệu vệ tinh tốt hơn.",
 };
 
 // Geolocation options theo trạng thái mạng.

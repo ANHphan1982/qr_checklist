@@ -145,6 +145,46 @@ describe("probeGps — online", () => {
 });
 
 // ---------------------------------------------------------------------------
+// MDM constraint — "Location accuracy" bị lock, không thể bật
+// ---------------------------------------------------------------------------
+
+describe("probeGps — MDM: không gợi ý đổi Location accuracy", () => {
+  // MDM thiết bị (quản lý bởi IT) không cho nhân viên đổi "Location accuracy".
+  // Message code=2 trước đây gợi ý "(2) chế độ High accuracy" — sai với MDM.
+  // Phải hướng dẫn ra ngoài trời thay vì đổi cài đặt hệ thống.
+
+  it("code=2 (POSITION_UNAVAILABLE) không đề nghị bật High accuracy mode", async () => {
+    const getCurrentPosition = vi.fn((_ok, err) =>
+      err({ code: 2, message: "Position unavailable" })
+    );
+    setNavigator({
+      onLine: true,
+      geolocation: { getCurrentPosition },
+      permissions: { query: vi.fn().mockResolvedValue({ state: "granted" }) },
+    });
+
+    const result = await probeGps();
+
+    expect(result.detail).not.toMatch(/chế độ High accuracy|bật.*[Hh]igh accuracy/i);
+  });
+
+  it("code=2 hướng dẫn ra ngoài trời / gần cửa sổ thay vì đổi cài đặt hệ thống", async () => {
+    const getCurrentPosition = vi.fn((_ok, err) =>
+      err({ code: 2, message: "Position unavailable" })
+    );
+    setNavigator({
+      onLine: true,
+      geolocation: { getCurrentPosition },
+      permissions: { query: vi.fn().mockResolvedValue({ state: "granted" }) },
+    });
+
+    const result = await probeGps();
+
+    expect(result.detail).toMatch(/ngoài trời|cửa sổ|thoáng/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Error pre-conditions
 // ---------------------------------------------------------------------------
 

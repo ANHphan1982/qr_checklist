@@ -204,8 +204,13 @@ describe("GEO_ERRORS", () => {
     }
   });
 
-  it("LOW_ACCURACY message hướng dẫn bật Location accuracy", () => {
-    expect(GEO_ERRORS.LOW_ACCURACY).toMatch(/[Ll]ocation accuracy|độ chính xác|GPS/);
+  it("LOW_ACCURACY hướng dẫn ra ngoài trời/cửa sổ (không đổi cài đặt hệ thống)", () => {
+    expect(GEO_ERRORS.LOW_ACCURACY).toMatch(/ngoài trời|cửa sổ|thoáng/i);
+  });
+
+  // MDM thiết bị lock "Location accuracy" — nhân viên không có quyền bật lên.
+  it("LOW_ACCURACY không hướng dẫn bật 'Location accuracy' vì MDM thiết bị không có quyền đổi", () => {
+    expect(GEO_ERRORS.LOW_ACCURACY).not.toMatch(/bật.*[Ll]ocation accuracy/i);
   });
 });
 

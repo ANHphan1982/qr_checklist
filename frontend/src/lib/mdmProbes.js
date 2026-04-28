@@ -126,8 +126,9 @@ export async function probeGps() {
       status = STATUS.FAIL;
       summary =
         "POSITION_UNAVAILABLE — không có nguồn vị trí nào. " +
-        "Kiểm tra: (1) Location Services OS master switch ON, (2) chế độ High accuracy, " +
-        "(3) ra ngoài trời để GPS bắt được vệ tinh, (4) không đang airplane mode";
+        "Kiểm tra: (1) Location Services master switch còn bật, " +
+        "(2) ra ngoài trời hoặc gần cửa sổ để GPS chip bắt được vệ tinh, " +
+        "(3) không đang airplane mode";
     } else if (code === 3) {
       status = STATUS.FAIL;
       summary = isOffline
