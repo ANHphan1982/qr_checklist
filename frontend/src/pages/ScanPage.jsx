@@ -11,8 +11,8 @@ import { classifyApiError } from "../lib/apiError";
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
  *  permission → đang kiểm tra quyền GPS (ngay khi bấm, < 200ms)
- *  scanning   → camera mở, chờ user scan QR
- *  gps        → QR đã quét, đang lấy toạ độ GPS
+ *  scanning   → camera mở, GPS warm-up chạy nền; nếu offline hiện banner 30-60s
+ *  gps        → QR đã quét, await warm-up Promise (thường đã resolve → nhanh)
  *  sending    → đang gọi API (cold-start warning sau 5s)
  *  done       → thành công, hiện card kết quả
  */
@@ -41,6 +41,12 @@ export default function ScanPage() {
   const isSyncingRef              = useRef(false);   // ref để guard trong callback
   const [connTest, setConnTest]   = useState(null);  // { ok, detail } — kết quả test kết nối
   const [isTestingConn, setIsTestingConn] = useState(false);
+
+  // GPS warm-up: bắt đầu lấy vị trí ngay khi camera mở, không chờ đến khi scan xong.
+  // Giúp user không phải đứng chờ 30-60s cold-fix tại step "gps".
+  const gpsWarmupRef   = useRef(null);  // Promise<{lat,lng,accuracy}> | null
+  // null = chưa bắt đầu | 'pending' | 'ready' | 'failed'
+  const [gpsWarmupState, setGpsWarmupState] = useState(null);
 
   // ---------------------------------------------------------------------------
   // Offline queue sync
@@ -152,10 +158,24 @@ export default function ScanPage() {
     setStep("permission");
     const perm = await checkGpsPermission();
     setGpsPermission(perm);
+
+    // Kick off GPS warm-up ngay trước khi camera mở.
+    // Khi user scan xong QR, cold-fix có thể đã hoàn tất → step "gps" nhanh hơn nhiều.
+    if (perm !== "denied" && navigator.geolocation) {
+      setGpsWarmupState("pending");
+      gpsWarmupRef.current = getCurrentPosition()
+        .then((pos) => { setGpsWarmupState("ready"); return pos; })
+        .catch((err) => { setGpsWarmupState("failed"); throw err; });
+    }
+
     setStep("scanning");
   };
 
-  const handleStop = () => setStep("idle");
+  const handleStop = () => {
+    gpsWarmupRef.current = null;
+    setGpsWarmupState(null);
+    setStep("idle");
+  };
 
   const handleScan = async (qrText) => {
     const location = qrText.trim();
@@ -163,13 +183,16 @@ export default function ScanPage() {
 
     setResult(null);
 
-    // Lấy GPS
+    // Lấy GPS — dùng warm-up Promise nếu đang chạy nền, ngược lại gọi mới.
     setStep("gps");
     let gpsData = null;
     try {
-      gpsData = await getCurrentPosition();
+      gpsData = await (gpsWarmupRef.current ?? getCurrentPosition());
     } catch (gpsErr) {
       console.warn("[GPS]", gpsErr.message);
+    } finally {
+      gpsWarmupRef.current = null;
+      setGpsWarmupState(null);
     }
 
     const scannedAt = new Date().toISOString();
@@ -247,6 +270,8 @@ export default function ScanPage() {
   };
 
   const handleReset = () => {
+    gpsWarmupRef.current = null;
+    setGpsWarmupState(null);
     setStep("idle");
     setResult(null);
   };
@@ -389,6 +414,23 @@ export default function ScanPage() {
 
       {/* Kết quả scan */}
       <ScanResult result={result} onDismiss={handleReset} />
+
+      {/* GPS warm-up banner — chỉ hiện khi camera đang mở */}
+      {isScanning && !isOnline && gpsWarmupState === "pending" && (
+        <div className="rounded-xl border px-4 py-3 text-base flex items-start gap-2 bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
+          <span className="mt-0.5">📡</span>
+          <span>
+            Không có mạng — GPS đang bắt tín hiệu vệ tinh, có thể mất <strong>30-60 giây</strong>.
+            Hãy đứng ngoài trời hoặc gần cửa sổ để bắt được vệ tinh nhanh hơn.
+          </span>
+        </div>
+      )}
+      {isScanning && !isOnline && gpsWarmupState === "ready" && (
+        <div className="rounded-xl border px-4 py-3 text-base flex items-center gap-2 bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300">
+          <span>✅</span>
+          <span>GPS đã bắt được tín hiệu — sẵn sàng quét QR</span>
+        </div>
+      )}
 
       {/* Camera */}
       {isScanning && (
