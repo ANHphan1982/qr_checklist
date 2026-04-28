@@ -3,6 +3,8 @@ export const GEO_ERRORS = {
   POSITION_UNAVAILABLE: "Không lấy được vị trí. Vui lòng thử lại ngoài trời.",
   TIMEOUT: "Lấy vị trí quá lâu. Kiểm tra GPS đã bật chưa.",
   UNSUPPORTED: "Thiết bị không hỗ trợ GPS.",
+  LOW_ACCURACY:
+    "GPS không đủ chính xác (> ngưỡng cho phép). Hãy bật 'Location accuracy' hoặc ra ngoài trời.",
 };
 
 // Geolocation options theo trạng thái mạng.
@@ -34,10 +36,29 @@ export async function checkGpsPermission() {
 }
 
 /**
+ * Phân loại chất lượng GPS dựa trên accuracy (mét).
+ * Hữu ích để phát hiện "Location accuracy = OFF" (Android) hoặc thiếu A-GPS.
+ *
+ * @param {number} accuracyMeters
+ * @returns {'good'|'acceptable'|'poor'}
+ */
+export function classifyAccuracy(accuracyMeters) {
+  if (accuracyMeters <= 20) return "good";
+  if (accuracyMeters <= 100) return "acceptable";
+  return "poor";
+}
+
+/**
  * Lấy vị trí GPS hiện tại.
+ *
+ * @param {object} [options]
+ * @param {number} [options.accuracyThreshold] - Reject nếu accuracy (mét) vượt ngưỡng này.
+ *   Dùng khi cần phát hiện "Location accuracy = OFF" hoặc GPS quá kém.
  * @returns {Promise<{lat, lng, accuracy}>}
  */
 export function getCurrentPosition(options = {}) {
+  const { accuracyThreshold, ...geoOptions } = options;
+
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       return reject(new Error(GEO_ERRORS.UNSUPPORTED));
@@ -45,12 +66,17 @@ export function getCurrentPosition(options = {}) {
 
     const preset = navigator.onLine ? GEO_OPTIONS.online : GEO_OPTIONS.offline;
     navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        resolve({
+      (pos) => {
+        const result = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy, // mét
-        }),
+          accuracy: pos.coords.accuracy,
+        };
+        if (accuracyThreshold != null && result.accuracy > accuracyThreshold) {
+          return reject(new Error(GEO_ERRORS.LOW_ACCURACY));
+        }
+        resolve(result);
+      },
       (err) => {
         const msg =
           {
@@ -60,7 +86,7 @@ export function getCurrentPosition(options = {}) {
           }[err.code] || "Lỗi GPS không xác định.";
         reject(new Error(msg));
       },
-      { enableHighAccuracy: true, ...preset, ...options }
+      { enableHighAccuracy: true, ...preset, ...geoOptions }
     );
   });
 }

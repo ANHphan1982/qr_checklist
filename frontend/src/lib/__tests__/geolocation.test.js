@@ -2,7 +2,7 @@
  * TDD — lib/geolocation.js
  */
 import { describe, it, expect, vi } from "vitest";
-import { getCurrentPosition, checkGpsPermission, GEO_ERRORS } from "../geolocation.js";
+import { getCurrentPosition, checkGpsPermission, classifyAccuracy, GEO_ERRORS } from "../geolocation.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -194,6 +194,7 @@ describe("GEO_ERRORS", () => {
     expect(GEO_ERRORS.POSITION_UNAVAILABLE).toBeDefined();
     expect(GEO_ERRORS.TIMEOUT).toBeDefined();
     expect(GEO_ERRORS.UNSUPPORTED).toBeDefined();
+    expect(GEO_ERRORS.LOW_ACCURACY).toBeDefined();
   });
 
   it("all messages are non-empty strings", () => {
@@ -201,5 +202,92 @@ describe("GEO_ERRORS", () => {
       expect(typeof msg).toBe("string");
       expect(msg.length).toBeGreaterThan(0);
     }
+  });
+
+  it("LOW_ACCURACY message hướng dẫn bật Location accuracy", () => {
+    expect(GEO_ERRORS.LOW_ACCURACY).toMatch(/[Ll]ocation accuracy|độ chính xác|GPS/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// classifyAccuracy — phân loại chất lượng GPS
+// ---------------------------------------------------------------------------
+// Dùng để phát hiện "Location accuracy = OFF" (Android) hoặc không SIM.
+// Trong các mode đó accuracy thường 100–500m thay vì 5–20m.
+
+describe("classifyAccuracy", () => {
+  it("'good' khi accuracy <= 20m (GPS chip + A-GPS đầy đủ)", () => {
+    expect(classifyAccuracy(5)).toBe("good");
+    expect(classifyAccuracy(20)).toBe("good");
+  });
+
+  it("'acceptable' khi accuracy 21–100m (WiFi/cell assist yếu hoặc bán ngoài trời)", () => {
+    expect(classifyAccuracy(21)).toBe("acceptable");
+    expect(classifyAccuracy(100)).toBe("acceptable");
+  });
+
+  it("'poor' khi accuracy > 100m (GPS-only mode, trong nhà, hoặc Location accuracy = OFF)", () => {
+    expect(classifyAccuracy(101)).toBe("poor");
+    expect(classifyAccuracy(500)).toBe("poor");
+    expect(classifyAccuracy(9999)).toBe("poor");
+  });
+
+  it("trả về string ở mọi giá trị hợp lệ", () => {
+    for (const m of [1, 20, 21, 100, 101, 500]) {
+      expect(typeof classifyAccuracy(m)).toBe("string");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getCurrentPosition — accuracyThreshold option
+// Khi "Location accuracy" = OFF hoặc không SIM, accuracy thường vượt 200m.
+// Truyền accuracyThreshold để reject sớm thay vì lưu vị trí sai.
+// ---------------------------------------------------------------------------
+
+describe("getCurrentPosition — accuracyThreshold option", () => {
+  function mockWithAccuracy(acc) {
+    Object.defineProperty(globalThis, "navigator", {
+      value: {
+        onLine: true,
+        geolocation: {
+          getCurrentPosition: (success) =>
+            success({ coords: { latitude: 10, longitude: 106, accuracy: acc } }),
+        },
+      },
+      writable: true,
+    });
+  }
+
+  it("rejects với LOW_ACCURACY khi accuracy vượt threshold (Location accuracy = OFF)", async () => {
+    mockWithAccuracy(600);
+    await expect(getCurrentPosition({ accuracyThreshold: 300 })).rejects.toThrow(
+      GEO_ERRORS.LOW_ACCURACY
+    );
+  });
+
+  it("resolves bình thường khi accuracy nằm trong threshold", async () => {
+    mockWithAccuracy(50);
+    const pos = await getCurrentPosition({ accuracyThreshold: 100 });
+    expect(pos.accuracy).toBe(50);
+  });
+
+  it("resolves bình thường khi accuracy bằng đúng threshold", async () => {
+    mockWithAccuracy(100);
+    const pos = await getCurrentPosition({ accuracyThreshold: 100 });
+    expect(pos.accuracy).toBe(100);
+  });
+
+  it("không check threshold khi không truyền accuracyThreshold", async () => {
+    mockWithAccuracy(9999);
+    const pos = await getCurrentPosition();
+    expect(pos.accuracy).toBe(9999);
+  });
+
+  it("kết quả trả về bao gồm accuracy để caller dùng classifyAccuracy", async () => {
+    mockWithAccuracy(45);
+    const pos = await getCurrentPosition();
+    expect(pos).toHaveProperty("accuracy");
+    expect(typeof pos.accuracy).toBe("number");
   });
 });
