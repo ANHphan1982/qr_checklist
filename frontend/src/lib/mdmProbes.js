@@ -130,7 +130,9 @@ export async function probeGps() {
         "(2) ra ngoài trời hoặc gần cửa sổ để GPS chip bắt được vệ tinh, " +
         "(3) không đang airplane mode";
     } else if (code === 3) {
-      status = STATUS.FAIL;
+      // Offline: WARN vì chip GPS hoạt động nhưng cold-fix không A-GPS cần 30-60s.
+      // Online: FAIL vì timeout ngay cả khi có network positioning là bất thường.
+      status = isOffline ? STATUS.WARN : STATUS.FAIL;
       summary = isOffline
         ? "TIMEOUT (chế độ máy bay) — WiFi/cell đã tắt, chỉ còn chip GPS vệ tinh. " +
           "Cold-fix không A-GPS cần 30–60s ngoài trời hoặc gần cửa sổ. " +

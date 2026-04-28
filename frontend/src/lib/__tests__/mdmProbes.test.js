@@ -74,7 +74,7 @@ describe("probeGps — offline / airplane mode", () => {
     expect(getCurrentPosition).toHaveBeenCalledTimes(1);
   });
 
-  it("message khi TIMEOUT + offline phải nhắc airplane mode, không dùng 'ra ngoài trời' chung chung", async () => {
+  it("TIMEOUT + offline → WARN (không phải FAIL): GPS chip hoạt động, chỉ hết timeout cold-fix", async () => {
     const getCurrentPosition = vi.fn((_ok, err) => err(timeoutError()));
     setNavigator({
       onLine: false,
@@ -84,7 +84,8 @@ describe("probeGps — offline / airplane mode", () => {
 
     const result = await probeGps();
 
-    expect(result.status).toBe("fail");
+    // FAIL = chip hỏng. WARN = chip tốt nhưng cần action (ra ngoài trời, chờ thêm).
+    expect(result.status).toBe("warn");
     expect(result.detail.toLowerCase()).toMatch(/máy bay|airplane/);
   });
 
