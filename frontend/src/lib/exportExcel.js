@@ -8,6 +8,20 @@ const GEO_LABEL = {
   no_gps:       "Không có GPS",
 };
 
+const ASSESSMENT_LABEL = {
+  first:    "Trạm đầu",
+  ok:       "Bình thường",
+  too_fast: "Quá nhanh",
+  too_slow: "Quá lâu",
+  skipped:  "Bỏ qua (thiếu tọa độ)",
+};
+
+function roundOrEmpty(value, decimals = 0) {
+  if (value == null || Number.isNaN(value)) return "";
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
 function toVnDateTime(isoString) {
   if (!isoString) return "";
   const d = new Date(isoString);
@@ -36,13 +50,17 @@ export function buildAliasesRows(aliases) {
 
 export function buildHistoryRows(logs) {
   return logs.map((log) => ({
-    "ID":               log.id,
-    "Trạm":             log.location,
-    "Thời gian (VN)":   toVnDateTime(log.scanned_at),
-    "Device ID":        log.device_id || "",
-    "GPS":              GEO_LABEL[log.geo_status] || log.geo_status || "",
-    "Khoảng cách (m)":  log.geo_distance != null ? log.geo_distance : "",
-    "Email":            log.email_sent ? "Đã gửi" : "Chưa gửi",
+    "ID":                              log.id,
+    "Trạm":                            log.location,
+    "Thời gian (VN)":                  toVnDateTime(log.scanned_at),
+    "Device ID":                       log.device_id || "",
+    "GPS":                             GEO_LABEL[log.geo_status] || log.geo_status || "",
+    "Khoảng cách (m)":                 log.geo_distance != null ? log.geo_distance : "",
+    "Khoảng cách từ trạm trước (m)":   roundOrEmpty(log.distance_from_prev_m, 0),
+    "Thời gian dự kiến (phút)":        roundOrEmpty(log.expected_travel_min, 1),
+    "Thời gian thực tế (phút)":        roundOrEmpty(log.actual_travel_min, 1),
+    "Đánh giá tốc độ":                 log.assessment ? (ASSESSMENT_LABEL[log.assessment] || log.assessment) : "",
+    "Email":                           log.email_sent ? "Đã gửi" : "Chưa gửi",
   }));
 }
 

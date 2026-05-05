@@ -160,3 +160,127 @@ describe("buildHistoryRows", () => {
     expect(buildHistoryRows([])).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildHistoryRows — route assessment columns (TDD)
+// Server enrich logs với 4 fields: distance_from_prev_m, expected_travel_min,
+// actual_travel_min, assessment. Excel phải có 4 cột tương ứng.
+// ---------------------------------------------------------------------------
+describe("buildHistoryRows — route assessment columns", () => {
+  const enrichedLogs = [
+    {
+      id: 1,
+      location: "A",
+      scanned_at: "2026-04-18T01:00:00.000Z",
+      device_id: "dev-1",
+      geo_status: "ok",
+      geo_distance: 30,
+      email_sent: true,
+      distance_from_prev_m: null,
+      expected_travel_min: null,
+      actual_travel_min: null,
+      assessment: "first",
+    },
+    {
+      id: 2,
+      location: "B",
+      scanned_at: "2026-04-18T01:04:00.000Z",
+      device_id: "dev-1",
+      geo_status: "ok",
+      geo_distance: 25,
+      email_sent: true,
+      distance_from_prev_m: 1015.3,
+      expected_travel_min: 4.06,
+      actual_travel_min: 4.0,
+      assessment: "ok",
+    },
+    {
+      id: 3,
+      location: "C",
+      scanned_at: "2026-04-18T01:05:00.000Z",
+      device_id: "dev-1",
+      geo_status: "ok",
+      geo_distance: 25,
+      email_sent: true,
+      distance_from_prev_m: 1000,
+      expected_travel_min: 4.0,
+      actual_travel_min: 1.0,
+      assessment: "too_fast",
+    },
+    {
+      id: 4,
+      location: "D",
+      scanned_at: "2026-04-18T01:30:00.000Z",
+      device_id: "dev-1",
+      geo_status: "ok",
+      geo_distance: 25,
+      email_sent: true,
+      distance_from_prev_m: 1000,
+      expected_travel_min: 4.0,
+      actual_travel_min: 25.0,
+      assessment: "too_slow",
+    },
+  ];
+
+  it("includes 4 new columns when assessment fields present", () => {
+    const [, row] = buildHistoryRows(enrichedLogs);
+    expect(row).toHaveProperty("Khoảng cách từ trạm trước (m)");
+    expect(row).toHaveProperty("Thời gian dự kiến (phút)");
+    expect(row).toHaveProperty("Thời gian thực tế (phút)");
+    expect(row).toHaveProperty("Đánh giá tốc độ");
+  });
+
+  it("formats distance with no decimals", () => {
+    const rows = buildHistoryRows(enrichedLogs);
+    expect(rows[1]["Khoảng cách từ trạm trước (m)"]).toBe(1015);
+  });
+
+  it("formats time fields with 1 decimal", () => {
+    const rows = buildHistoryRows(enrichedLogs);
+    expect(rows[1]["Thời gian dự kiến (phút)"]).toBe(4.1);
+    expect(rows[1]["Thời gian thực tế (phút)"]).toBe(4.0);
+  });
+
+  it("renders Vietnamese labels for assessment values", () => {
+    const rows = buildHistoryRows(enrichedLogs);
+    expect(rows[0]["Đánh giá tốc độ"]).toBe("Trạm đầu");
+    expect(rows[1]["Đánh giá tốc độ"]).toBe("Bình thường");
+    expect(rows[2]["Đánh giá tốc độ"]).toBe("Quá nhanh");
+    expect(rows[3]["Đánh giá tốc độ"]).toBe("Quá lâu");
+  });
+
+  it("leaves assessment columns empty when fields missing (backward compat)", () => {
+    const oldFormatLog = [{
+      id: 1,
+      location: "A",
+      scanned_at: "2026-04-18T01:00:00.000Z",
+      device_id: "dev",
+      geo_status: "ok",
+      geo_distance: 30,
+      email_sent: true,
+      // distance_from_prev_m, expected_travel_min, ... vắng mặt
+    }];
+    const [row] = buildHistoryRows(oldFormatLog);
+    expect(row["Khoảng cách từ trạm trước (m)"]).toBe("");
+    expect(row["Thời gian dự kiến (phút)"]).toBe("");
+    expect(row["Thời gian thực tế (phút)"]).toBe("");
+    expect(row["Đánh giá tốc độ"]).toBe("");
+  });
+
+  it("renders 'Bỏ qua' for skipped assessment", () => {
+    const log = [{
+      id: 1,
+      location: "A",
+      scanned_at: "2026-04-18T01:00:00.000Z",
+      device_id: "dev",
+      geo_status: "ok",
+      email_sent: true,
+      distance_from_prev_m: null,
+      expected_travel_min: null,
+      actual_travel_min: 5,
+      assessment: "skipped",
+    }];
+    const [row] = buildHistoryRows(log);
+    expect(row["Đánh giá tốc độ"]).toBe("Bỏ qua (thiếu tọa độ)");
+  });
+});

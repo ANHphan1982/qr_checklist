@@ -3,6 +3,8 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from config import SessionLocal
 from models import ScanLog
+from services.stations_db import get_stations
+from services.route_assessment import compute_route_assessment
 from sqlalchemy import and_
 
 reports_bp = Blueprint("reports", __name__)
@@ -39,10 +41,23 @@ def get_reports():
             )
             result = [log.to_dict() for log in logs]
 
+        # Enrich với route assessment — group theo device_id để mỗi nhân viên
+        # được đánh giá độc lập, tránh tính khoảng cách giữa scan của 2 người khác nhau.
+        stations = get_stations()
+        by_device: dict = {}
+        for scan in result:
+            by_device.setdefault(scan.get("device_id"), []).append(scan)
+        enriched_by_id: dict = {}
+        for group in by_device.values():
+            for s in compute_route_assessment(group, stations):
+                enriched_by_id[s["id"]] = s
+        # Giữ thứ tự ban đầu của result
+        enriched = [enriched_by_id.get(s["id"], s) for s in result]
+
         return jsonify({
             "date": local_date.isoformat(),
-            "total": len(result),
-            "logs": result,
+            "total": len(enriched),
+            "logs": enriched,
         })
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
