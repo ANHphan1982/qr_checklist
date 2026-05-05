@@ -2,16 +2,23 @@
 Đánh giá việc đi kiểm tra giữa các checkpoint.
 
 Tính khoảng cách giữa 2 trạm liên tiếp dựa vào lat/lng đã set trong stations
-config, so sánh thời gian di chuyển dự kiến (vận tốc xe đạp) với thời gian
-thực tế giữa 2 lần scan để phát hiện gian lận hoặc dừng nghỉ bất thường.
+config, so sánh thời gian dự kiến (di chuyển bằng xe đạp + thời gian scan QR)
+với thời gian thực tế giữa 2 lần scan để phát hiện gian lận hoặc dừng nghỉ
+bất thường.
+
+Công thức thời gian tiêu chuẩn:
+    expected_travel_min = distance / speed_kmh + scan_time_per_station_min
 """
 from datetime import datetime, timezone
 from services.geo_service import haversine_distance
 
 
-# Vận tốc xe đạp đường nội bộ/khu công nghiệp.
-# Tham khảo: 12-18 km/h là khoảng phổ biến cho người đi nhẹ nhàng kiểm tra.
-BICYCLE_SPEED_KMH = 15
+# Vận tốc xe đạp thực tế khi đi kiểm tra checklist (chậm hơn đi xe đạp thường
+# vì phải quan sát + dừng tại các trạm).
+BICYCLE_SPEED_KMH = 12
+
+# Thời gian scan QR + ghi nhận tại mỗi trạm (cộng vào expected_travel_min).
+SCAN_TIME_PER_STATION_MIN = 2
 
 # Ngưỡng phân loại assessment (so với thời gian dự kiến)
 TOO_FAST_RATIO = 0.5   # actual < 50% expected → quá nhanh, đáng nghi
@@ -52,11 +59,12 @@ def compute_route_assessment(
     scans: list[dict],
     stations: dict,
     speed_kmh: float = BICYCLE_SPEED_KMH,
+    scan_time_min: float = SCAN_TIME_PER_STATION_MIN,
 ) -> list[dict]:
     """
     Enrich danh sách scan với 4 trường đánh giá:
       - distance_from_prev_m: khoảng cách Haversine từ trạm trước (None nếu thiếu data)
-      - expected_travel_min:  distance / speed (None nếu không tính được)
+      - expected_travel_min:  distance / speed + scan_time (None nếu không tính được)
       - actual_travel_min:    delta scanned_at giữa 2 scan liên tiếp
       - assessment:           "first" | "ok" | "too_fast" | "too_slow" | "skipped"
 
@@ -64,9 +72,12 @@ def compute_route_assessment(
     Không mutate input — trả về list mới.
 
     speed_kmh = 0 sẽ raise ValueError (không có ý nghĩa cho route assessment).
+    scan_time_min < 0 cũng raise ValueError.
     """
     if speed_kmh <= 0:
         raise ValueError("speed_kmh phải > 0")
+    if scan_time_min < 0:
+        raise ValueError("scan_time_min phải >= 0")
 
     speed_m_per_min = speed_kmh * 1000 / 60
     enriched: list[dict] = []
@@ -97,7 +108,7 @@ def compute_route_assessment(
                     cur_station["lat"], cur_station["lng"],
                 )
                 out["distance_from_prev_m"] = dist
-                out["expected_travel_min"] = dist / speed_m_per_min
+                out["expected_travel_min"] = dist / speed_m_per_min + scan_time_min
 
                 # Cùng vị trí (re-scan) → không phân loại tốc độ
                 if dist < SAME_LOCATION_THRESHOLD_M:
