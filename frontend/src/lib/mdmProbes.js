@@ -77,10 +77,10 @@ export async function probeGps() {
   lines.push(`permissions.state: ${permState}`);
 
   // Probe 1: high-accuracy (chip GPS).
-  // Offline: 30s timeout cho GPS cold-fix không A-GPS, đồng bộ với lib/geolocation.js.
+  // Offline: 90s timeout cho GPS cold-fix không A-GPS, đồng bộ với lib/geolocation.js.
   const hi = await tryGetPosition({
     enableHighAccuracy: true,
-    timeout: isOffline ? 30000 : 15000,
+    timeout: isOffline ? 90000 : 15000,
     maximumAge: isOffline ? 300000 : 0,
   });
   lines.push(
@@ -130,15 +130,15 @@ export async function probeGps() {
         "(2) ra ngoài trời hoặc gần cửa sổ để GPS chip bắt được vệ tinh, " +
         "(3) không đang airplane mode";
     } else if (code === 3) {
-      // Offline: WARN vì chip GPS hoạt động nhưng cold-fix không A-GPS cần 30-60s.
+      // Offline: WARN vì chip GPS hoạt động nhưng cold-fix không A-GPS cần 30-90s.
       // Online: FAIL vì timeout ngay cả khi có network positioning là bất thường.
       status = isOffline ? STATUS.WARN : STATUS.FAIL;
       summary = isOffline
         ? "TIMEOUT (chế độ máy bay) — WiFi/cell đã tắt, chỉ còn chip GPS vệ tinh. " +
-          "Cold-fix không A-GPS cần 30–60s ngoài trời hoặc gần cửa sổ. " +
+          "Cold-fix không A-GPS cần 30–90s ngoài trời hoặc gần cửa sổ. " +
           "Nếu vẫn timeout sau 1 phút: tắt airplane mode rồi bật lại, hoặc reboot thiết bị"
         : "TIMEOUT — browser không lấy được vị trí trong thời gian chờ. " +
-          "GPS cold-fix có thể cần 30–60s ngoài trời. Thử lại sau khi đi ra chỗ thoáng";
+          "GPS cold-fix có thể cần 30–90s ngoài trời. Thử lại sau khi đi ra chỗ thoáng";
     } else {
       summary = `Lỗi không xác định (code=${code})`;
     }

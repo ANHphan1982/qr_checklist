@@ -11,7 +11,7 @@ import { classifyApiError } from "../lib/apiError";
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
  *  permission → đang kiểm tra quyền GPS (ngay khi bấm, < 200ms)
- *  scanning   → camera mở, GPS watch đã chạy từ lúc mount; nếu chưa fix hiện banner 30-60s
+ *  scanning   → camera mở, GPS watch đã chạy từ lúc mount; nếu chưa fix hiện banner 30-90s
  *  gps        → QR đã quét, đọc fix mới nhất từ watch (thường tức thời)
  *  sending    → đang gọi API (cold-start warning sau 5s)
  *  done       → thành công, hiện card kết quả
@@ -485,7 +485,7 @@ export default function ScanPage() {
               : BUSY_LABEL[step]}
           </div>
           {step === "gps" && !isOnline && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">Không có mạng — có thể mất 30-60 giây, vui lòng chờ</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Không có mạng — có thể mất 30-90 giây, vui lòng chờ</p>
           )}
         </div>
       )}
@@ -498,7 +498,7 @@ export default function ScanPage() {
         <div className="rounded-xl border px-4 py-3 text-base flex items-start gap-2 bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
           <span className="mt-0.5">📡</span>
           <span>
-            GPS đang bắt tín hiệu vệ tinh, có thể mất <strong>30-60 giây</strong> nếu không có internet.
+            GPS đang bắt tín hiệu vệ tinh, có thể mất <strong>30-90 giây</strong> nếu không có internet.
             Hãy đứng ngoài trời hoặc gần cửa sổ. Sau lần đầu, các lần scan tiếp sẽ nhanh hơn.
           </span>
         </div>

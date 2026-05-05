@@ -11,7 +11,7 @@ export const GEO_ERRORS = {
 // Offline (airplane/mất mạng): chỉ còn GPS vệ tinh, không có A-GPS — cold-fix lâu.
 // Online: có network positioning + A-GPS hỗ trợ.
 const GEO_OPTIONS = {
-  offline: { timeout: 30000, maximumAge: 10000 },
+  offline: { timeout: 90000, maximumAge: 10000 },
   online:  { timeout: 10000, maximumAge: 30000 },
 };
 
@@ -134,7 +134,7 @@ export function startGpsWatch({ onUpdate, onError } = {}, options = {}) {
     },
     {
       enableHighAccuracy: true,
-      timeout: 60000,
+      timeout: 90000,
       maximumAge: 0,
       ...options,
     }

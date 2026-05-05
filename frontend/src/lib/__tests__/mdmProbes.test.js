@@ -45,7 +45,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("probeGps — offline / airplane mode", () => {
-  it("dùng timeout >= 30000ms khi offline (GPS cold-fix không A-GPS cần 30-60s)", async () => {
+  it("dùng timeout >= 30000ms khi offline (GPS cold-fix không A-GPS cần 30-90s)", async () => {
     const getCurrentPosition = vi.fn((_ok, err) => err(timeoutError()));
     setNavigator({
       onLine: false,
