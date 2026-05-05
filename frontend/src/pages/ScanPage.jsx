@@ -3,7 +3,7 @@ import { QRScanner } from "../components/QRScanner";
 import ScanResult from "../components/ScanResult";
 import { postScan, postQueuedScan, pingServer, checkConnectivity } from "../lib/api";
 import { getDeviceId } from "../lib/utils";
-import { getCurrentPosition, checkGpsPermission } from "../lib/geolocation";
+import { getCurrentPosition, checkGpsPermission, startGpsWatch } from "../lib/geolocation";
 import { enqueue, flushQueue, queueSize, clearQueue } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
 
@@ -11,11 +11,19 @@ import { classifyApiError } from "../lib/apiError";
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
  *  permission → đang kiểm tra quyền GPS (ngay khi bấm, < 200ms)
- *  scanning   → camera mở, GPS warm-up chạy nền; nếu offline hiện banner 30-60s
- *  gps        → QR đã quét, await warm-up Promise (thường đã resolve → nhanh)
+ *  scanning   → camera mở, GPS watch đã chạy từ lúc mount; nếu chưa fix hiện banner 30-60s
+ *  gps        → QR đã quét, đọc fix mới nhất từ watch (thường tức thời)
  *  sending    → đang gọi API (cold-start warning sau 5s)
  *  done       → thành công, hiện card kết quả
+ *
+ * GPS watch (watchPosition) chạy liên tục từ lúc mount để giữ chip GPS warm.
+ * Quan trọng cho thiết bị WiFi nội bộ không có internet → không có A-GPS,
+ * cold-fix lần đầu 30–90s. Watch giúp các lần scan sau gần như tức thời.
  */
+
+// Tuổi tối đa của fix từ watch để dùng cho 1 lần scan (ms).
+// 30s đủ để chấp nhận fix vừa cũ, vẫn còn chính xác cho check-in tại chỗ.
+const GPS_FIX_MAX_AGE_MS = 30000;
 
 const PERMISSION_LABEL = {
   granted: { icon: "✅", text: "GPS đã sẵn sàng",             bg: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300" },
@@ -42,11 +50,15 @@ export default function ScanPage() {
   const [connTest, setConnTest]   = useState(null);  // { ok, detail } — kết quả test kết nối
   const [isTestingConn, setIsTestingConn] = useState(false);
 
-  // GPS warm-up: bắt đầu lấy vị trí ngay khi camera mở, không chờ đến khi scan xong.
-  // Giúp user không phải đứng chờ 30-60s cold-fix tại step "gps".
-  const gpsWarmupRef   = useRef(null);  // Promise<{lat,lng,accuracy}> | null
-  // null = chưa bắt đầu | 'pending' | 'ready' | 'failed'
-  const [gpsWarmupState, setGpsWarmupState] = useState(null);
+  // GPS watch: chạy liên tục từ lúc mount để giữ chip GPS warm.
+  // latestGpsRef = fix gần nhất {lat,lng,accuracy,ts} | null
+  const latestGpsRef = useRef(null);
+  const stopGpsWatchRef = useRef(null);
+  // null = chưa bắt đầu | 'warming' | 'ready' | 'failed'
+  const [gpsWatchState, setGpsWatchState] = useState(null);
+
+  // Wake Lock: giữ màn hình sáng khi camera mở để OS không suspend chip GPS.
+  const wakeLockRef = useRef(null);
 
   // ---------------------------------------------------------------------------
   // Offline queue sync
@@ -116,21 +128,39 @@ export default function ScanPage() {
     if (navigator.onLine) syncQueue(true); // auto sync lúc mount — im lặng khi lỗi
   }, [syncQueue]);
 
-  // Kiểm tra + warm-up GPS lúc mount
-  // Gọi getCurrentPosition ngay để trình duyệt hỏi quyền sớm — sau khi user Allow 1 lần
-  // thì browser nhớ mãi, các lần scan sau không hỏi lại.
+  // Kiểm tra quyền + bắt đầu GPS watch lúc mount.
+  // watchPosition giữ chip GPS chạy liên tục → fix luôn có sẵn cho scan kế tiếp.
+  // Nếu perm là "prompt", lệnh watchPosition dưới đây cũng sẽ tự kích hoạt popup
+  // hỏi quyền — không cần gọi getCurrentPosition thêm.
   useEffect(() => {
+    let cancelled = false;
+
     checkGpsPermission().then((perm) => {
+      if (cancelled) return;
       setGpsPermission(perm);
-      if (perm === "prompt") {
-        // Trigger popup hỏi quyền ngay khi vào app, không chờ đến lúc scan
-        navigator.geolocation?.getCurrentPosition(
-          () => checkGpsPermission().then(setGpsPermission),
-          () => checkGpsPermission().then(setGpsPermission),
-          { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
-        );
-      }
+      if (perm === "denied" || !navigator.geolocation) return;
+
+      setGpsWatchState("warming");
+      stopGpsWatchRef.current = startGpsWatch({
+        onUpdate: (pos) => {
+          latestGpsRef.current = pos;
+          setGpsWatchState("ready");
+          // Sau lần fix đầu, refresh perm state (popup đã được trả lời)
+          checkGpsPermission().then((p) => !cancelled && setGpsPermission(p));
+        },
+        onError: (err) => {
+          console.warn("[GPS watch]", err.message);
+          setGpsWatchState((s) => (s === "ready" ? "ready" : "failed"));
+          checkGpsPermission().then((p) => !cancelled && setGpsPermission(p));
+        },
+      });
     });
+
+    return () => {
+      cancelled = true;
+      stopGpsWatchRef.current?.();
+      stopGpsWatchRef.current = null;
+    };
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -153,27 +183,74 @@ export default function ScanPage() {
     setSyncMsg(null);
   };
 
+  // Wake Lock — giữ màn hình sáng khi đang scan để OS không suspend chip GPS.
+  // Browser API mới, không phải máy nào cũng có → fail im lặng nếu không hỗ trợ.
+  const acquireWakeLock = useCallback(async () => {
+    if (wakeLockRef.current || !("wakeLock" in navigator)) return;
+    try {
+      wakeLockRef.current = await navigator.wakeLock.request("screen");
+      wakeLockRef.current.addEventListener?.("release", () => {
+        wakeLockRef.current = null;
+      });
+    } catch (err) {
+      console.warn("[WakeLock]", err.message);
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    wakeLockRef.current?.release?.().catch(() => {});
+    wakeLockRef.current = null;
+  }, []);
+
+  // Acquire wake lock trong toàn bộ flow scan, release khi về idle/done.
+  // Đảm bảo OS không suspend chip GPS khi user đang dùng app.
+  useEffect(() => {
+    const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending";
+    if (active) acquireWakeLock();
+    else releaseWakeLock();
+  }, [step, acquireWakeLock, releaseWakeLock]);
+
+  // Khi user back ra rồi quay lại tab, Wake Lock bị browser thu hồi → xin lại nếu đang scan.
+  useEffect(() => {
+    const onVisible = () => {
+      const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending";
+      if (document.visibilityState === "visible" && active) {
+        acquireWakeLock();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [step, acquireWakeLock]);
+
+  // Release wake lock khi unmount.
+  useEffect(() => () => releaseWakeLock(), [releaseWakeLock]);
+
   const handleStart = async () => {
     setResult(null);
     setStep("permission");
     const perm = await checkGpsPermission();
     setGpsPermission(perm);
 
-    // Kick off GPS warm-up ngay trước khi camera mở.
-    // Khi user scan xong QR, cold-fix có thể đã hoàn tất → step "gps" nhanh hơn nhiều.
-    if (perm !== "denied" && navigator.geolocation) {
-      setGpsWarmupState("pending");
-      gpsWarmupRef.current = getCurrentPosition()
-        .then((pos) => { setGpsWarmupState("ready"); return pos; })
-        .catch((err) => { setGpsWarmupState("failed"); throw err; });
+    // GPS watch đã chạy từ lúc mount → không cần warm-up thêm ở đây.
+    // Nếu watch bị stop (perm denied trước đây, giờ user cấp lại), khởi động lại.
+    if (perm !== "denied" && navigator.geolocation && !stopGpsWatchRef.current) {
+      setGpsWatchState("warming");
+      stopGpsWatchRef.current = startGpsWatch({
+        onUpdate: (pos) => {
+          latestGpsRef.current = pos;
+          setGpsWatchState("ready");
+        },
+        onError: (err) => {
+          console.warn("[GPS watch]", err.message);
+          setGpsWatchState((s) => (s === "ready" ? "ready" : "failed"));
+        },
+      });
     }
 
     setStep("scanning");
   };
 
   const handleStop = () => {
-    gpsWarmupRef.current = null;
-    setGpsWarmupState(null);
     setStep("idle");
   };
 
@@ -183,16 +260,19 @@ export default function ScanPage() {
 
     setResult(null);
 
-    // Lấy GPS — dùng warm-up Promise nếu đang chạy nền, ngược lại gọi mới.
+    // Lấy GPS — ưu tiên fix gần nhất từ watchPosition (luôn warm).
+    // Chỉ fallback sang getCurrentPosition khi watch chưa fix lần nào hoặc fix quá cũ.
     setStep("gps");
     let gpsData = null;
     try {
-      gpsData = await (gpsWarmupRef.current ?? getCurrentPosition());
+      const latest = latestGpsRef.current;
+      if (latest && Date.now() - latest.ts < GPS_FIX_MAX_AGE_MS) {
+        gpsData = latest;
+      } else {
+        gpsData = await getCurrentPosition();
+      }
     } catch (gpsErr) {
       console.warn("[GPS]", gpsErr.message);
-    } finally {
-      gpsWarmupRef.current = null;
-      setGpsWarmupState(null);
     }
 
     const scannedAt = new Date().toISOString();
@@ -270,8 +350,6 @@ export default function ScanPage() {
   };
 
   const handleReset = () => {
-    gpsWarmupRef.current = null;
-    setGpsWarmupState(null);
     setStep("idle");
     setResult(null);
   };
@@ -415,20 +493,29 @@ export default function ScanPage() {
       {/* Kết quả scan */}
       <ScanResult result={result} onDismiss={handleReset} />
 
-      {/* GPS warm-up banner — chỉ hiện khi camera đang mở */}
-      {isScanning && !isOnline && gpsWarmupState === "pending" && (
+      {/* GPS watch banner — chỉ hiện khi camera đang mở */}
+      {isScanning && gpsWatchState === "warming" && (
         <div className="rounded-xl border px-4 py-3 text-base flex items-start gap-2 bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
           <span className="mt-0.5">📡</span>
           <span>
-            Không có mạng — GPS đang bắt tín hiệu vệ tinh, có thể mất <strong>30-60 giây</strong>.
-            Hãy đứng ngoài trời hoặc gần cửa sổ để bắt được vệ tinh nhanh hơn.
+            GPS đang bắt tín hiệu vệ tinh, có thể mất <strong>30-60 giây</strong> nếu không có internet.
+            Hãy đứng ngoài trời hoặc gần cửa sổ. Sau lần đầu, các lần scan tiếp sẽ nhanh hơn.
           </span>
         </div>
       )}
-      {isScanning && !isOnline && gpsWarmupState === "ready" && (
+      {isScanning && gpsWatchState === "ready" && (
         <div className="rounded-xl border px-4 py-3 text-base flex items-center gap-2 bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300">
           <span>✅</span>
           <span>GPS đã bắt được tín hiệu — sẵn sàng quét QR</span>
+        </div>
+      )}
+      {isScanning && gpsWatchState === "failed" && (
+        <div className="rounded-xl border px-4 py-3 text-base flex items-start gap-2 bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300">
+          <span className="mt-0.5">⚠️</span>
+          <span>
+            GPS chưa bắt được tín hiệu — check-in vẫn hoạt động nhưng không xác thực vị trí.
+            Thử ra gần cửa sổ để chip GPS bắt vệ tinh.
+          </span>
         </div>
       )}
 

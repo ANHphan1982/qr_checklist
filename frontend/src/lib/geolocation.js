@@ -90,3 +90,61 @@ export function getCurrentPosition(options = {}) {
     );
   });
 }
+
+/**
+ * Bắt đầu watchPosition để giữ chip GPS chạy liên tục.
+ *
+ * Lý do dùng watch thay vì gọi getCurrentPosition mỗi lần scan:
+ *  - Cold-fix GPS không có A-GPS mất 30–90s. Watch giữ chip GPS warm sau lần fix
+ *    đầu, mỗi lần scan tiếp theo có vị trí gần như tức thời.
+ *  - WiFi nội bộ không có internet → A-GPS/WiFi positioning chết, chỉ chip GPS
+ *    còn hoạt động → cold-fix lại mỗi lần là không khả thi.
+ *
+ * Caller phải tự gọi stop() khi unmount để tránh leak.
+ *
+ * @param {object} cbs
+ * @param {(pos: {lat:number,lng:number,accuracy:number,ts:number}) => void} cbs.onUpdate
+ * @param {(err: Error) => void} [cbs.onError]
+ * @param {object} [options] override watch options
+ * @returns {() => void} stop function
+ */
+export function startGpsWatch({ onUpdate, onError } = {}, options = {}) {
+  if (!navigator.geolocation) {
+    onError?.(new Error(GEO_ERRORS.UNSUPPORTED));
+    return () => {};
+  }
+
+  const watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      onUpdate?.({
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        ts: pos.timestamp || Date.now(),
+      });
+    },
+    (err) => {
+      const msg =
+        {
+          1: GEO_ERRORS.PERMISSION_DENIED,
+          2: GEO_ERRORS.POSITION_UNAVAILABLE,
+          3: GEO_ERRORS.TIMEOUT,
+        }[err.code] || "Lỗi GPS không xác định.";
+      onError?.(new Error(msg));
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 60000,
+      maximumAge: 0,
+      ...options,
+    }
+  );
+
+  return () => {
+    try {
+      navigator.geolocation.clearWatch(watchId);
+    } catch {
+      // ignore
+    }
+  };
+}

@@ -2,7 +2,7 @@
  * TDD — lib/geolocation.js
  */
 import { describe, it, expect, vi } from "vitest";
-import { getCurrentPosition, checkGpsPermission, classifyAccuracy, GEO_ERRORS } from "../geolocation.js";
+import { getCurrentPosition, checkGpsPermission, classifyAccuracy, GEO_ERRORS, startGpsWatch } from "../geolocation.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -294,5 +294,108 @@ describe("getCurrentPosition — accuracyThreshold option", () => {
     const pos = await getCurrentPosition();
     expect(pos).toHaveProperty("accuracy");
     expect(typeof pos.accuracy).toBe("number");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// startGpsWatch — watchPosition wrapper giữ chip GPS warm
+// Lý do tồn tại: thiết bị WiFi nội bộ không có internet → không A-GPS, cold-fix
+// 30–90s mỗi lần. Watch giữ chip GPS chạy liên tục nên các lần scan sau tức thời.
+// ---------------------------------------------------------------------------
+
+describe("startGpsWatch", () => {
+  function mockWatchGeolocation({ watchImpl, clearImpl } = {}) {
+    const watchSpy = vi.fn(watchImpl ?? (() => 42));
+    const clearSpy = vi.fn(clearImpl ?? (() => {}));
+    Object.defineProperty(globalThis, "navigator", {
+      value: {
+        geolocation: {
+          watchPosition: watchSpy,
+          clearWatch: clearSpy,
+        },
+      },
+      writable: true,
+    });
+    return { watchSpy, clearSpy };
+  }
+
+  it("gọi navigator.geolocation.watchPosition với enableHighAccuracy=true", () => {
+    const { watchSpy } = mockWatchGeolocation();
+    startGpsWatch({ onUpdate: () => {} });
+    expect(watchSpy).toHaveBeenCalled();
+    const opts = watchSpy.mock.calls[0][2];
+    expect(opts.enableHighAccuracy).toBe(true);
+  });
+
+  it("timeout >= 30s — đủ cho cold-fix không A-GPS", () => {
+    const { watchSpy } = mockWatchGeolocation();
+    startGpsWatch({ onUpdate: () => {} });
+    const opts = watchSpy.mock.calls[0][2];
+    expect(opts.timeout).toBeGreaterThanOrEqual(30000);
+  });
+
+  it("maximumAge=0 — mỗi callback là fix mới, không tái sử dụng cache cũ", () => {
+    const { watchSpy } = mockWatchGeolocation();
+    startGpsWatch({ onUpdate: () => {} });
+    const opts = watchSpy.mock.calls[0][2];
+    expect(opts.maximumAge).toBe(0);
+  });
+
+  it("gọi onUpdate với {lat,lng,accuracy,ts} mỗi khi có fix mới", () => {
+    const updates = [];
+    mockWatchGeolocation({
+      watchImpl: (success) => {
+        success({ coords: { latitude: 10.1, longitude: 106.2, accuracy: 8 }, timestamp: 1700000000 });
+        return 1;
+      },
+    });
+    startGpsWatch({ onUpdate: (pos) => updates.push(pos) });
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toEqual({ lat: 10.1, lng: 106.2, accuracy: 8, ts: 1700000000 });
+  });
+
+  it("gọi onError với message theo error code khi watchPosition fail", () => {
+    const errors = [];
+    mockWatchGeolocation({
+      watchImpl: (_, error) => {
+        error({ code: 3 });
+        return 1;
+      },
+    });
+    startGpsWatch({ onUpdate: () => {}, onError: (e) => errors.push(e) });
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toBe(GEO_ERRORS.TIMEOUT);
+  });
+
+  it("trả về stop function gọi clearWatch với đúng watchId", () => {
+    const { clearSpy } = mockWatchGeolocation({ watchImpl: () => 999 });
+    const stop = startGpsWatch({ onUpdate: () => {} });
+    stop();
+    expect(clearSpy).toHaveBeenCalledWith(999);
+  });
+
+  it("stop function không throw nếu clearWatch ném lỗi", () => {
+    mockWatchGeolocation({
+      watchImpl: () => 1,
+      clearImpl: () => { throw new Error("boom"); },
+    });
+    const stop = startGpsWatch({ onUpdate: () => {} });
+    expect(() => stop()).not.toThrow();
+  });
+
+  it("trả về no-op stop và gọi onError UNSUPPORTED khi không có navigator.geolocation", () => {
+    Object.defineProperty(globalThis, "navigator", { value: {}, writable: true });
+    const errors = [];
+    const stop = startGpsWatch({ onUpdate: () => {}, onError: (e) => errors.push(e) });
+    expect(errors[0].message).toBe(GEO_ERRORS.UNSUPPORTED);
+    expect(() => stop()).not.toThrow();
+  });
+
+  it("cho phép override watch options qua tham số thứ hai", () => {
+    const { watchSpy } = mockWatchGeolocation();
+    startGpsWatch({ onUpdate: () => {} }, { timeout: 5000, enableHighAccuracy: false });
+    const opts = watchSpy.mock.calls[0][2];
+    expect(opts.timeout).toBe(5000);
+    expect(opts.enableHighAccuracy).toBe(false);
   });
 });
