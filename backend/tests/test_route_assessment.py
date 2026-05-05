@@ -7,7 +7,11 @@ kiến với vận tốc xe đạp + thời gian scan QR, so sánh với thời 
 giữa 2 lần scan.
 
 Công thức thời gian tiêu chuẩn:
-    expected_travel_min = distance / speed_kmh + scan_time_per_station_min
+    distance_real_m = haversine_m * route_distance_factor
+    expected_travel_min = distance_real_m / speed_kmh + scan_time_per_station_min
+
+Đường chim bay (haversine) được nhân hệ số ~1.2 để xấp xỉ quãng đường
+thực tế phải đi (vì đường nội bộ không thẳng tắp).
 
 Output cho mỗi scan:
 - distance_from_prev_m  (None nếu là scan đầu hoặc trạm thiếu lat/lng)
@@ -28,6 +32,7 @@ from services.route_assessment import (
     compute_route_assessment,
     BICYCLE_SPEED_KMH,
     SCAN_TIME_PER_STATION_MIN,
+    ROUTE_DISTANCE_FACTOR,
 )
 
 
@@ -42,6 +47,10 @@ class TestConstants:
     def test_default_scan_time_per_station_is_2_min(self):
         """Mỗi trạm tốn ~2 phút để scan QR + ghi nhận."""
         assert SCAN_TIME_PER_STATION_MIN == 2
+
+    def test_default_route_distance_factor_is_1_2(self):
+        """Quãng đường thực tế ~1.2 lần đường chim bay (haversine)."""
+        assert ROUTE_DISTANCE_FACTOR == 1.2
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +76,7 @@ class TestFirstScan:
 # ---------------------------------------------------------------------------
 class TestDistanceAndExpectedTime:
     def test_consecutive_scans_compute_distance(self):
-        """A-B cách ~111m (0.001 deg latitude ≈ 111m)."""
+        """A-B haversine ~111m, sau khi nhân hệ số 1.2 ≈ 133m."""
         scans = [
             {"location": "A", "scanned_at": "2026-05-05T08:00:00+00:00"},
             {"location": "B", "scanned_at": "2026-05-05T08:00:30+00:00"},
@@ -77,21 +86,36 @@ class TestDistanceAndExpectedTime:
             "B": {"lat": 10.001, "lng": 106.000},
         }
         result = compute_route_assessment(scans, stations)
-        assert 100 < result[1]["distance_from_prev_m"] < 125
+        # 111m * 1.2 ≈ 133m
+        assert 125 < result[1]["distance_from_prev_m"] < 150
 
     def test_expected_time_uses_12kmh_plus_scan_time_default(self):
-        """1000m với 12 km/h = 5 phút di chuyển + 2 phút scan = 7 phút."""
+        """1000m chim bay → 1200m thực, @12km/h = 6 phút + 2 phút scan = 8 phút."""
         scans = [
             {"location": "A", "scanned_at": "2026-05-05T08:00:00+00:00"},
-            {"location": "B", "scanned_at": "2026-05-05T08:07:00+00:00"},
+            {"location": "B", "scanned_at": "2026-05-05T08:08:00+00:00"},
         ]
         stations = {
             "A": {"lat": 10.000, "lng": 106.000},
-            "B": {"lat": 10.000, "lng": 106.00921},  # ~1000m east
+            "B": {"lat": 10.000, "lng": 106.00921},  # ~1000m east (chim bay)
         }
         result = compute_route_assessment(scans, stations)
-        # 1000m / (12000m / 60min) + 2 = 5 + 2 = 7 phút
-        assert result[1]["expected_travel_min"] == pytest.approx(7.0, abs=0.2)
+        # 1000m * 1.2 / (12000m / 60min) + 2 = 6 + 2 = 8 phút
+        assert result[1]["expected_travel_min"] == pytest.approx(8.0, abs=0.2)
+
+    def test_distance_from_prev_includes_factor(self):
+        """distance_from_prev_m phải là haversine * factor (đường thực tế)."""
+        scans = [
+            {"location": "A", "scanned_at": "2026-05-05T08:00:00+00:00"},
+            {"location": "B", "scanned_at": "2026-05-05T08:08:00+00:00"},
+        ]
+        stations = {
+            "A": {"lat": 10.000, "lng": 106.000},
+            "B": {"lat": 10.000, "lng": 106.00921},  # ~1000m chim bay
+        }
+        result = compute_route_assessment(scans, stations)
+        # 1000m * 1.2 ≈ 1200m
+        assert result[1]["distance_from_prev_m"] == pytest.approx(1200, abs=25)
 
     def test_actual_time_in_minutes(self):
         """Actual travel time tính đúng phút giữa 2 scan."""
@@ -110,29 +134,44 @@ class TestDistanceAndExpectedTime:
         """Cho phép override speed (ví dụ đi bộ 5km/h)."""
         scans = [
             {"location": "A", "scanned_at": "2026-05-05T08:00:00+00:00"},
-            {"location": "B", "scanned_at": "2026-05-05T08:14:00+00:00"},
+            {"location": "B", "scanned_at": "2026-05-05T08:16:24+00:00"},
         ]
         stations = {
             "A": {"lat": 10.000, "lng": 106.000},
-            "B": {"lat": 10.000, "lng": 106.00921},  # ~1000m
+            "B": {"lat": 10.000, "lng": 106.00921},  # ~1000m chim bay
         }
         result = compute_route_assessment(scans, stations, speed_kmh=5)
-        # 1000m / (5000/60) + 2 phút scan = 12 + 2 = 14 phút
-        assert result[1]["expected_travel_min"] == pytest.approx(14.0, abs=0.5)
+        # 1000m * 1.2 / (5000/60) + 2 phút scan = 14.4 + 2 = 16.4 phút
+        assert result[1]["expected_travel_min"] == pytest.approx(16.4, abs=0.5)
 
     def test_scan_time_min_override(self):
         """Cho phép override thời gian scan QR per station."""
         scans = [
             {"location": "A", "scanned_at": "2026-05-05T08:00:00+00:00"},
-            {"location": "B", "scanned_at": "2026-05-05T08:08:00+00:00"},
+            {"location": "B", "scanned_at": "2026-05-05T08:09:00+00:00"},
         ]
         stations = {
             "A": {"lat": 10.000, "lng": 106.000},
-            "B": {"lat": 10.000, "lng": 106.00921},  # ~1000m
+            "B": {"lat": 10.000, "lng": 106.00921},  # ~1000m chim bay
         }
-        # 1000m / (12000/60) + 3 phút scan = 5 + 3 = 8 phút
+        # 1000m * 1.2 / (12000/60) + 3 phút scan = 6 + 3 = 9 phút
         result = compute_route_assessment(scans, stations, scan_time_min=3)
-        assert result[1]["expected_travel_min"] == pytest.approx(8.0, abs=0.2)
+        assert result[1]["expected_travel_min"] == pytest.approx(9.0, abs=0.2)
+
+    def test_distance_factor_override(self):
+        """Cho phép override hệ số factor (ví dụ 1.0 = đường thẳng tuyệt đối)."""
+        scans = [
+            {"location": "A", "scanned_at": "2026-05-05T08:00:00+00:00"},
+            {"location": "B", "scanned_at": "2026-05-05T08:07:00+00:00"},
+        ]
+        stations = {
+            "A": {"lat": 10.000, "lng": 106.000},
+            "B": {"lat": 10.000, "lng": 106.00921},  # ~1000m chim bay
+        }
+        # factor=1.0 → distance = haversine, expected = 5 + 2 = 7 phút
+        result = compute_route_assessment(scans, stations, distance_factor=1.0)
+        assert result[1]["distance_from_prev_m"] == pytest.approx(1000, abs=25)
+        assert result[1]["expected_travel_min"] == pytest.approx(7.0, abs=0.2)
 
 
 # ---------------------------------------------------------------------------
@@ -148,35 +187,35 @@ class TestAssessmentClassification:
             {"location": "B", "scanned_at": t1.isoformat()},
         ]
 
-    # 1000m, expected 5 + 2 = 7 phút @ 12 km/h + 2 phút scan
+    # 1000m chim bay → 1200m thực, expected = 6 + 2 = 8 phút @ 12 km/h
     STATIONS = {
         "A": {"lat": 10.000, "lng": 106.000},
         "B": {"lat": 10.000, "lng": 106.00921},
     }
 
     def test_ok_when_actual_close_to_expected(self):
-        """7 phút thực tế ≈ 7 phút dự kiến → ok."""
-        result = compute_route_assessment(self._make_scans(7), self.STATIONS)
+        """8 phút thực tế ≈ 8 phút dự kiến → ok."""
+        result = compute_route_assessment(self._make_scans(8), self.STATIONS)
         assert result[1]["assessment"] == "ok"
 
     def test_ok_when_actual_in_normal_range(self):
-        """4 phút → 4/7 ≈ 57% expected, vẫn nằm trong range 'ok'."""
-        result = compute_route_assessment(self._make_scans(4), self.STATIONS)
+        """5 phút → 5/8 = 62.5% expected, vẫn nằm trong range 'ok'."""
+        result = compute_route_assessment(self._make_scans(5), self.STATIONS)
         assert result[1]["assessment"] == "ok"
 
     def test_too_fast_when_actual_below_50_percent(self):
-        """3 phút thực tế cho route 7 phút dự kiến (43%) → quá nhanh."""
+        """3 phút thực tế cho route 8 phút dự kiến (37.5%) → quá nhanh."""
         result = compute_route_assessment(self._make_scans(3), self.STATIONS)
         assert result[1]["assessment"] == "too_fast"
 
     def test_too_slow_when_actual_above_3x(self):
-        """22 phút cho route 7 phút (314%) → dừng nghỉ lâu."""
-        result = compute_route_assessment(self._make_scans(22), self.STATIONS)
+        """25 phút cho route 8 phút (312.5%) → dừng nghỉ lâu."""
+        result = compute_route_assessment(self._make_scans(25), self.STATIONS)
         assert result[1]["assessment"] == "too_slow"
 
     def test_too_slow_at_exact_3x_boundary_excluded(self):
-        """21 phút = 3x đúng, vẫn coi là 'ok' (chưa vượt threshold)."""
-        result = compute_route_assessment(self._make_scans(21), self.STATIONS)
+        """24 phút = 3x đúng, vẫn coi là 'ok' (chưa vượt threshold)."""
+        result = compute_route_assessment(self._make_scans(24), self.STATIONS)
         assert result[1]["assessment"] == "ok"
 
 
@@ -255,8 +294,8 @@ class TestMultipleScans:
     def test_three_scans_assessed_as_pairs(self):
         scans = [
             {"location": "A", "scanned_at": "2026-05-05T08:00:00+00:00"},
-            {"location": "B", "scanned_at": "2026-05-05T08:07:00+00:00"},
-            {"location": "C", "scanned_at": "2026-05-05T08:14:00+00:00"},
+            {"location": "B", "scanned_at": "2026-05-05T08:08:00+00:00"},
+            {"location": "C", "scanned_at": "2026-05-05T08:16:00+00:00"},
         ]
         stations = {
             "A": {"lat": 10.000, "lng": 106.000},
@@ -265,9 +304,10 @@ class TestMultipleScans:
         }
         result = compute_route_assessment(scans, stations)
         assert result[0]["assessment"] == "first"
-        # 1km in 7 min @ 12km/h + 2 min scan = 7 min expected → ok
+        # 1km haversine * 1.2 = 1218m thực, in 8 min @ 12km/h + 2 min scan → ok
         assert result[1]["assessment"] == "ok"
         assert result[2]["assessment"] == "ok"
         # B's distance is from A, C's distance is from B (not from A)
-        assert result[1]["distance_from_prev_m"] == pytest.approx(1015, abs=20)
-        assert result[2]["distance_from_prev_m"] == pytest.approx(1015, abs=20)
+        # haversine ~1015m * 1.2 ≈ 1218m
+        assert result[1]["distance_from_prev_m"] == pytest.approx(1218, abs=25)
+        assert result[2]["distance_from_prev_m"] == pytest.approx(1218, abs=25)
