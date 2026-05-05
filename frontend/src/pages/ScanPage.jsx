@@ -3,7 +3,7 @@ import { QRScanner } from "../components/QRScanner";
 import ScanResult from "../components/ScanResult";
 import { postScan, postQueuedScan, pingServer, checkConnectivity } from "../lib/api";
 import { getDeviceId } from "../lib/utils";
-import { getCurrentPosition, checkGpsPermission, startGpsWatch } from "../lib/geolocation";
+import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loadLastFix } from "../lib/geolocation";
 import { enqueue, flushQueue, queueSize, clearQueue } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
 
@@ -144,6 +144,7 @@ export default function ScanPage() {
       stopGpsWatchRef.current = startGpsWatch({
         onUpdate: (pos) => {
           latestGpsRef.current = pos;
+          saveLastFix(pos); // cache cho lần scan kế nếu chip GPS fail tại đó
           setGpsWatchState("ready");
           // Sau lần fix đầu, refresh perm state (popup đã được trả lời)
           checkGpsPermission().then((p) => !cancelled && setGpsPermission(p));
@@ -238,6 +239,7 @@ export default function ScanPage() {
       stopGpsWatchRef.current = startGpsWatch({
         onUpdate: (pos) => {
           latestGpsRef.current = pos;
+          saveLastFix(pos);
           setGpsWatchState("ready");
         },
         onError: (err) => {
@@ -260,8 +262,10 @@ export default function ScanPage() {
 
     setResult(null);
 
-    // Lấy GPS — ưu tiên fix gần nhất từ watchPosition (luôn warm).
-    // Chỉ fallback sang getCurrentPosition khi watch chưa fix lần nào hoặc fix quá cũ.
+    // Lấy GPS — thứ tự ưu tiên:
+    //  1. Fix gần nhất từ watchPosition (warm, < 30s)
+    //  2. getCurrentPosition trực tiếp (cold-fix)
+    //  3. Cache localStorage (fallback khi chip GPS fail tại điểm này)
     setStep("gps");
     let gpsData = null;
     try {
@@ -270,9 +274,22 @@ export default function ScanPage() {
         gpsData = latest;
       } else {
         gpsData = await getCurrentPosition();
+        saveLastFix({ ...gpsData, ts: Date.now() });
       }
     } catch (gpsErr) {
       console.warn("[GPS]", gpsErr.message);
+      // Fallback: dùng fix cũ trong localStorage nếu < 30 phút.
+      // Server nhận geo_cached=true để admin biết đây là vị trí cache, không phải GPS thật.
+      const cached = loadLastFix();
+      if (cached) {
+        gpsData = {
+          lat: cached.lat,
+          lng: cached.lng,
+          accuracy: cached.accuracy,
+          cached: true,
+          cache_age_ms: Date.now() - cached.ts,
+        };
+      }
     }
 
     const scannedAt = new Date().toISOString();
@@ -286,6 +303,8 @@ export default function ScanPage() {
         lat: gpsData?.lat ?? null,
         lng: gpsData?.lng ?? null,
         accuracy: gpsData?.accuracy ?? null,
+        geo_cached: gpsData?.cached || undefined,
+        cache_age_ms: gpsData?.cache_age_ms,
       };
       enqueue(item);
       setPendingCount(queueSize());
@@ -318,6 +337,8 @@ export default function ScanPage() {
           lat: gpsData?.lat ?? null,
           lng: gpsData?.lng ?? null,
           accuracy: gpsData?.accuracy ?? null,
+          geo_cached: gpsData?.cached || undefined,
+          cache_age_ms: gpsData?.cache_age_ms,
         };
         enqueue(item);
         setPendingCount(queueSize());

@@ -148,3 +148,63 @@ export function startGpsWatch({ onUpdate, onError } = {}, options = {}) {
     }
   };
 }
+
+// ---------------------------------------------------------------------------
+// Last-known-fix cache (localStorage)
+// ---------------------------------------------------------------------------
+// Khi chip GPS không fix được (ephemeris expired sau 3-4h không internet),
+// fallback dùng vị trí GPS thật gần nhất user đã đứng. Tốt hơn null vì server
+// vẫn validate được "gần đúng khu vực", admin biết đây là cache qua geo_status.
+//
+// 30 phút là đủ để bao phủ 1 ca làm việc đi giữa các trạm gần nhau, nhưng
+// không quá dài để tránh check-in từ điểm cách xa hàng giờ trước đó.
+
+const LAST_FIX_KEY = "qrcheck_last_gps_fix";
+export const CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 phút
+
+/**
+ * Lưu fix GPS vào localStorage. Chỉ lưu fix có chất lượng "good" hoặc
+ * "acceptable" — fix "poor" (>100m) thường là sai số cell/WiFi không đáng tin.
+ *
+ * @param {{lat:number,lng:number,accuracy:number,ts:number}} fix
+ */
+export function saveLastFix(fix) {
+  if (!fix || typeof fix.lat !== "number" || typeof fix.lng !== "number") return;
+  if (typeof fix.accuracy === "number" && fix.accuracy > 100) return;
+  try {
+    localStorage.setItem(LAST_FIX_KEY, JSON.stringify({
+      lat: fix.lat,
+      lng: fix.lng,
+      accuracy: fix.accuracy,
+      ts: fix.ts || Date.now(),
+    }));
+  } catch {
+    // localStorage quota/disabled — bỏ qua
+  }
+}
+
+/**
+ * Đọc fix gần nhất nếu còn trong tuổi cho phép.
+ *
+ * @param {number} [maxAgeMs] mặc định CACHE_MAX_AGE_MS
+ * @returns {{lat,lng,accuracy,ts}|null} null nếu không có hoặc đã hết hạn
+ */
+export function loadLastFix(maxAgeMs = CACHE_MAX_AGE_MS) {
+  try {
+    const raw = localStorage.getItem(LAST_FIX_KEY);
+    if (!raw) return null;
+    const fix = JSON.parse(raw);
+    if (!fix?.ts || Date.now() - fix.ts > maxAgeMs) return null;
+    return fix;
+  } catch {
+    return null;
+  }
+}
+
+export function clearLastFix() {
+  try {
+    localStorage.removeItem(LAST_FIX_KEY);
+  } catch {
+    // ignore
+  }
+}

@@ -22,6 +22,10 @@ export async function pingServer() {
 
 /**
  * Ghi nhận lượt scan QR, kèm GPS nếu có.
+ *
+ * gpsData có thể chứa flag `cached: true` khi vị trí lấy từ localStorage
+ * (chip GPS fail tại điểm scan). Server đánh dấu geo_status="cached" để admin
+ * phân biệt với fix GPS thật tại thời điểm scan.
  */
 export async function postScan(location, deviceId, gpsData = null, scannedAt = null) {
   const payload = {
@@ -34,6 +38,12 @@ export async function postScan(location, deviceId, gpsData = null, scannedAt = n
     payload.lat = gpsData.lat;
     payload.lng = gpsData.lng;
     payload.accuracy = gpsData.accuracy;
+    if (gpsData.cached) {
+      payload.geo_cached = true;
+      if (typeof gpsData.cache_age_ms === "number") {
+        payload.cache_age_ms = gpsData.cache_age_ms;
+      }
+    }
   }
 
   const { data } = await api.post("/api/scan", payload);
@@ -59,6 +69,12 @@ export async function postQueuedScan(item) {
     payload.lat = item.lat;
     payload.lng = item.lng;
     payload.accuracy = item.accuracy;
+    if (item.geo_cached) {
+      payload.geo_cached = true;
+      if (typeof item.cache_age_ms === "number") {
+        payload.cache_age_ms = item.cache_age_ms;
+      }
+    }
   }
   try {
     const { data } = await api.post("/api/scan", payload);

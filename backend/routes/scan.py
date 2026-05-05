@@ -37,11 +37,13 @@ def create_scan():
             "message": "Mã QR đã hết hạn hoặc không hợp lệ. Vui lòng quét mã QR mới nhất trên màn hình trạm.",
         }), 403
 
-    device_id  = data.get("device_id")
-    scanned_at = data.get("scanned_at")
-    scan_lat   = data.get("lat")
-    scan_lng   = data.get("lng")
-    accuracy   = data.get("accuracy")
+    device_id    = data.get("device_id")
+    scanned_at   = data.get("scanned_at")
+    scan_lat     = data.get("lat")
+    scan_lng     = data.get("lng")
+    accuracy     = data.get("accuracy")
+    geo_cached   = bool(data.get("geo_cached"))
+    cache_age_ms = data.get("cache_age_ms")
 
     # --- GPS Enforcement ---
     gps_err = check_gps_enforcement(scan_lat, scan_lng, accuracy)
@@ -49,12 +51,21 @@ def create_scan():
         return jsonify(gps_err), 403
 
     # --- GPS Geofencing ---
+    # geo_status:
+    #   ok           = GPS thật, đúng phạm vi trạm
+    #   out_of_range = GPS thật, ngoài phạm vi (cảnh báo gian lận)
+    #   cached       = vị trí từ localStorage (chip GPS fail tại điểm scan, dùng fix cũ)
+    #   no_gps       = không có GPS gì cả
     geo_result = {"valid": True, "distance": None, "skipped": True}
     geo_status = "no_gps"
 
     if scan_lat is not None and scan_lng is not None:
         geo_result = validate_location(location, float(scan_lat), float(scan_lng), get_stations())
-        if not geo_result["valid"]:
+        if geo_cached:
+            # Cache fix: không dùng để xác thực gian lận vì vị trí có thể đã cũ.
+            # Vẫn lưu lat/lng và distance để admin tham khảo, nhưng không reject OUT_OF_RANGE.
+            geo_status = "cached"
+        elif not geo_result["valid"]:
             geo_status = "out_of_range"
         elif not geo_result.get("skipped"):
             # skipped=True nghĩa là trạm chưa có tọa độ trong config → không xác nhận được
@@ -73,6 +84,7 @@ def create_scan():
             geo_distance=geo_result.get("distance"),
             geo_status=geo_status,
             token_valid=token_valid,
+            cache_age_ms=cache_age_ms if geo_cached else None,
         )
         # OUT_OF_RANGE: đã lưu DB nhưng trả 403 để frontend hiện cảnh báo
         if geo_status == "out_of_range":

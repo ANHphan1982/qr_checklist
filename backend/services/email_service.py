@@ -54,6 +54,7 @@ def send_scan_email(
     geo_distance: float | None = None,
     geo_status: str = "no_gps",
     token_valid: bool = False,
+    cache_age_ms: float | None = None,
 ) -> tuple[bool, str]:
     """Trả về (ok, error_message). error_message = "" nếu thành công."""
     if not RESEND_API_KEY:
@@ -78,6 +79,13 @@ def send_scan_email(
         geo_info = f"✅ Đúng trạm (cách {geo_distance:.0f}m)"
     elif geo_status == "out_of_range" and geo_distance is not None:
         geo_info = f"🚨 NGOÀI PHẠM VI (cách {geo_distance:.0f}m)"
+    elif geo_status == "cached":
+        age_part = ""
+        if cache_age_ms is not None:
+            age_min = int(cache_age_ms / 60000)
+            age_part = f" {age_min} phút trước" if age_min >= 1 else " <1 phút trước"
+        dist_part = f", cách trạm {geo_distance:.0f}m" if geo_distance is not None else ""
+        geo_info = f"📍 Vị trí cache (lấy{age_part}{dist_part})"
     elif geo_status == "no_gps":
         geo_info = "⚠️ Không có GPS"
     else:
@@ -88,6 +96,8 @@ def send_scan_email(
         status_info = '<span style="color:#16a34a;">✅ Đã check-in đúng vị trí</span>'
     elif geo_status == "out_of_range":
         status_info = '<span style="color:#dc2626;">🚨 CẢNH BÁO: Không đúng vị trí trạm!</span>'
+    elif geo_status == "cached":
+        status_info = '<span style="color:#d97706;">📍 Đã check-in (vị trí từ cache, GPS không bắt được tại trạm)</span>'
     else:
         status_info = '<span style="color:#d97706;">⚠️ Đã check-in (không có GPS)</span>'
 

@@ -2,7 +2,17 @@
  * TDD — lib/geolocation.js
  */
 import { describe, it, expect, vi } from "vitest";
-import { getCurrentPosition, checkGpsPermission, classifyAccuracy, GEO_ERRORS, startGpsWatch } from "../geolocation.js";
+import {
+  getCurrentPosition,
+  checkGpsPermission,
+  classifyAccuracy,
+  GEO_ERRORS,
+  startGpsWatch,
+  saveLastFix,
+  loadLastFix,
+  clearLastFix,
+  CACHE_MAX_AGE_MS,
+} from "../geolocation.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -397,5 +407,110 @@ describe("startGpsWatch", () => {
     const opts = watchSpy.mock.calls[0][2];
     expect(opts.timeout).toBe(5000);
     expect(opts.enableHighAccuracy).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// saveLastFix / loadLastFix — cache vị trí GPS vào localStorage
+// Lý do: khi chip GPS fail tại điểm scan (ephemeris expired, trong nhà sâu),
+// fallback dùng fix gần nhất user đã đứng. Tốt hơn null vì server vẫn validate
+// được "gần đúng khu vực", admin biết là cache qua geo_status=cached.
+// ---------------------------------------------------------------------------
+
+describe("saveLastFix / loadLastFix", () => {
+  function mockLocalStorage() {
+    const store = new Map();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (k) => (store.has(k) ? store.get(k) : null),
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: (k) => store.delete(k),
+        clear: () => store.clear(),
+      },
+      writable: true,
+    });
+    return store;
+  }
+
+  it("CACHE_MAX_AGE_MS = 30 phút (1_800_000ms)", () => {
+    expect(CACHE_MAX_AGE_MS).toBe(30 * 60 * 1000);
+  });
+
+  it("saveLastFix lưu được fix hợp lệ và loadLastFix đọc lại được", () => {
+    mockLocalStorage();
+    const fix = { lat: 10.823, lng: 106.629, accuracy: 15, ts: Date.now() };
+    saveLastFix(fix);
+    const loaded = loadLastFix();
+    expect(loaded).toMatchObject({ lat: 10.823, lng: 106.629, accuracy: 15 });
+  });
+
+  it("saveLastFix gắn ts hiện tại nếu không truyền vào", () => {
+    mockLocalStorage();
+    const before = Date.now();
+    saveLastFix({ lat: 1, lng: 2, accuracy: 10 });
+    const after = Date.now();
+    const loaded = loadLastFix();
+    expect(loaded.ts).toBeGreaterThanOrEqual(before);
+    expect(loaded.ts).toBeLessThanOrEqual(after);
+  });
+
+  it("saveLastFix bỏ qua fix accuracy > 100m (fix chất lượng kém không đáng cache)", () => {
+    mockLocalStorage();
+    saveLastFix({ lat: 1, lng: 2, accuracy: 250, ts: Date.now() });
+    expect(loadLastFix()).toBeNull();
+  });
+
+  it("saveLastFix bỏ qua input không hợp lệ (thiếu lat/lng, sai kiểu)", () => {
+    mockLocalStorage();
+    saveLastFix(null);
+    saveLastFix({});
+    saveLastFix({ lat: "10", lng: "20" });
+    expect(loadLastFix()).toBeNull();
+  });
+
+  it("loadLastFix trả null khi fix đã quá tuổi (mặc định 30 phút)", () => {
+    mockLocalStorage();
+    const tooOld = Date.now() - (CACHE_MAX_AGE_MS + 1000);
+    saveLastFix({ lat: 1, lng: 2, accuracy: 10, ts: tooOld });
+    expect(loadLastFix()).toBeNull();
+  });
+
+  it("loadLastFix cho phép override maxAgeMs", () => {
+    mockLocalStorage();
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    saveLastFix({ lat: 1, lng: 2, accuracy: 10, ts: oneHourAgo });
+    expect(loadLastFix(2 * 60 * 60 * 1000)).not.toBeNull(); // 2h max
+    expect(loadLastFix(30 * 60 * 1000)).toBeNull();         // 30m max
+  });
+
+  it("loadLastFix trả null khi không có gì trong localStorage", () => {
+    mockLocalStorage();
+    expect(loadLastFix()).toBeNull();
+  });
+
+  it("loadLastFix trả null khi JSON corrupt (không throw)", () => {
+    const store = mockLocalStorage();
+    store.set("qrcheck_last_gps_fix", "{not-json");
+    expect(loadLastFix()).toBeNull();
+  });
+
+  it("clearLastFix xóa cache", () => {
+    mockLocalStorage();
+    saveLastFix({ lat: 1, lng: 2, accuracy: 10, ts: Date.now() });
+    expect(loadLastFix()).not.toBeNull();
+    clearLastFix();
+    expect(loadLastFix()).toBeNull();
+  });
+
+  it("saveLastFix không throw khi localStorage không khả dụng (Safari private mode)", () => {
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: () => null,
+        setItem: () => { throw new Error("QuotaExceededError"); },
+        removeItem: () => {},
+      },
+      writable: true,
+    });
+    expect(() => saveLastFix({ lat: 1, lng: 2, accuracy: 10, ts: Date.now() })).not.toThrow();
   });
 });
