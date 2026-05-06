@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hướng Dẫn Sử Dụng — QR Checklist Nhân Sự</title>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 13pt;
+      line-height: 1.7;
+      color: #1a1a1a;
+      background: #f0f0f0;
+    }
+
+    /* ── Page wrapper (A4 simulation) ── */
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 20px auto;
+      background: #fff;
+      padding: 20mm 22mm 20mm 22mm;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.13);
+    }
+
+    /* ── Cover page ── */
+    .cover {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 257mm;
+      text-align: center;
+      gap: 0;
+    }
+
+    .cover-logo {
+      width: 110px;
+      height: 110px;
+      margin-bottom: 24px;
+    }
+
+    .cover h1 {
+      font-size: 26pt;
+      font-weight: 800;
+      color: #1a56db;
+      line-height: 1.3;
+      margin-bottom: 10px;
+    }
+
+    .cover .subtitle {
+      font-size: 14pt;
+      color: #555;
+      margin-bottom: 32px;
+    }
+
+    .cover-mockup {
+      margin: 28px 0;
+    }
+
+    .cover-meta {
+      margin-top: 32px;
+      font-size: 10.5pt;
+      color: #888;
+    }
+
+    .cover-meta span {
+      display: block;
+      margin: 3px 0;
+    }
+
+    /* ── TOC ── */
+    .toc {
+      margin: 0;
+    }
+
+    .toc h2 {
+      font-size: 16pt;
+      color: #1a56db;
+      border-bottom: 2.5px solid #1a56db;
+      padding-bottom: 6px;
+      margin-bottom: 18px;
+    }
+
+    .toc ol {
+      padding-left: 22px;
+    }
+
+    .toc li {
+      margin: 7px 0;
+      font-size: 12pt;
+    }
+
+    .toc a {
+      color: #1a56db;
+      text-decoration: none;
+    }
+
+    .toc-sub {
+      padding-left: 20px;
+      margin-top: 4px;
+    }
+
+    .toc-sub li {
+      font-size: 11pt;
+      color: #444;
+    }
+
+    /* ── Section headings ── */
+    h2.section-title {
+      font-size: 16pt;
+      font-weight: 800;
+      color: #1a56db;
+      border-left: 5px solid #1a56db;
+      padding-left: 12px;
+      margin: 32px 0 14px 0;
+    }
+
+    h3.sub-title {
+      font-size: 13pt;
+      font-weight: 700;
+      color: #222;
+      margin: 20px 0 8px 0;
+    }
+
+    /* ── Paragraphs & lists ── */
+    p { margin: 8px 0; }
+
+    ul, ol {
+      padding-left: 22px;
+      margin: 8px 0;
+    }
+
+    li { margin: 5px 0; }
+
+    /* ── Table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 11.5pt;
+    }
+
+    th {
+      background: #1a56db;
+      color: #fff;
+      padding: 9px 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    tr:nth-child(even) td { background: #f5f8ff; }
+
+    /* ── Callout boxes ── */
+    .callout {
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 14px 0;
+      font-size: 11.5pt;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .callout-icon { font-size: 18px; flex-shrink: 0; line-height: 1.5; }
+    .callout-body { flex: 1; }
+    .callout-body strong { display: block; margin-bottom: 2px; }
+
+    .callout.info    { background: #eff6ff; border-left: 4px solid #3b82f6; }
+    .callout.success { background: #f0fdf4; border-left: 4px solid #22c55e; }
+    .callout.warning { background: #fffbeb; border-left: 4px solid #f59e0b; }
+    .callout.danger  { background: #fff1f2; border-left: 4px solid #ef4444; }
+
+    /* ── Steps ── */
+    .steps { counter-reset: step; margin: 12px 0; }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin: 14px 0;
+    }
+
+    .step-num {
+      counter-increment: step;
+      min-width: 34px;
+      height: 34px;
+      background: #1a56db;
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13pt;
+      flex-shrink: 0;
+    }
+
+    .step-num::before { content: counter(step); }
+
+    .step-body { flex: 1; padding-top: 4px; }
+    .step-body strong { color: #1a56db; }
+
+    /* ── Image placeholders ── */
+    .img-placeholder {
+      width: 100%;
+      border-radius: 10px;
+      border: 2px dashed #b0c4ef;
+      background: #f5f8ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 18px 12px;
+      margin: 14px 0;
+      gap: 8px;
+      text-align: center;
+    }
+
+    .img-placeholder svg { opacity: 0.45; }
+
+    .img-placeholder .img-label {
+      font-size: 10pt;
+      color: #6b8dd6;
+      font-style: italic;
+    }
+
+    .img-placeholder .img-desc {
+      font-size: 11pt;
+      color: #333;
+      font-weight: 600;
+    }
+
+    .img-row {
+      display: flex;
+      gap: 14px;
+      margin: 14px 0;
+    }
+
+    .img-row .img-placeholder { flex: 1; }
+
+    /* ── Phone mockup ── */
+    .phone-frame {
+      width: 120px;
+      height: 220px;
+      background: #1a1a2e;
+      border-radius: 22px;
+      border: 3px solid #333;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 8px;
+      position: relative;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    }
+
+    .phone-screen {
+      width: 100%;
+      flex: 1;
+      background: #fff;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      overflow: hidden;
+    }
+
+    .phone-notch {
+      width: 40px;
+      height: 7px;
+      background: #333;
+      border-radius: 4px;
+      margin-bottom: 8px;
+    }
+
+    /* ── Error / success screen mockups ── */
+    .screen-mock {
+      background: #fff;
+      border-radius: 10px;
+      border: 1.5px solid #e0e0e0;
+      padding: 16px;
+      text-align: center;
+      font-size: 11pt;
+    }
+
+    .screen-mock .icon { font-size: 32px; margin-bottom: 8px; }
+    .screen-mock .title { font-weight: 700; margin-bottom: 4px; }
+    .screen-mock .detail { color: #555; font-size: 10pt; }
+
+    /* ── FAQ ── */
+    .faq-item {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+
+    .faq-q {
+      background: #f5f8ff;
+      padding: 10px 14px;
+      font-weight: 700;
+      color: #1a56db;
+      font-size: 11.5pt;
+    }
+
+    .faq-a {
+      padding: 10px 14px;
+      font-size: 11.5pt;
+    }
+
+    /* ── Footer ── */
+    .doc-footer {
+      margin-top: 28px;
+      padding-top: 12px;
+      border-top: 1px solid #ddd;
+      font-size: 9.5pt;
+      color: #999;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Page break ── */
+    .pagebreak { page-break-after: always; break-after: page; }
+    .no-break  { page-break-inside: avoid; break-inside: avoid; }
+
+    /* ── Section number badge ── */
+    .sec-badge {
+      display: inline-block;
+      background: #1a56db;
+      color: #fff;
+      border-radius: 5px;
+      font-size: 10pt;
+      font-weight: 700;
+      padding: 1px 9px;
+      margin-right: 7px;
+      vertical-align: middle;
+    }
+
+    /* ── Print styles ── */
+    @media print {
+      body { background: #fff; font-size: 11pt; }
+
+      .page {
+        width: 100%;
+        min-height: auto;
+        margin: 0;
+        padding: 15mm 18mm;
+        box-shadow: none;
+      }
+
+      .pagebreak { page-break-after: always; }
+
+      a { color: inherit; text-decoration: none; }
+    }
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ TRANG BÌA ══════════════ -->
+<div class="page">
+  <div class="cover">
+
+    <!-- Logo placeholder -->
+    <svg class="cover-logo" viewBox="0 0 110 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="110" height="110" rx="22" fill="#1a56db"/>
+      <rect x="20" y="20" width="28" height="28" rx="3" fill="white"/>
+      <rect x="26" y="26" width="16" height="16" rx="1" fill="#1a56db"/>
+      <rect x="62" y="20" width="28" height="28" rx="3" fill="white"/>
+      <rect x="68" y="26" width="16" height="16" rx="1" fill="#1a56db"/>
+      <rect x="20" y="62" width="28" height="28" rx="3" fill="white"/>
+      <rect x="26" y="68" width="16" height="16" rx="1" fill="#1a56db"/>
+      <rect x="62" y="54" width="7" height="7" rx="1" fill="white"/>
+      <rect x="73" y="54" width="7" height="7" rx="1" fill="white"/>
+      <rect x="84" y="54" width="7" height="7" rx="1" fill="white"/>
+      <rect x="62" y="65" width="7" height="7" rx="1" fill="white"/>
+      <rect x="73" y="65" width="18" height="7" rx="1" fill="white"/>
+      <rect x="62" y="76" width="7" height="14" rx="1" fill="white"/>
+      <rect x="73" y="76" width="7" height="14" rx="1" fill="white"/>
+      <rect x="84" y="76" width="7" height="14" rx="1" fill="white"/>
+    </svg>
+
+    <h1>QR Checklist Nhân Sự</h1>
+    <div class="subtitle">Hướng Dẫn Sử Dụng Dành Cho Nhân Viên</div>
+
+    <!-- Phone mockup on cover -->
+    <div class="cover-mockup">
+      <svg width="260" height="180" viewBox="0 0 260 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Phone body -->
+        <rect x="80" y="5" width="100" height="170" rx="18" fill="#1a1a2e" stroke="#444" stroke-width="2"/>
+        <!-- Screen -->
+        <rect x="88" y="20" width="84" height="145" rx="10" fill="#f8faff"/>
+        <!-- Notch -->
+        <rect x="110" y="12" width="40" height="7" rx="4" fill="#333"/>
+        <!-- App bar -->
+        <rect x="88" y="20" width="84" height="22" rx="10" fill="#1a56db"/>
+        <rect x="88" y="32" width="84" height="10" fill="#1a56db"/>
+        <text x="130" y="36" text-anchor="middle" fill="white" font-size="8" font-family="Arial" font-weight="bold">QR Checklist</text>
+        <!-- Camera viewfinder -->
+        <rect x="100" y="52" width="60" height="60" rx="6" fill="#e8eefa" stroke="#b0c4ef" stroke-width="1.5"/>
+        <!-- Corner brackets -->
+        <path d="M104 56 L104 64 M104 56 L112 56" stroke="#1a56db" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M156 56 L148 56 M156 56 L156 64" stroke="#1a56db" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M104 108 L104 100 M104 108 L112 108" stroke="#1a56db" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M156 108 L148 108 M156 108 L156 100" stroke="#1a56db" stroke-width="2.5" stroke-linecap="round"/>
+        <!-- QR code mini -->
+        <rect x="114" y="66" width="6" height="6" rx="1" fill="#1a56db"/>
+        <rect x="121" y="66" width="3" height="3" rx="0.5" fill="#1a56db"/>
+        <rect x="125" y="66" width="6" height="6" rx="1" fill="#1a56db"/>
+        <rect x="114" y="73" width="3" height="3" rx="0.5" fill="#1a56db"/>
+        <rect x="118" y="73" width="3" height="3" rx="0.5" fill="#1a56db"/>
+        <rect x="122" y="73" width="9" height="3" rx="0.5" fill="#1a56db"/>
+        <rect x="114" y="77" width="6" height="6" rx="1" fill="#1a56db"/>
+        <rect x="121" y="77" width="3" height="3" rx="0.5" fill="#1a56db"/>
+        <rect x="125" y="77" width="3" height="6" rx="0.5" fill="#1a56db"/>
+        <rect x="129" y="66" width="3" height="3" rx="0.5" fill="#1a56db"/>
+        <rect x="133" y="66" width="3" height="9" rx="0.5" fill="#1a56db"/>
+        <rect x="137" y="66" width="3" height="3" rx="0.5" fill="#1a56db"/>
+        <rect x="129" y="70" width="7" height="3" rx="0.5" fill="#1a56db"/>
+        <rect x="137" y="70" width="3" height="7" rx="0.5" fill="#1a56db"/>
+        <rect x="129" y="74" width="3" height="9" rx="0.5" fill="#1a56db"/>
+        <rect x="133" y="74" width="3" height="3" rx="0.5" fill="#1a56db"/>
+        <!-- Scan line -->
+        <line x1="100" y1="82" x2="160" y2="82" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
+        <!-- Success badge -->
+        <rect x="96" y="120" width="68" height="22" rx="5" fill="#22c55e"/>
+        <text x="130" y="135" text-anchor="middle" fill="white" font-size="8.5" font-family="Arial" font-weight="bold">✓ Check-in thành công</text>
+        <!-- Bottom nav -->
+        <rect x="88" y="150" width="84" height="15" rx="5" fill="#f0f4ff"/>
+        <text x="106" y="161" text-anchor="middle" fill="#1a56db" font-size="7" font-family="Arial">📷 Quét</text>
+        <text x="154" y="161" text-anchor="middle" fill="#888" font-size="7" font-family="Arial">📋 Lịch sử</text>
+      </svg>
+    </div>
+
+    <div class="cover-meta">
+      <span><strong>Phiên bản:</strong> 1.0 — Tháng 04/2026</span>
+      <span><strong>Dành cho:</strong> Toàn thể nhân viên</span>
+      <span><strong>Phát hành bởi:</strong> Bộ phận IT / Quản trị nhân sự</span>
+    </div>
+
+  </div>
+
+  <div class="doc-footer">
+    <span>QR Checklist Nhân Sự — Hướng Dẫn Sử Dụng</span>
+    <span>Trang 1</span>
+  </div>
+</div>
+
+<div class="pagebreak"></div>
+
+<!-- ══════════════ MỤC LỤC ══════════════ -->
+<div class="page">
+  <div class="toc">
+    <h2>Mục Lục</h2>
+    <ol>
+      <li><a href="#intro">Giới thiệu</a></li>
+      <li><a href="#requirements">Yêu cầu thiết bị</a></li>
+      <li>
+        <a href="#open-app">Cách mở app</a>
+      </li>
+      <li>
+        <a href="#scan">Hướng dẫn quét QR check-in</a>
+        <ol class="toc-sub">
+          <li>Mở trang Quét QR</li>
+          <li>Cho phép sử dụng camera</li>
+          <li>Quét mã QR tại trạm</li>
+          <li>Xác nhận check-in thành công</li>
+        </ol>
+      </li>
+      <li><a href="#history">Xem lịch sử check-in</a></li>
+      <li>
+        <a href="#troubleshoot">Xử lý sự cố</a>
+        <ol class="toc-sub">
+          <li>Camera không mở được</li>
+          <li>Quét QR không nhận diện được</li>
+          <li>Lỗi kết nối</li>
+          <li>Không nhận được email xác nhận</li>
+          <li>Cảnh báo GPS / Vị trí</li>
+        </ol>
+      </li>
+      <li><a href="#faq">Câu hỏi thường gặp</a></li>
+      <li><a href="#contact">Liên hệ hỗ trợ</a></li>
+    </ol>
+  </div>
+
+  <div class="doc-footer">
+    <span>QR Checklist Nhân Sự — Hướng Dẫn Sử Dụng</span>
+    <span>Trang 2</span>
+  </div>
+</div>
+
+<div class="pagebreak"></div>
+
+<!-- ══════════════ TRANG NỘI DUNG 1 ══════════════ -->
+<div class="page">
+
+  <!-- 1. GIỚI THIỆU -->
+  <h2 class="section-title" id="intro"><span class="sec-badge">1</span>Giới Thiệu</h2>
+
+  <p>
+    App <strong>QR Checklist Nhân Sự</strong> giúp bạn check-in tại các trạm kiểm tra bằng cách quét
+    mã QR dán tại trạm. Hệ thống sẽ tự động ghi nhận thời gian, địa điểm và gửi báo cáo đến
+    quản lý — <strong>không cần tài khoản, không cần đăng nhập</strong>.
+  </p>
+
+  <div class="img-placeholder" style="height:120px;">
+    <svg width="56" height="56" viewBox="0 0 56 56" fill="none"><rect width="56" height="56" rx="12" fill="#dbeafe"/><path d="M12 20h32M12 28h32M12 36h20" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round"/><circle cx="42" cy="36" r="7" fill="#22c55e"/><path d="M39 36l2 2 4-4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="img-desc">Sơ đồ luồng hoạt động của hệ thống</div>
+    <div class="img-label">📌 Thay bằng ảnh: Nhân viên → Quét QR → Hệ thống ghi nhận → Email gửi quản lý</div>
+  </div>
+
+  <div class="callout info no-break">
+    <span class="callout-icon">ℹ️</span>
+    <div class="callout-body">
+      <strong>App hoạt động như thế nào?</strong>
+      Bạn mở app trên điện thoại → quét mã QR tại trạm → hệ thống ghi nhận tức thời →
+      quản lý nhận email xác nhận trong vòng 1–2 phút. Toàn bộ quá trình chỉ mất khoảng
+      <strong>5–10 giây</strong>.
+    </div>
+  </div>
+
+  <!-- 2. YÊU CẦU THIẾT BỊ -->
+  <h2 class="section-title" id="requirements" style="margin-top:28px;"><span class="sec-badge">2</span>Yêu Cầu Thiết Bị</h2>
+
+  <table>
+    <thead>
+      <tr><th>Thiết bị / Yếu tố</th><th>Yêu cầu</th><th>Ghi chú</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Điện thoại</td><td>Android hoặc iPhone</td><td>Có camera sau</td></tr>
+      <tr><td>Trình duyệt</td><td>Chrome (Android) / Safari (iPhone)</td><td>Phiên bản mới nhất</td></tr>
+      <tr><td>Kết nối</td><td>WiFi hoặc 4G/5G</td><td>Cần internet để ghi nhận</td></tr>
+      <tr><td>Camera</td><td>Camera sau (khuyến nghị)</td><td>Camera trước vẫn dùng được</td></tr>
+      <tr><td>Giao thức web</td><td>HTTPS bắt buộc</td><td>Camera không hoạt động trên HTTP</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warning no-break">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <strong>Lưu ý quan trọng:</strong> App chỉ hoạt động trên <strong>HTTPS</strong> (địa chỉ web
+      bắt đầu bằng <code>https://</code>). Nếu trình duyệt cảnh báo "không an toàn", hãy báo ngay
+      cho bộ phận IT.
+    </div>
+  </div>
+
+  <!-- 3. CÁCH MỞ APP -->
+  <h2 class="section-title" id="open-app"><span class="sec-badge">3</span>Cách Mở App</h2>
+
+  <div class="img-row">
+    <div class="img-placeholder" style="height:150px;">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none"><rect width="44" height="44" rx="10" fill="#dbeafe"/><path d="M8 14h28M8 14v20a2 2 0 002 2h24a2 2 0 002-2V14M8 14l14-8 14 8" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/></svg>
+      <div class="img-desc">Mở trình duyệt và nhập địa chỉ web</div>
+      <div class="img-label">📌 Ảnh: Trình duyệt Chrome/Safari, gõ URL app</div>
+    </div>
+    <div class="img-placeholder" style="height:150px;">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none"><rect width="44" height="44" rx="10" fill="#dcfce7"/><rect x="8" y="28" width="28" height="8" rx="3" fill="#22c55e"/><text x="22" y="35" text-anchor="middle" fill="white" font-size="7" font-family="Arial">Thêm vào MH chính</text><rect x="14" y="10" width="16" height="16" rx="4" fill="#22c55e" opacity="0.3"/><path d="M22 14v8M18 18h8" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/></svg>
+      <div class="img-desc">Thêm shortcut vào màn hình chính</div>
+      <div class="img-label">📌 Ảnh: Menu "Share" → "Add to Home Screen" (iOS)</div>
+    </div>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">Mở trình duyệt trên điện thoại (<strong>Chrome</strong> hoặc <strong>Safari</strong>)</div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">Nhập <strong>địa chỉ web</strong> do công ty cung cấp vào thanh địa chỉ</div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-body">Nhấn <strong>"Thêm vào màn hình chính"</strong> để tạo shortcut tiện lợi cho lần sau (tùy chọn)</div>
+    </div>
+  </div>
+
+  <div class="callout info no-break">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      <strong>Mẹo tiết kiệm thời gian:</strong> Lần đầu mở app, hệ thống mất khoảng
+      <strong>20–30 giây</strong> để khởi động (server đang "thức dậy"). Đây là bình thường —
+      từ lần thứ hai trở đi sẽ nhanh hơn.
+    </div>
+  </div>
+
+  <div class="doc-footer">
+    <span>QR Checklist Nhân Sự — Hướng Dẫn Sử Dụng</span>
+    <span>Trang 3</span>
+  </div>
+</div>
+
+<div class="pagebreak"></div>
+
+<!-- ══════════════ TRANG NỘI DUNG 2 ══════════════ -->
+<div class="page">
+
+  <!-- 4. QUÉT QR -->
+  <h2 class="section-title" id="scan"><span class="sec-badge">4</span>Hướng Dẫn Quét QR Check-In</h2>
+
+  <div class="img-placeholder" style="height:130px;">
+    <svg width="56" height="56" viewBox="0 0 56 56" fill="none"><rect width="56" height="56" rx="12" fill="#fef3c7"/><rect x="8" y="8" width="18" height="18" rx="2" fill="none" stroke="#f59e0b" stroke-width="2.5"/><rect x="12" y="12" width="10" height="10" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="30" y="8" width="18" height="18" rx="2" fill="none" stroke="#f59e0b" stroke-width="2.5"/><rect x="34" y="12" width="10" height="10" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="8" y="30" width="18" height="18" rx="2" fill="none" stroke="#f59e0b" stroke-width="2.5"/><rect x="12" y="34" width="10" height="10" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="30" y="30" width="5" height="5" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="37" y="30" width="5" height="5" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="44" y="30" width="5" height="5" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="30" y="37" width="5" height="5" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="37" y="37" width="12" height="5" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="30" y="44" width="5" height="5" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="37" y="44" width="5" height="5" rx="1" fill="#f59e0b" opacity="0.5"/><rect x="44" y="44" width="5" height="5" rx="1" fill="#f59e0b" opacity="0.5"/></svg>
+    <div class="img-desc">Mã QR được dán tại mỗi trạm kiểm tra</div>
+    <div class="img-label">📌 Ảnh: Mã QR in ra, dán trên bảng/tường tại trạm (ví dụ: "Cổng A")</div>
+  </div>
+
+  <div class="steps">
+
+    <div class="step no-break">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>Mở trang Quét QR</strong><br/>
+        Trên màn hình chính của app, nhấn nút <strong>"Quét QR"</strong> (biểu tượng máy quét ở dưới cùng).
+        <div class="img-placeholder" style="height:100px; margin-top:8px;">
+          <svg width="38" height="38" viewBox="0 0 38 38" fill="none"><rect width="38" height="38" rx="8" fill="#eff6ff"/><rect x="6" y="6" width="11" height="11" rx="1.5" fill="none" stroke="#3b82f6" stroke-width="2"/><rect x="8" y="8" width="7" height="7" rx="0.5" fill="#3b82f6" opacity="0.3"/><rect x="21" y="6" width="11" height="11" rx="1.5" fill="none" stroke="#3b82f6" stroke-width="2"/><rect x="23" y="8" width="7" height="7" rx="0.5" fill="#3b82f6" opacity="0.3"/><rect x="6" y="21" width="11" height="11" rx="1.5" fill="none" stroke="#3b82f6" stroke-width="2"/><rect x="8" y="23" width="7" height="7" rx="0.5" fill="#3b82f6" opacity="0.3"/><rect x="21" y="21" width="4" height="4" rx="0.5" fill="#3b82f6" opacity="0.4"/><rect x="27" y="21" width="4" height="4" rx="0.5" fill="#3b82f6" opacity="0.4"/><rect x="21" y="27" width="4" height="4" rx="0.5" fill="#3b82f6" opacity="0.4"/><rect x="27" y="27" width="4" height="4" rx="0.5" fill="#3b82f6" opacity="0.4"/></svg>
+          <div class="img-desc">Màn hình chính app với nút "Quét QR"</div>
+          <div class="img-label">📌 Ảnh chụp màn hình: trang chủ app, nút "Quét QR" nổi bật</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step no-break">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>Cho phép sử dụng camera</strong><br/>
+        Lần đầu sử dụng, trình duyệt sẽ hỏi: <em>"Cho phép truy cập camera không?"</em><br/>
+        → Nhấn <strong>"Cho phép" / "Allow"</strong>
+        <div class="img-placeholder" style="height:100px; margin-top:8px;">
+          <svg width="38" height="38" viewBox="0 0 38 38" fill="none"><rect width="38" height="38" rx="8" fill="#f0fdf4"/><circle cx="19" cy="16" r="7" fill="none" stroke="#22c55e" stroke-width="2"/><circle cx="19" cy="16" r="3" fill="#22c55e" opacity="0.4"/><rect x="8" y="26" width="22" height="6" rx="3" fill="#22c55e"/><text x="19" y="31" text-anchor="middle" fill="white" font-size="5.5" font-family="Arial" font-weight="bold">Cho phép</text></svg>
+          <div class="img-desc">Hộp thoại cấp quyền camera</div>
+          <div class="img-label">📌 Ảnh chụp màn hình: popup "Cho phép truy cập camera?" → nhấn Allow</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step no-break">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>Quét mã QR tại trạm</strong><br/>
+        Hướng camera vào mã QR dán tại trạm. Giữ điện thoại <strong>cách mã QR 15–30 cm</strong>,
+        đảm bảo đủ ánh sáng. Hệ thống sẽ <strong>tự động nhận diện</strong> — không cần nhấn thêm nút.
+        <div class="img-placeholder" style="height:110px; margin-top:8px;">
+          <svg width="42" height="42" viewBox="0 0 42 42" fill="none"><rect width="42" height="42" rx="9" fill="#fef3c7"/><rect x="6" y="6" width="30" height="30" rx="4" fill="none" stroke="#f59e0b" stroke-width="1.5"/><path d="M6 12 L6 6 L12 6" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round"/><path d="M36 12 L36 6 L30 6" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round"/><path d="M6 30 L6 36 L12 36" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round"/><path d="M36 30 L36 36 L30 36" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round"/><line x1="6" y1="21" x2="36" y2="21" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.8"/></svg>
+          <div class="img-desc">Camera đang quét mã QR — đường đỏ là tia laser ảo</div>
+          <div class="img-label">📌 Ảnh chụp màn hình: khung viewfinder camera, đường scan đang di chuyển</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step no-break">
+      <div class="step-num"></div>
+      <div class="step-body">
+        <strong>Xác nhận check-in thành công</strong><br/>
+        Sau khi quét thành công, màn hình hiển thị thông báo xanh lá:
+        <div class="screen-mock" style="margin-top:10px; max-width:280px;">
+          <div class="icon">✅</div>
+          <div class="title">Check-in thành công!</div>
+          <div class="detail">Trạm: <strong>Cổng A</strong></div>
+          <div class="detail">Thời gian: <strong>30/04/2026 08:30:15</strong></div>
+          <div class="detail" style="margin-top:4px; color:#22c55e;">📧 Đã gửi báo cáo đến quản lý</div>
+        </div>
+        <div class="img-placeholder" style="height:90px; margin-top:8px;">
+          <svg width="38" height="38" viewBox="0 0 38 38" fill="none"><rect width="38" height="38" rx="8" fill="#f0fdf4"/><circle cx="19" cy="19" r="12" fill="#22c55e" opacity="0.15"/><circle cx="19" cy="19" r="8" fill="#22c55e" opacity="0.3"/><path d="M14 19l3 3 7-7" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="img-desc">Màn hình xác nhận check-in thành công</div>
+          <div class="img-label">📌 Ảnh chụp màn hình: thông báo ✅ xanh lá sau khi quét thành công</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="callout success no-break">
+    <span class="callout-icon">✅</span>
+    <div class="callout-body">
+      Khi màn hình hiển thị thông báo xanh lá và <em>"Đã gửi báo cáo"</em>,
+      quản lý đã nhận được email xác nhận. <strong>Bạn có thể rời khỏi trạm.</strong>
+    </div>
+  </div>
+
+  <div class="doc-footer">
+    <span>QR Checklist Nhân Sự — Hướng Dẫn Sử Dụng</span>
+    <span>Trang 4</span>
+  </div>
+</div>
+
+<div class="pagebreak"></div>
+
+<!-- ══════════════ TRANG NỘI DUNG 3 ══════════════ -->
+<div class="page">
+
+  <!-- 5. LỊCH SỬ -->
+  <h2 class="section-title" id="history"><span class="sec-badge">5</span>Xem Lịch Sử Check-In</h2>
+
+  <div class="img-row">
+    <div class="img-placeholder" style="height:160px;">
+      <svg width="44" height="44" viewBox="0 0 44 44" fill="none"><rect width="44" height="44" rx="10" fill="#eff6ff"/><rect x="6" y="10" width="32" height="5" rx="2" fill="#3b82f6" opacity="0.3"/><rect x="6" y="19" width="26" height="4" rx="2" fill="#3b82f6" opacity="0.2"/><rect x="6" y="27" width="30" height="4" rx="2" fill="#3b82f6" opacity="0.2"/><rect x="6" y="35" width="22" height="4" rx="2" fill="#3b82f6" opacity="0.2"/><circle cx="38" cy="21" r="3" fill="#22c55e"/><circle cx="38" cy="29" r="3" fill="#22c55e"/><circle cx="38" cy="37" r="3" fill="#f59e0b"/></svg>
+      <div class="img-desc">Trang lịch sử check-in trong ngày</div>
+      <div class="img-label">📌 Ảnh chụp màn hình: danh sách lịch sử, mỗi dòng là 1 lần check-in</div>
+    </div>
+    <div style="flex:1; padding-left:4px;">
+      <ol style="margin-top:0;">
+        <li>Nhấn tab <strong>"Lịch sử"</strong> ở menu dưới cùng</li>
+        <li>Danh sách hiển thị tất cả lần check-in <strong>trong ngày hôm nay</strong></li>
+        <li>Mỗi mục bao gồm: tên trạm, giờ check-in</li>
+      </ol>
+      <div class="callout info" style="margin-top:12px;">
+        <span class="callout-icon">📋</span>
+        <div class="callout-body">
+          Lịch sử chỉ lưu trong ngày. Sang ngày mới danh sách sẽ trống.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. XỬ LÝ SỰ CỐ -->
+  <h2 class="section-title" id="troubleshoot"><span class="sec-badge">6</span>Xử Lý Sự Cố</h2>
+
+  <!-- 6.1 Camera -->
+  <h3 class="sub-title">6.1 Camera không mở được</h3>
+
+  <div class="callout danger no-break">
+    <span class="callout-icon">❌</span>
+    <div class="callout-body">
+      <strong>Triệu chứng:</strong> Nhấn "Quét QR" nhưng màn hình đen hoặc hiển thị thông báo
+      "Không thể truy cập camera".
+    </div>
+  </div>
+
+  <div class="img-row">
+    <div class="img-placeholder" style="height:130px;">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="9" fill="#fff1f2"/><rect x="4" y="10" width="32" height="22" rx="4" fill="none" stroke="#ef4444" stroke-width="2"/><path d="M28 10 L36 4 M36 10 L28 4" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/><circle cx="20" cy="21" r="6" fill="none" stroke="#ef4444" stroke-width="2"/><path d="M16 17l8 8M16 25l8-8" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
+      <div class="img-desc">Lỗi không cấp quyền camera (iPhone)</div>
+      <div class="img-label">📌 Ảnh chụp màn hình: Cài đặt iPhone → Safari → Camera → Cho phép</div>
+    </div>
+    <div class="img-placeholder" style="height:130px;">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect width="40" height="40" rx="9" fill="#fff1f2"/><rect x="4" y="10" width="32" height="22" rx="4" fill="none" stroke="#ef4444" stroke-width="2"/><path d="M28 10 L36 4 M36 10 L28 4" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/><circle cx="20" cy="21" r="6" fill="none" stroke="#ef4444" stroke-width="2"/><path d="M16 17l8 8M16 25l8-8" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/></svg>
+      <div class="img-desc">Cấp lại quyền camera trên Android</div>
+      <div class="img-label">📌 Ảnh chụp màn hình: Chrome → biểu tượng ổ khóa → Quyền → Camera → Cho phép</div>
+    </div>
+  </div>
+
+  <table class="no-break">
+    <thead><tr><th>Thiết bị</th><th>Cách cấp lại quyền camera</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>iPhone (Safari)</strong></td>
+        <td>Cài đặt → Safari → Camera → chọn <strong>"Hỏi"</strong> hoặc <strong>"Cho phép"</strong> → quay lại app và thử lại</td>
+      </tr>
+      <tr>
+        <td><strong>Android (Chrome)</strong></td>
+        <td>Nhấn biểu tượng <strong>ổ khóa</strong> bên trái thanh địa chỉ → Quyền → Camera → <strong>"Cho phép"</strong> → tải lại trang</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 6.2 Quét không nhận diện -->
+  <h3 class="sub-title">6.2 Quét QR không nhận diện được</h3>
+
+  <ul class="no-break">
+    <li>Lau sạch camera điện thoại bằng vải mềm</li>
+    <li>Đảm bảo mã QR tại trạm không bị nhàu, rách hoặc bị che khuất</li>
+    <li>Thử tăng độ sáng màn hình điện thoại để chiếu sáng QR</li>
+    <li>Di chuyển điện thoại <strong>gần/xa hơn</strong> và giữ yên tay (khoảng 15–30 cm là tốt nhất)</li>
+    <li>Thử mở app bằng <strong>trình duyệt khác</strong> (Chrome thay vì Safari hoặc ngược lại)</li>
+  </ul>
+
+  <div class="img-placeholder" style="height:100px;" >
+    <svg width="44" height="44" viewBox="0 0 44 44" fill="none"><rect width="44" height="44" rx="10" fill="#fef3c7"/><path d="M22 8 L22 20 M16 11 L22 8 L28 11" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="8" y="24" width="28" height="14" rx="3" fill="none" stroke="#f59e0b" stroke-width="1.5"/><text x="22" y="34" text-anchor="middle" fill="#f59e0b" font-size="8" font-family="Arial">15 – 30 cm</text></svg>
+    <div class="img-desc">Khoảng cách quét lý tưởng: 15–30 cm</div>
+    <div class="img-label">📌 Ảnh minh họa: tay cầm điện thoại, mũi tên chỉ khoảng cách đến mã QR</div>
+  </div>
+
+  <div class="doc-footer">
+    <span>QR Checklist Nhân Sự — Hướng Dẫn Sử Dụng</span>
+    <span>Trang 5</span>
+  </div>
+</div>
+
+<div class="pagebreak"></div>
+
+<!-- ══════════════ TRANG NỘI DUNG 4 ══════════════ -->
+<div class="page">
+
+  <!-- 6.3 Lỗi kết nối -->
+  <h3 class="sub-title">6.3 Màn hình hiển thị "Lỗi kết nối" hoặc "Đang tải..."</h3>
+
+  <div class="screen-mock no-break" style="max-width:280px; margin-bottom:12px;">
+    <div class="icon">🔄</div>
+    <div class="title">Đang kết nối...</div>
+    <div class="detail">Server đang khởi động, vui lòng chờ 20–30 giây</div>
+  </div>
+
+  <ul>
+    <li>Kiểm tra lại WiFi hoặc 4G/5G trên điện thoại</li>
+    <li>Đợi <strong>30 giây</strong> rồi tải lại trang (server đang khởi động)</li>
+    <li>Nếu vẫn lỗi sau <strong>2 phút</strong>, chụp ảnh màn hình lỗi và báo IT</li>
+  </ul>
+
+  <!-- 6.4 Email -->
+  <h3 class="sub-title">6.4 Check-in thành công nhưng quản lý không nhận được email</h3>
+
+  <ul class="no-break">
+    <li>Hệ thống gửi email trong vòng <strong>1–2 phút</strong></li>
+    <li>Nhờ quản lý kiểm tra thư mục <strong>Spam / Junk</strong></li>
+    <li>Nếu vẫn không thấy, báo IT kèm: giờ check-in và tên trạm</li>
+  </ul>
+
+  <!-- 6.5 GPS -->
+  <h3 class="sub-title">6.5 Cảnh báo GPS / Vị trí</h3>
+
+  <div class="callout warning no-break">
+    <span class="callout-icon">📍</span>
+    <div class="callout-body">
+      <strong>Nếu app hiển thị cảnh báo màu vàng về GPS:</strong><br/>
+      Đây chỉ là <em>cảnh báo</em> — check-in vẫn được ghi nhận bình thường.
+      Để loại bỏ cảnh báo: bật <strong>GPS/Location</strong> trên điện thoại và đứng ở nơi thoáng
+      để tín hiệu GPS tốt hơn.
+    </div>
+  </div>
+
+  <div class="img-placeholder" style="height:100px;">
+    <svg width="42" height="42" viewBox="0 0 42 42" fill="none"><rect width="42" height="42" rx="9" fill="#fffbeb"/><circle cx="21" cy="19" r="9" fill="none" stroke="#f59e0b" stroke-width="2"/><circle cx="21" cy="19" r="3" fill="#f59e0b" opacity="0.5"/><line x1="21" y1="8" x2="21" y2="5" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/><line x1="21" y1="33" x2="21" y2="30" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/><line x1="8" y1="19" x2="5" y2="19" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/><line x1="37" y1="19" x2="34" y2="19" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/></svg>
+    <div class="img-desc">Banner cảnh báo GPS yếu trên app</div>
+    <div class="img-label">📌 Ảnh chụp màn hình: banner vàng "GPS yếu — đang xác định vị trí"</div>
+  </div>
+
+  <!-- 7. FAQ -->
+  <h2 class="section-title" id="faq"><span class="sec-badge">7</span>Câu Hỏi Thường Gặp</h2>
+
+  <div class="faq-item no-break">
+    <div class="faq-q">Q: Tôi có cần tạo tài khoản không?</div>
+    <div class="faq-a">Không. App nhận diện thiết bị tự động, không cần đăng ký hay đăng nhập.</div>
+  </div>
+
+  <div class="faq-item no-break">
+    <div class="faq-q">Q: Tôi quét nhầm trạm, có sửa được không?</div>
+    <div class="faq-a">Mỗi lần quét đều được ghi lại. Nếu quét nhầm, hãy báo quản lý trực tiếp để đối chiếu.</div>
+  </div>
+
+  <div class="faq-item no-break">
+    <div class="faq-q">Q: Điện thoại không có internet thì sao?</div>
+    <div class="faq-a">App cần kết nối internet để ghi nhận check-in. Kết nối lại mạng rồi quét lại.</div>
+  </div>
+
+  <div class="faq-item no-break">
+    <div class="faq-q">Q: Một ngày tôi cần quét bao nhiêu lần?</div>
+    <div class="faq-a">Tùy theo lịch trình của bộ phận. Quản lý sẽ thông báo số trạm và giờ cần check-in.</div>
+  </div>
+
+  <div class="faq-item no-break">
+    <div class="faq-q">Q: Tôi dùng điện thoại cá nhân có được không?</div>
+    <div class="faq-a">Được. App chạy trên trình duyệt, không cần cài đặt gì thêm.</div>
+  </div>
+
+  <div class="faq-item no-break">
+    <div class="faq-q">Q: Tôi đang dùng 2 điện thoại, hệ thống có nhận ra không?</div>
+    <div class="faq-a">Mỗi thiết bị được nhận diện riêng biệt. Nếu dùng 2 máy để check-in cùng trạm, hệ thống sẽ ghi nhận 2 lần riêng — hãy báo quản lý để tránh nhầm lẫn.</div>
+  </div>
+
+  <!-- 8. LIÊN HỆ HỖ TRỢ -->
+  <h2 class="section-title" id="contact"><span class="sec-badge">8</span>Liên Hệ Hỗ Trợ</h2>
+
+  <table class="no-break">
+    <thead><tr><th>Kênh liên hệ</th><th>Thông tin</th><th>Thời gian hỗ trợ</th></tr></thead>
+    <tbody>
+      <tr><td>Điện thoại IT nội bộ</td><td><em>(Thêm số điện thoại)</em></td><td>7:00 – 18:00 (T2–T7)</td></tr>
+      <tr><td>Zalo / nhóm nội bộ</td><td><em>(Thêm tên nhóm/Zalo)</em></td><td>Trong giờ hành chính</td></tr>
+      <tr><td>Email</td><td><em>(Thêm email IT)</em></td><td>Phản hồi trong 24h</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout info no-break" style="margin-top:14px;">
+    <span class="callout-icon">📸</span>
+    <div class="callout-body">
+      <strong>Khi báo lỗi, vui lòng cung cấp:</strong>
+      <ul style="margin-top:4px; margin-bottom:0;">
+        <li>Ảnh chụp màn hình lỗi</li>
+        <li>Loại điện thoại và trình duyệt đang dùng</li>
+        <li>Tên trạm và giờ xảy ra lỗi</li>
+      </ul>
+    </div>
+  </div>
+
+  <div style="margin-top: 32px; text-align:center; color:#aaa; font-size:10pt; border-top:1px solid #e0e0e0; padding-top:14px;">
+    Phiên bản 1.0 — Tháng 04/2026<br/>
+    Hệ thống QR Checklist Nhân Sự — Phát hành bởi Bộ phận IT
+  </div>
+
+  <div class="doc-footer">
+    <span>QR Checklist Nhân Sự — Hướng Dẫn Sử Dụng</span>
+    <span>Trang 6</span>
+  </div>
+</div>
+
+</body>
+</html>
