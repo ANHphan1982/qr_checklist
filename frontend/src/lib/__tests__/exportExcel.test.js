@@ -284,3 +284,137 @@ describe("buildHistoryRows — route assessment columns", () => {
     expect(row["Đánh giá tốc độ"]).toBe("Bỏ qua (thiếu tọa độ)");
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildHistoryRows — screen detection columns (TDD)
+// Backend enrich logs với 3 fields: screen_score (0-1), screen_signals
+// {flicker, uniformity, moire}, screen_class (clean|suspicious|high_risk|null).
+// Excel xuất 5 cột: label class + tổng điểm % + 3 signal %.
+// ---------------------------------------------------------------------------
+describe("buildHistoryRows — screen detection columns", () => {
+  const screenLogs = [
+    {
+      id: 1,
+      location: "A",
+      scanned_at: "2026-04-18T01:00:00.000Z",
+      device_id: "dev-1",
+      geo_status: "ok",
+      email_sent: true,
+      screen_score: 0.25,
+      screen_signals: { flicker: 0.2, uniformity: 0.3, moire: 0.25 },
+      screen_class: "clean",
+    },
+    {
+      id: 2,
+      location: "B",
+      scanned_at: "2026-04-18T01:05:00.000Z",
+      device_id: "dev-1",
+      geo_status: "ok",
+      email_sent: true,
+      screen_score: 0.65,
+      screen_signals: { flicker: 0.7, uniformity: 0.5, moire: 0.4 },
+      screen_class: "suspicious",
+    },
+    {
+      id: 3,
+      location: "C",
+      scanned_at: "2026-04-18T01:10:00.000Z",
+      device_id: "dev-1",
+      geo_status: "ok",
+      email_sent: true,
+      screen_score: 0.92,
+      screen_signals: { flicker: 0.95, uniformity: 0.9, moire: 0.85 },
+      screen_class: "high_risk",
+    },
+  ];
+
+  it("includes 5 new screen columns", () => {
+    const [row] = buildHistoryRows(screenLogs);
+    expect(row).toHaveProperty("Nghi vấn màn hình");
+    expect(row).toHaveProperty("Điểm nghi vấn (%)");
+    expect(row).toHaveProperty("Flicker (%)");
+    expect(row).toHaveProperty("Uniformity (%)");
+    expect(row).toHaveProperty("Moiré (%)");
+  });
+
+  it("renders Vietnamese labels for each screen_class", () => {
+    const rows = buildHistoryRows(screenLogs);
+    expect(rows[0]["Nghi vấn màn hình"]).toBe("Bình thường");
+    expect(rows[1]["Nghi vấn màn hình"]).toBe("Nghi vấn");
+    expect(rows[2]["Nghi vấn màn hình"]).toBe("Nguy cơ cao");
+  });
+
+  it("renders score as integer percentage (no decimals)", () => {
+    const rows = buildHistoryRows(screenLogs);
+    expect(rows[0]["Điểm nghi vấn (%)"]).toBe(25);
+    expect(rows[1]["Điểm nghi vấn (%)"]).toBe(65);
+    expect(rows[2]["Điểm nghi vấn (%)"]).toBe(92);
+  });
+
+  it("renders each signal as integer percentage", () => {
+    const rows = buildHistoryRows(screenLogs);
+    expect(rows[1]["Flicker (%)"]).toBe(70);
+    expect(rows[1]["Uniformity (%)"]).toBe(50);
+    expect(rows[1]["Moiré (%)"]).toBe(40);
+  });
+
+  it("leaves screen columns empty when fields missing (backward compat)", () => {
+    // Log cũ chưa có screen detection (NULL trong DB)
+    const oldLog = [{
+      id: 1,
+      location: "A",
+      scanned_at: "2026-04-18T01:00:00.000Z",
+      device_id: "dev",
+      geo_status: "ok",
+      email_sent: true,
+      // screen_* fields vắng mặt
+    }];
+    const [row] = buildHistoryRows(oldLog);
+    expect(row["Nghi vấn màn hình"]).toBe("");
+    expect(row["Điểm nghi vấn (%)"]).toBe("");
+    expect(row["Flicker (%)"]).toBe("");
+    expect(row["Uniformity (%)"]).toBe("");
+    expect(row["Moiré (%)"]).toBe("");
+  });
+
+  it("handles screen_class set but signals missing", () => {
+    // Defensive: client gửi score nhưng không gửi signals dict
+    const log = [{
+      id: 1,
+      location: "A",
+      scanned_at: "2026-04-18T01:00:00.000Z",
+      device_id: "dev",
+      geo_status: "ok",
+      email_sent: true,
+      screen_score: 0.55,
+      screen_class: "suspicious",
+      screen_signals: null,
+    }];
+    const [row] = buildHistoryRows(log);
+    expect(row["Nghi vấn màn hình"]).toBe("Nghi vấn");
+    expect(row["Điểm nghi vấn (%)"]).toBe(55);
+    // Signals trống → empty string
+    expect(row["Flicker (%)"]).toBe("");
+    expect(row["Uniformity (%)"]).toBe("");
+    expect(row["Moiré (%)"]).toBe("");
+  });
+
+  it("renders score 0% (not empty) when screen_score = 0", () => {
+    // Edge case: score = 0 là giá trị hợp lệ (chắc chắn không phải màn hình)
+    // — phải hiển thị 0, KHÔNG để trống (null/undefined mới để trống)
+    const log = [{
+      id: 1,
+      location: "A",
+      scanned_at: "2026-04-18T01:00:00.000Z",
+      device_id: "dev",
+      geo_status: "ok",
+      email_sent: true,
+      screen_score: 0,
+      screen_signals: { flicker: 0, uniformity: 0, moire: 0 },
+      screen_class: "clean",
+    }];
+    const [row] = buildHistoryRows(log);
+    expect(row["Điểm nghi vấn (%)"]).toBe(0);
+    expect(row["Flicker (%)"]).toBe(0);
+  });
+});
