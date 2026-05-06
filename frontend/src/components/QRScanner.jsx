@@ -100,11 +100,22 @@ export function QRScanner({ onScan, onError }) {
       /* verbose= */ false
     );
 
+    let alreadyScanned = false;
     scannerRef.current.render(
       (decodedText) => {
-        // Dừng camera ngay sau khi scan thành công
-        scannerRef.current.clear().catch(console.error);
-        onScan(decodedText);
+        // Chỉ trigger 1 lần — html5-qrcode tiếp tục quét sau callback
+        if (alreadyScanned) return;
+        alreadyScanned = true;
+        // Pause để dừng decode loop nhưng giữ video element còn alive
+        // → screen detection ở ScanPage có thể chụp frame từ video
+        // Cleanup thực sự (clear) chạy khi component unmount.
+        try {
+          scannerRef.current?.pause?.(true);
+        } catch {
+          // pause() không phải lúc nào cũng có sẵn — bỏ qua
+        }
+        const video = document.querySelector(`#${SCANNER_ID} video`);
+        onScan(decodedText, { video });
       },
       (errorMessage) => {
         // Per-frame errors (expected) — chỉ forward lỗi nghiêm trọng

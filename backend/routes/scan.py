@@ -4,6 +4,11 @@ from services.geo_service import validate_location
 from services.stations_db import get_stations, get_qr_aliases
 from services.qr_token_service import parse_qr_content, validate_token
 from services.anti_fraud_service import check_gps_enforcement
+from services.screen_signal_service import (
+    classify_screen_score,
+    sanitize_screen_signals,
+)
+import math
 import os
 
 scan_bp = Blueprint("scan", __name__)
@@ -44,6 +49,24 @@ def create_scan():
     accuracy     = data.get("accuracy")
     geo_cached   = bool(data.get("geo_cached"))
     cache_age_ms = data.get("cache_age_ms")
+
+    # Screen detection (warning-only — không block dù score cao)
+    raw_signals    = data.get("screen_signals")
+    screen_signals = sanitize_screen_signals(raw_signals)
+    # Coerce score tại boundary để model nhận đúng kiểu. Nếu coerce fail
+    # (None / string / NaN) → cả score và class đều NULL để DB phản ánh đúng
+    # rằng client không gửi tín hiệu hợp lệ.
+    raw_score = data.get("screen_score")
+    screen_score = None
+    screen_class = None
+    if raw_score is not None:
+        try:
+            v = float(raw_score)
+            if not math.isnan(v) and not math.isinf(v):
+                screen_score = max(0.0, min(1.0, v))
+                screen_class = classify_screen_score(screen_score)
+        except (TypeError, ValueError):
+            pass
 
     # --- GPS Enforcement ---
     gps_err = check_gps_enforcement(scan_lat, scan_lng, accuracy)
@@ -88,6 +111,9 @@ def create_scan():
             geo_status=geo_status,
             token_valid=token_valid,
             cache_age_ms=cache_age_ms if geo_cached else None,
+            screen_score=screen_score,
+            screen_signals=screen_signals,
+            screen_class=screen_class,
         )
         # OUT_OF_RANGE: đã lưu DB nhưng trả 403 để frontend hiện cảnh báo
         if geo_status == "out_of_range":

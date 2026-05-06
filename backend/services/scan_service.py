@@ -16,6 +16,9 @@ def process_scan(
     geo_status: str = "no_gps",
     token_valid: bool = False,
     cache_age_ms: float | None = None,
+    screen_score: float | None = None,
+    screen_signals: dict | None = None,
+    screen_class: str | None = None,
 ) -> dict:
     if not location or not location.strip():
         return {"status": "error", "message": "Thiếu trường location"}
@@ -53,6 +56,9 @@ def process_scan(
             geo_distance=geo_distance,
             geo_status=geo_status,
             token_valid=token_valid,
+            screen_score=screen_score,
+            screen_signals=screen_signals,
+            screen_class=screen_class,
             scanned_at=dt,
             email_sent=False,
         )
@@ -71,6 +77,9 @@ def process_scan(
             geo_status=geo_status,
             token_valid=token_valid,
             cache_age_ms=cache_age_ms,
+            screen_score=screen_score,
+            screen_signals=screen_signals,
+            screen_class=screen_class,
         )
         log.email_sent = email_ok
 

@@ -6,12 +6,14 @@ import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loadLastFix } from "../lib/geolocation";
 import { enqueue, flushQueue, queueSize, clearQueue } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
+import { detectScreen } from "../lib/screenDetection";
 
 /**
- * 6 bước của một lần check-in:
+ * 7 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
  *  permission → đang kiểm tra quyền GPS (ngay khi bấm, < 200ms)
  *  scanning   → camera mở, GPS watch đã chạy từ lúc mount; nếu chưa fix hiện banner 30-90s
+ *  verifying  → QR đã đọc, capture 12 frame từ video để phân tích nghi vấn màn hình (~400ms)
  *  gps        → QR đã quét, đọc fix mới nhất từ watch (thường tức thời)
  *  sending    → đang gọi API (cold-start warning sau 5s)
  *  done       → thành công, hiện card kết quả
@@ -19,6 +21,10 @@ import { classifyApiError } from "../lib/apiError";
  * GPS watch (watchPosition) chạy liên tục từ lúc mount để giữ chip GPS warm.
  * Quan trọng cho thiết bị WiFi nội bộ không có internet → không có A-GPS,
  * cold-fix lần đầu 30–90s. Watch giúp các lần scan sau gần như tức thời.
+ *
+ * Screen detection chạy ngay sau khi QR đọc thành công, TRƯỚC khi unmount QRScanner
+ * (vì cần video element còn alive). Mode warning-only — không block check-in dù
+ * score cao; chỉ gửi lên server để backend cảnh báo qua email.
  */
 
 // Tuổi tối đa của fix từ watch để dùng cho 1 lần scan (ms).
@@ -34,6 +40,7 @@ const PERMISSION_LABEL = {
 
 const BUSY_LABEL = {
   permission: "🔍 Kiểm tra quyền GPS...",
+  verifying:  "🔍 Đang xác thực ảnh QR...",
   sending:    "⏳ Đang gửi dữ liệu...",
 };
 
@@ -206,7 +213,7 @@ export default function ScanPage() {
   // Acquire wake lock trong toàn bộ flow scan, release khi về idle/done.
   // Đảm bảo OS không suspend chip GPS khi user đang dùng app.
   useEffect(() => {
-    const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending";
+    const active = step === "permission" || step === "scanning" || step === "verifying" || step === "gps" || step === "sending";
     if (active) acquireWakeLock();
     else releaseWakeLock();
   }, [step, acquireWakeLock, releaseWakeLock]);
@@ -214,7 +221,7 @@ export default function ScanPage() {
   // Khi user back ra rồi quay lại tab, Wake Lock bị browser thu hồi → xin lại nếu đang scan.
   useEffect(() => {
     const onVisible = () => {
-      const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending";
+      const active = step === "permission" || step === "scanning" || step === "verifying" || step === "gps" || step === "sending";
       if (document.visibilityState === "visible" && active) {
         acquireWakeLock();
       }
@@ -256,11 +263,28 @@ export default function ScanPage() {
     setStep("idle");
   };
 
-  const handleScan = async (qrText) => {
+  const handleScan = async (qrText, opts = {}) => {
     const location = qrText.trim();
     if (!location) return;
 
     setResult(null);
+
+    // --- Screen detection: capture frames TRƯỚC khi QRScanner unmount ---
+    // Video element vẫn alive vì step ='verifying' giữ QRScanner mounted.
+    // Nếu detection lỗi/unavailable, vẫn cho qua (warning-only mode).
+    setStep("verifying");
+    let screenResult = null;
+    if (opts.video) {
+      try {
+        const r = await detectScreen(opts.video, null, { frameCount: 12, intervalMs: 30 });
+        // Chỉ gửi lên server nếu detection thực sự chạy được
+        if (!r.unavailable) {
+          screenResult = { score: r.score, signals: r.signals };
+        }
+      } catch (err) {
+        console.warn("[screenDetection]", err);
+      }
+    }
 
     // Lấy GPS — thứ tự ưu tiên:
     //  1. Fix gần nhất từ watchPosition (warm, < 30s)
@@ -305,6 +329,8 @@ export default function ScanPage() {
         accuracy: gpsData?.accuracy ?? null,
         geo_cached: gpsData?.cached || undefined,
         cache_age_ms: gpsData?.cache_age_ms,
+        screen_score: screenResult?.score ?? null,
+        screen_signals: screenResult?.signals ?? null,
       };
       enqueue(item);
       setPendingCount(queueSize());
@@ -323,7 +349,7 @@ export default function ScanPage() {
     const coldTimer = setTimeout(() => setColdStart(true), 8000);
 
     try {
-      const data = await postScan(location, getDeviceId(), gpsData, scannedAt);
+      const data = await postScan(location, getDeviceId(), gpsData, scannedAt, screenResult);
       setResult({ status: "ok", location, scanned_at: scannedAt, ...data });
       setStep("done");
     } catch (err) {
@@ -339,6 +365,8 @@ export default function ScanPage() {
           accuracy: gpsData?.accuracy ?? null,
           geo_cached: gpsData?.cached || undefined,
           cache_age_ms: gpsData?.cache_age_ms,
+          screen_score: screenResult?.score ?? null,
+          screen_signals: screenResult?.signals ?? null,
         };
         enqueue(item);
         setPendingCount(queueSize());
@@ -379,8 +407,9 @@ export default function ScanPage() {
   // Computed
   // ---------------------------------------------------------------------------
 
-  const isBusy = step === "permission" || step === "gps" || step === "sending";
+  const isBusy = step === "permission" || step === "verifying" || step === "gps" || step === "sending";
   const isScanning = step === "scanning";
+  const isVerifying = step === "verifying";
   const isDone = step === "done";
   const permInfo = gpsPermission ? PERMISSION_LABEL[gpsPermission] : null;
 
@@ -540,8 +569,8 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* Camera */}
-      {isScanning && (
+      {/* Camera — giữ mount khi đang verifying để screen detection còn truy cập video element */}
+      {(isScanning || isVerifying) && (
         <QRScanner onScan={handleScan} onError={handleScanError} />
       )}
 
@@ -594,6 +623,7 @@ const STEPS = [
   { key: "idle",       label: "Chờ" },
   { key: "permission", label: "GPS" },
   { key: "scanning",   label: "Scan" },
+  { key: "verifying",  label: "Xác thực" },
   { key: "gps",        label: "Vị trí" },
   { key: "sending",    label: "Gửi" },
   { key: "done",       label: "Xong" },
