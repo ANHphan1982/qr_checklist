@@ -55,7 +55,8 @@ def create_scan():
     #   ok           = GPS thật, đúng phạm vi trạm
     #   out_of_range = GPS thật, ngoài phạm vi (cảnh báo gian lận)
     #   cached       = vị trí từ localStorage (chip GPS fail tại điểm scan, dùng fix cũ)
-    #   no_gps       = không có GPS gì cả
+    #   unverified   = GPS thiết bị có, nhưng trạm chưa được config tọa độ → không xác nhận được phạm vi
+    #   no_gps       = thiết bị không gửi GPS gì cả
     geo_result = {"valid": True, "distance": None, "skipped": True}
     geo_status = "no_gps"
 
@@ -67,10 +68,12 @@ def create_scan():
             geo_status = "cached"
         elif not geo_result["valid"]:
             geo_status = "out_of_range"
-        elif not geo_result.get("skipped"):
-            # skipped=True nghĩa là trạm chưa có tọa độ trong config → không xác nhận được
+        elif geo_result.get("skipped"):
+            # Trạm chưa được config tọa độ — GPS có nhưng không thể xác nhận phạm vi.
+            # "unverified" phân biệt với "no_gps" (thiết bị không gửi GPS).
+            geo_status = "unverified"
+        else:
             geo_status = "ok"
-        # else: giữ nguyên geo_status = "no_gps"
 
     # --- Process (bao gồm rate limiting bên trong) ---
     try:

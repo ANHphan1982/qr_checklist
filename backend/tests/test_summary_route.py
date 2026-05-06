@@ -11,7 +11,7 @@ import config as cfg
 
 @pytest.fixture
 def app():
-    with patch.object(cfg, "ADMIN_SECRET", "test-secret"), \
+    with patch("routes.summary.ADMIN_SECRET", "test-secret"), \
          patch.object(cfg, "SessionLocal", None):
         from app import app as flask_app
         flask_app.config["TESTING"] = True

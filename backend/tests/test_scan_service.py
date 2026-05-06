@@ -37,9 +37,7 @@ class TestProcessScan:
 
     def test_invalid_scanned_at_returns_error(self):
         from services.scan_service import process_scan
-        with patch("services.scan_service.SessionLocal", return_value=_make_session()):
-            with patch("services.scan_service.send_scan_email", return_value=True):
-                result = process_scan(location="Cổng A", scanned_at="not-a-date")
+        result = process_scan(location="Cổng A", scanned_at="not-a-date")
         assert result["status"] == "error"
         assert "scanned_at" in result["message"]
 
@@ -47,7 +45,7 @@ class TestProcessScan:
         from services.scan_service import process_scan
         session = _make_session(scan_id=1)
         with patch("services.scan_service.SessionLocal", return_value=session):
-            with patch("services.scan_service.send_scan_email", return_value=True):
+            with patch("services.scan_service.send_scan_email", return_value=(True, "")):
                 result = process_scan(location="Cổng A")
         assert result["status"] == "ok"
         assert result["scan_id"] == 1
@@ -56,19 +54,21 @@ class TestProcessScan:
         from services.scan_service import process_scan
         session = _make_session(scan_id=2)
         with patch("services.scan_service.SessionLocal", return_value=session):
-            with patch("services.scan_service.send_scan_email", return_value=True) as mock_email:
+            with patch("services.scan_service.send_scan_email", return_value=(True, "")):
                 result = process_scan(location="Kho 1")
         assert result["status"] == "ok"
         assert "gửi email" in result["message"]
+        assert result["email_sent"] is True
 
     def test_email_sent_false_when_email_fails(self):
         from services.scan_service import process_scan
         session = _make_session(scan_id=3)
         with patch("services.scan_service.SessionLocal", return_value=session):
-            with patch("services.scan_service.send_scan_email", return_value=False):
+            with patch("services.scan_service.send_scan_email", return_value=(False, "timeout")):
                 result = process_scan(location="Kho 1")
         assert result["status"] == "ok"
-        assert "chưa gửi được" in result["message"]
+        assert "email lỗi" in result["message"]
+        assert result["email_sent"] is False
 
     def test_location_is_stripped(self):
         """Tên trạm có khoảng trắng thừa → được strip"""
@@ -83,7 +83,7 @@ class TestProcessScan:
         session.add.side_effect = capture_add
 
         with patch("services.scan_service.SessionLocal", return_value=session):
-            with patch("services.scan_service.send_scan_email", return_value=True):
+            with patch("services.scan_service.send_scan_email", return_value=(True, "")):
                 process_scan(location="  Cổng A  ")
 
         assert added_log is not None
@@ -102,7 +102,7 @@ class TestProcessScan:
         session.add.side_effect = capture_add
 
         with patch("services.scan_service.SessionLocal", return_value=session):
-            with patch("services.scan_service.send_scan_email", return_value=True):
+            with patch("services.scan_service.send_scan_email", return_value=(True, "")):
                 process_scan(
                     location="Cổng A",
                     lat=10.823456,
@@ -130,7 +130,7 @@ class TestProcessScan:
         session.add.side_effect = capture_add
 
         with patch("services.scan_service.SessionLocal", return_value=session):
-            with patch("services.scan_service.send_scan_email", return_value=True):
+            with patch("services.scan_service.send_scan_email", return_value=(True, "")):
                 process_scan(
                     location="Cổng A",
                     scanned_at="2026-04-14T08:30:00+07:00",

@@ -31,7 +31,7 @@ def _make_session(scan_id: int = 42) -> MagicMock:
 def client():
     session = _make_session(42)
     with patch("services.scan_service.SessionLocal", return_value=session):
-        with patch("services.scan_service.send_scan_email", return_value=True):
+        with patch("services.scan_service.send_scan_email", return_value=(True, "")):
             from app import app as flask_app
             flask_app.config["TESTING"] = True
             with flask_app.test_client() as c:
@@ -95,7 +95,7 @@ def test_scan_stores_correct_station_name(client):
     original_session.add.side_effect = capture_add
 
     with patch("services.scan_service.SessionLocal", return_value=original_session):
-        with patch("services.scan_service.send_scan_email", return_value=True):
+        with patch("services.scan_service.send_scan_email", return_value=(True, "")):
             from app import app as flask_app
             flask_app.config["TESTING"] = True
             with flask_app.test_client() as c:
@@ -165,7 +165,7 @@ def test_email_called_with_correct_station():
 
     def capture_email(**kwargs):
         email_calls.append(kwargs)
-        return True
+        return True, ""
 
     with patch("services.scan_service.SessionLocal", return_value=session):
         with patch("services.scan_service.send_scan_email", side_effect=capture_email):

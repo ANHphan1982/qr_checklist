@@ -12,7 +12,7 @@ class ScanLog(Base):
     lng          = Column(Float, nullable=True)
     gps_accuracy = Column(Float, nullable=True)   # độ chính xác GPS (mét)
     geo_distance = Column(Float, nullable=True)   # khoảng cách thực tế đến trạm (mét)
-    geo_status   = Column(String(20), default="no_gps")  # ok | out_of_range | no_gps
+    geo_status   = Column(String(20), default="no_gps")  # ok | out_of_range | unverified | cached | no_gps
     token_valid  = Column(Boolean, default=False)  # True = dùng Rotating QR hợp lệ
     scanned_at   = Column(DateTime(timezone=True), server_default=func.now())
     email_sent   = Column(Boolean, default=False)
