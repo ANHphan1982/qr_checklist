@@ -363,43 +363,80 @@ describe("analyzeUniformity", () => {
 // ---------------------------------------------------------------------------
 
 describe("analyzeMoire", () => {
-  it("score thấp (<0.3) cho ảnh tối (luminance thấp, không phải màn hình)", () => {
-    // Đổi từ 200→130: uniform 200 nay là screen-like (sáng + đồng đều)
-    // 130 = dim ambient light, dưới BRIGHTNESS_GATE → score=0
-    const img = uniformImage(64, 64, 130);
+  // --- Approach 3: Chromaticity CoV (camera-exposure-independent) ---
+  // Màn hình tự phát sáng: mỗi pixel render chính xác → R/G/B ratios rất đồng đều.
+  // Giấy thực địa: ánh sáng môi trường tạo biến thiên màu sắc không gian → CoV cao.
+
+  // R=G=B → chromaticity ratio 1/3 cho tất cả pixel → CoV=0 → score max
+  it("score cao (>0.5) cho màn hình dim camera-adjusted (R=G=B=140, below old BRIGHTNESS_GATE)", () => {
+    // Màn hình dim (brightness thấp hoặc camera over-expose): below old gate 160
+    // Old algo: BRIGHTNESS_GATE=160 → gated out → score=0  ← FAILS currently
+    // New chromaticity: R=G=B → CoV=0 → score=1.0
+    const img = uniformImage(64, 64, 140);
     const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
-    expect(result.score).toBeLessThan(0.3);
+    expect(result.score).toBeGreaterThan(0.5);
   });
 
-  // Calibration: camera auto-exposure khi quét màn hình đưa white về ~180-210.
-  // BRIGHTNESS_GATE phải ≤ 180 để không bỏ lọt screen scan thực tế.
-  it("score cao (>0.5) cho màn hình camera-adjusted (white ~190, CoV thấp)", () => {
-    // Mô phỏng màn hình sau auto-exposure: white modules ≈190, rất đồng đều
+  // Fresh yellow digital QR trên màn hình: uniform yellow → chromaticity CoV≈0
+  it("score cao (>0.5) cho màn hình yellow fresh digital (R=220,G=200,B=30, đồng nhất)", () => {
     const img = makeImage(64, 64, (x, y) => {
       const mod = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
-      // Thêm chút noise camera (±3) để gần thực tế
+      return mod ? { r: 5, g: 5, b: 5 } : { r: 220, g: 200, b: 30 };
+    });
+    const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
+    expect(result.score).toBeGreaterThan(0.5);
+  });
+
+  // Màn hình camera-adjusted gray-white (noise ±3): chromaCoV≈0.005 → score high
+  it("score cao (>0.5) cho màn hình camera-adjusted (white ~190, noise camera ±3)", () => {
+    const img = makeImage(64, 64, (x, y) => {
+      const mod = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
       const noise = ((x * 13 + y * 7) % 7) - 3;
       return mod ? 5 : 190 + noise;
     });
     const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
-    expect(result.score).toBeGreaterThan(0.5); // currently fails — brightness gate too high
+    expect(result.score).toBeGreaterThan(0.5);
   });
 
-  // Màn hình sáng tốt (white ≥240) vẫn phải detect được
+  // Màn hình sáng tốt (white ≥240): chromaCoV=0 → score=1.0
   it("score cao (>0.5) cho màn hình LCD sáng (white ≥240, đồng đều tuyệt đối)", () => {
     const img = uniformImage(64, 64, 240);
     const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
     expect(result.score).toBeGreaterThan(0.5);
   });
 
-  // QR giấy dim (white ~150) phải trả về thấp
-  it("score thấp (<0.3) cho QR giấy dim (vùng trắng ~150, ánh sáng yếu)", () => {
+  // Biến thiên màu không gian (warm-cool gradient) → chromaCoV cao → thấp
+  // Mô phỏng ánh sáng môi trường không đồng đều: ấm bên trái, lạnh bên phải
+  it("score thấp (<0.2) cho biến thiên màu không gian warm-cool (chromaCoV cao)", () => {
+    // Current algo: luminance CoV nhỏ (L chỉ thay đổi ±11) → score≈0.68 ← FAILS
+    // New chromaticity: rNorm/bNorm thay đổi lớn → chromaCoV≈0.13 → score=0
     const img = makeImage(64, 64, (x, y) => {
-      const mod = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
-      return mod ? 0 : 150;
+      const t = x / 63;
+      return {
+        r: Math.round(160 + t * 60),  // 160 → 220 (ấm dần)
+        g: 160,
+        b: Math.round(160 - t * 60),  // 160 → 100 (mát dần)
+      };
     });
     const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
-    expect(result.score).toBeLessThan(0.3);
+    expect(result.score).toBeLessThan(0.2);
+  });
+
+  // Giấy thực địa với biến thiên màu từ ánh sáng môi trường
+  it("score thấp (<0.2) cho giấy dim với biến thiên màu tự nhiên (ambient color shift)", () => {
+    // Paper in field: color temperature varies spatially
+    const img = makeImage(64, 64, (x, y) => {
+      const mod = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
+      if (mod) return { r: 3, g: 3, b: 3 };
+      const t = x / 63;
+      return {
+        r: Math.round(150 + t * 40),
+        g: 140,
+        b: Math.round(130 - t * 30),
+      };
+    });
+    const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
+    expect(result.score).toBeLessThan(0.2);
   });
 
   it("trả về object với fields {score, energyRatio}", () => {
@@ -439,17 +476,17 @@ describe("analyzeMoire", () => {
 // ---------------------------------------------------------------------------
 
 describe("combineScores", () => {
-  // P1 rebalance: flicker giảm (không tin cậy với modern monitors),
-  // moire tăng (algorithm mới đáng tin hơn), uniformity tăng.
-  it("SCORE_WEIGHTS: flicker=0.3, uniformity=0.4, moire=0.3 (P1 rebalance)", () => {
-    expect(SCORE_WEIGHTS.flicker).toBeCloseTo(0.3, 2);
+  // Approach 3 rebalance: chromaticity CoV (moire) đáng tin hơn → tăng weight.
+  // Flicker tiếp tục giảm (modern monitors không flicker visible).
+  it("SCORE_WEIGHTS: flicker=0.2, uniformity=0.4, moire=0.4 (Approach-3 rebalance)", () => {
+    expect(SCORE_WEIGHTS.flicker).toBeCloseTo(0.2, 2);
     expect(SCORE_WEIGHTS.uniformity).toBeCloseTo(0.4, 2);
-    expect(SCORE_WEIGHTS.moire).toBeCloseTo(0.3, 2);
+    expect(SCORE_WEIGHTS.moire).toBeCloseTo(0.4, 2);
     const sum = SCORE_WEIGHTS.flicker + SCORE_WEIGHTS.uniformity + SCORE_WEIGHTS.moire;
     expect(sum).toBeCloseTo(1.0, 2);
   });
 
-  it("weighted sum = 0.3*F + 0.4*U + 0.3*M — tổng vẫn 1.0 khi all=1", () => {
+  it("weighted sum = 0.2*F + 0.4*U + 0.4*M — tổng vẫn 1.0 khi all=1", () => {
     const final = combineScores({ flicker: 1.0, uniformity: 1.0, moire: 1.0 });
     expect(final).toBeCloseTo(1.0, 3);
   });

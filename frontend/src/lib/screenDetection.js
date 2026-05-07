@@ -32,9 +32,9 @@
 // ---------------------------------------------------------------------------
 
 export const SCORE_WEIGHTS = Object.freeze({
-  flicker:     0.3,  // Modern monitors ít flicker visible → giảm weight
-  uniformity:  0.4,  // White pixel uniformity — reliable nhất sau P2 fix
-  moire:       0.3,  // White Screen Indicator (thay FFT moiré) — tăng weight
+  flicker:     0.2,  // Modern monitors không flicker detectable → weight nhỏ nhất
+  uniformity:  0.4,  // Luminance uniformity của white pixels — reliable
+  moire:       0.4,  // Chromaticity CoV (Approach 3) — camera-exposure-independent
 });
 
 export const CLASSIFICATION_THRESHOLDS = Object.freeze({
@@ -279,27 +279,33 @@ export function analyzeUniformity(img, qrBox) {
 /**
  * @returns {{score: number, energyRatio: number}}
  *
- * White Screen Indicator — thay thế FFT moiré vốn bị nhiễu bởi pattern QR.
+ * Approach 3: Chromaticity CoV — camera-exposure-independent screen detection.
  *
- * Nguyên lý: màn hình LCD/OLED tự phát sáng → vùng trắng rất đồng đều (CoV thấp).
- * Giấy in phản xạ ánh sáng môi trường → có biến thiên tự nhiên (paper grain, shadow).
+ * Thay vì đo luminance tuyệt đối (bị camera auto-exposure phá), đo tỉ lệ:
+ *   rNorm = R / (R + G + B + 1)   ←  tự chuẩn hóa, exposure-independent
+ *   bNorm = B / (R + G + B + 1)
  *
- * Gate: mean white < 160 → quá tối để là màn hình → score = 0.
- * Calibration: camera auto-exposure đưa screen white về ~180-210, không phải 215+.
- * Dùng gate thay vì multiplicative để không bỏ lọt real screen scans (score = 0).
+ * Màn hình tự phát sáng: mỗi pixel render chính xác → R/G/B ratios cực kỳ
+ * đồng đều (kể cả màn hình dim hoặc màn hình yellow). Screen dim (R=G=B=140)
+ * cũng detect được — không cần brightness gate.
+ * Giấy thực địa: ánh sáng môi trường biến thiên không gian (warm/cool shifts,
+ * shadow, độ cũ nhãn) → tỉ lệ R/G/B không đồng đều giữa các pixel.
  *
- * Primary signal: CoV của white pixels (screen < 0.06, paper 0.05-0.15).
- * False positive đã biết: giấy laminated sáng bóng dưới đèn LED mạnh (CoV thấp).
- * energyRatio: repurposed → covWhite (để báo cáo, field name giữ nguyên).
+ * Calibrated từ data thực tế:
+ *   Fresh digital QR on screen: chromaCoV ≈ 0.01-0.04 → score 0.5-0.9
+ *   Real paper (ambient variation): chromaCoV ≈ 0.06-0.37 → score 0
+ *
+ * CHROMA_COV_MAX = 0.08 — đủ chặt để bắt screen, đủ rộng cho camera noise.
+ * False positive đã biết: giấy laminated in đều dưới đèn LED ổn định.
+ * energyRatio: repurposed → chromaCoV (để báo cáo, field name giữ nguyên).
  */
 export function analyzeMoire(img, qrBox) {
   const empty = { score: 0, energyRatio: 0 };
   if (!qrBox || qrBox.w <= 0 || qrBox.h <= 0) return empty;
   if (!img || !img.data) return empty;
 
-  const WHITE_THRESHOLD = 100; // pixel sáng hơn threshold → coi là "white module"
-  const BRIGHTNESS_GATE = 160; // dưới mức này → quá tối để là màn hình (gated out)
-  const COV_MAX = 0.06;        // screen whites: CoV < 0.06 (bao gồm camera noise) (rất đồng đều)
+  const LUM_THRESHOLD  = 50;   // loại pixel tối (black QR modules, near-zero)
+  const CHROMA_COV_MAX = 0.08; // calibrated: screen ≤ 0.04, real paper ≥ 0.06+
 
   const x0 = Math.max(0, Math.floor(qrBox.x));
   const y0 = Math.max(0, Math.floor(qrBox.y));
@@ -307,34 +313,38 @@ export function analyzeMoire(img, qrBox) {
   const y1 = Math.min(img.height, Math.floor(qrBox.y + qrBox.h));
   if (x1 <= x0 || y1 <= y0) return empty;
 
-  // Welford's single-pass stats trên white pixels
-  let count = 0, mean = 0, m2 = 0;
+  // Welford's single-pass cho rNorm VÀ bNorm đồng thời (O(N), không cần lưu array)
+  let nC = 0;
+  let rMean = 0, rM2 = 0;
+  let bMean = 0, bM2 = 0;
   const { data, width } = img;
+
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       const off = (y * width + x) * 4;
-      const L = pixelLuminance(data[off], data[off + 1], data[off + 2]);
-      if (L < WHITE_THRESHOLD) continue;
-      count++;
-      const delta = L - mean;
-      mean += delta / count;
-      m2 += delta * (L - mean);
+      const r = data[off], g = data[off + 1], b = data[off + 2];
+      const L = pixelLuminance(r, g, b);
+      if (L < LUM_THRESHOLD) continue;
+      const S = r + g + b + 1; // +1 để tránh div-by-zero
+      const rN = r / S;
+      const bN = b / S;
+      nC++;
+      const dr = rN - rMean; rMean += dr / nC; rM2 += dr * (rN - rMean);
+      const db = bN - bMean; bMean += db / nC; bM2 += db * (bN - bMean);
     }
   }
 
-  // Không đủ white pixels → dim environment → không thể là màn hình
-  const minWhiteCount = Math.floor((x1 - x0) * (y1 - y0) * 0.05);
-  if (count < Math.max(4, minWhiteCount)) return { score: 0, energyRatio: 0 };
+  const minCount = Math.max(4, Math.floor((x1 - x0) * (y1 - y0) * 0.05));
+  if (nC < minCount) return empty;
 
-  const std = Math.sqrt(m2 / count);
-  const covWhite = mean > 0 ? std / mean : 0;
+  const rStd = Math.sqrt(rM2 / nC);
+  const bStd = Math.sqrt(bM2 / nC);
+  const covR = rMean > 0 ? rStd / rMean : 0;
+  const covB = bMean > 0 ? bStd / bMean : 0;
+  const chromaCoV = Math.max(covR, covB);
 
-  // Gate: quá tối → không thể là màn hình (paper under dim/ambient light)
-  if (mean < BRIGHTNESS_GATE) return { score: 0, energyRatio: +covWhite.toFixed(3) };
-
-  // Primary signal: CoV uniformity (screen = very uniform white, CoV < 0.06)
-  const covScore = clamp(1 - covWhite / COV_MAX, 0, 1);
-  return { score: +covScore.toFixed(3), energyRatio: +covWhite.toFixed(3) };
+  const score = clamp(1 - chromaCoV / CHROMA_COV_MAX, 0, 1);
+  return { score: +score.toFixed(3), energyRatio: +chromaCoV.toFixed(3) };
 }
 
 // ---------------------------------------------------------------------------
