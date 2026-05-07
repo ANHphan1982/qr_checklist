@@ -25,6 +25,23 @@ test.describe("Online scan flow", () => {
     await expect(sp.offlineBanner).toHaveCount(0);
   });
 
+  // ── GPS banner ────────────────────────────────────────────────────────
+
+  test("GPS ready state does NOT show duplicate banner when scanner is open", async ({ page }) => {
+    const sp = new ScanPagePOM(page);
+    await sp.goto();
+
+    await sp.startButton.click();
+    await expect(sp.qrReader).toBeVisible();
+
+    // Wait briefly for GPS watch to resolve to "ready"
+    await page.waitForTimeout(1500);
+
+    // "GPS đã sẵn sàng" (PERMISSION_LABEL.granted) may appear — that is correct
+    // "GPS đã bắt được tín hiệu" must NOT appear — it was the duplicate removed banner
+    await expect(page.locator("text=GPS đã bắt được tín hiệu")).toHaveCount(0);
+  });
+
   // ── Scanner open / close ───────────────────────────────────────────────
 
   test("start button opens QR scanner and stop button", async ({ page }) => {
