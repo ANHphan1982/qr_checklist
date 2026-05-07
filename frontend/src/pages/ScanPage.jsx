@@ -553,12 +553,6 @@ export default function ScanPage() {
           </span>
         </div>
       )}
-      {isScanning && gpsWatchState === "ready" && (
-        <div className="rounded-xl border px-4 py-3 text-base flex items-center gap-2 bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300">
-          <span>✅</span>
-          <span>GPS đã bắt được tín hiệu — sẵn sàng quét QR</span>
-        </div>
-      )}
       {isScanning && gpsWatchState === "failed" && (
         <div className="rounded-xl border px-4 py-3 text-base flex items-start gap-2 bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300">
           <span className="mt-0.5">⚠️</span>
