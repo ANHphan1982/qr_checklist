@@ -20,6 +20,9 @@ HIGH_RISK_THRESHOLD = 0.8
 
 _VALID_CLASSES = {"clean", "suspicious", "high_risk"}
 _KNOWN_SIGNAL_KEYS = ("flicker", "uniformity", "moire")
+_MOTION_FLOAT_KEYS = ("motion_score",)
+_MOTION_STRING_KEYS = ("motion_class",)
+_VALID_MOTION_CLASSES = {"clean", "suspicious", "high_risk"}
 
 
 def _coerce_score(score: Any) -> float | None:
@@ -71,7 +74,7 @@ def sanitize_screen_signals(signals: Any) -> dict | None:
     """
     Validate + clamp dict signals từ client.
     Trả None nếu input không phải dict (client chưa gửi feature này).
-    Trả dict có đúng 3 key flicker/uniformity/moire, mỗi value clamp [0,1].
+    Chấp nhận: flicker/uniformity/moire (float [0,1]) + motion_score (float) + motion_class (str).
     """
     if signals is None or not isinstance(signals, dict):
         return None
@@ -86,6 +89,19 @@ def sanitize_screen_signals(signals: Any) -> dict | None:
         if math.isnan(f) or math.isinf(f):
             f = 0.0
         out[key] = max(0.0, min(1.0, f))
+
+    for key in _MOTION_FLOAT_KEYS:
+        v = signals.get(key)
+        if v is not None:
+            coerced = _coerce_score(v)
+            if coerced is not None:
+                out[key] = coerced
+
+    for key in _MOTION_STRING_KEYS:
+        v = signals.get(key)
+        if isinstance(v, str) and v in _VALID_MOTION_CLASSES:
+            out[key] = v
+
     return out
 
 

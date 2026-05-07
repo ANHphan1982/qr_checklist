@@ -7,6 +7,7 @@ import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loa
 import { enqueue, flushQueue, queueSize, clearQueue } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
 import { detectScreen } from "../lib/screenDetection";
+import { analyzeMotionChallenge } from "../lib/motionChallenge";
 
 /**
  * 7 bước của một lần check-in:
@@ -276,13 +277,21 @@ export default function ScanPage() {
     let screenResult = null;
     if (opts.video) {
       try {
-        const r = await detectScreen(opts.video, null, { frameCount: 12, intervalMs: 30 });
-        // Chỉ gửi lên server nếu detection thực sự chạy được
-        if (!r.unavailable) {
-          screenResult = { score: r.score, signals: r.signals };
+        // Chạy song song: screen detection (flicker/uniformity/moiré) + motion challenge (parallax)
+        const [screenR, motionR] = await Promise.all([
+          detectScreen(opts.video, null, { frameCount: 12, intervalMs: 30 }),
+          analyzeMotionChallenge(opts.video, null, { frameCount: 10, intervalMs: 50 }),
+        ]);
+        if (!screenR.unavailable) {
+          const signals = { ...screenR.signals };
+          if (!motionR.unavailable) {
+            signals.motion_score = motionR.score;
+            signals.motion_class = motionR.classification;
+          }
+          screenResult = { score: screenR.score, signals };
         }
       } catch (err) {
-        console.warn("[screenDetection]", err);
+        console.warn("[detection]", err);
       }
     }
 

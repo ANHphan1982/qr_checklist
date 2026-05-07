@@ -22,6 +22,12 @@ const SCREEN_CLASS_LABEL = {
   high_risk:  "Nguy cơ cao",
 };
 
+const MOTION_CLASS_LABEL = {
+  clean:      "Bình thường",
+  suspicious: "Nghi vấn (phẳng)",
+  high_risk:  "Nguy cơ cao (phẳng)",
+};
+
 function roundOrEmpty(value, decimals = 0) {
   if (value == null || Number.isNaN(value)) return "";
   const factor = 10 ** decimals;
@@ -80,6 +86,8 @@ export function buildHistoryRows(logs) {
       "Flicker (%)":                     pctOrEmpty(sig.flicker),
       "Uniformity (%)":                  pctOrEmpty(sig.uniformity),
       "Moiré (%)":                       pctOrEmpty(sig.moire),
+      "Motion Score (%)":                pctOrEmpty(sig.motion_score),
+      "Motion Class":                    MOTION_CLASS_LABEL[sig.motion_class] || "",
       "Email":                           log.email_sent ? "Đã gửi" : "Chưa gửi",
     };
   });
