@@ -287,6 +287,9 @@ export default function ScanPage() {
           if (!motionR.unavailable) {
             signals.motion_score = motionR.score;
             signals.motion_class = motionR.classification;
+          } else {
+            // Ghi "unavailable" để admin biết challenge đã chạy nhưng camera quá yên
+            signals.motion_class = "unavailable";
           }
           screenResult = { score: screenR.score, signals };
         }

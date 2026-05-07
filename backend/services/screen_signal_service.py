@@ -22,7 +22,7 @@ _VALID_CLASSES = {"clean", "suspicious", "high_risk"}
 _KNOWN_SIGNAL_KEYS = ("flicker", "uniformity", "moire")
 _MOTION_FLOAT_KEYS = ("motion_score",)
 _MOTION_STRING_KEYS = ("motion_class",)
-_VALID_MOTION_CLASSES = {"clean", "suspicious", "high_risk"}
+_VALID_MOTION_CLASSES = {"clean", "suspicious", "high_risk", "unavailable"}
 
 
 def _coerce_score(score: Any) -> float | None:

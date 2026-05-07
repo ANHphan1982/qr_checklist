@@ -23,9 +23,10 @@ const SCREEN_CLASS_LABEL = {
 };
 
 const MOTION_CLASS_LABEL = {
-  clean:      "Bình thường",
-  suspicious: "Nghi vấn (phẳng)",
-  high_risk:  "Nguy cơ cao (phẳng)",
+  clean:       "Bình thường",
+  suspicious:  "Nghi vấn (phẳng)",
+  high_risk:   "Nguy cơ cao (phẳng)",
+  unavailable: "Camera quá yên",
 };
 
 function roundOrEmpty(value, decimals = 0) {

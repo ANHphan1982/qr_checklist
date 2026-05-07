@@ -34,10 +34,10 @@ export const MOTION_SCORE_THRESHOLDS = Object.freeze({
 export const PARALLAX_THRESHOLD_CLEAN = 0.3;
 
 /** Background motion cần ≥ threshold này mới tính parallax cho cặp frame đó. */
-export const MIN_MOTION_PX = 1.5;
+export const MIN_MOTION_PX = 1.0;
 
 /** Cần ít nhất số cặp frame hợp lệ này mới trả kết quả (không unavailable). */
-export const MIN_VALID_PAIRS = 2;
+export const MIN_VALID_PAIRS = 1;
 
 // ---------------------------------------------------------------------------
 // Private defaults
