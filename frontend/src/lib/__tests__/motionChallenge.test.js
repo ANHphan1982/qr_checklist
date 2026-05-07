@@ -374,7 +374,9 @@ describe("analyzeMotionChallenge", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns suspicious when camera is too still (insufficient_motion)", async () => {
+  // P0 FIX: camera đứng yên → "không đo được", KHÔNG phải "nghi vấn".
+  // QR dán trên thiết bị ngoài công trường: người quét giữ yên camera → false positive.
+  it("insufficient_motion: score=0, classification=clean — không phạt camera đứng yên", async () => {
     const W = 80, H = 80;
     const staticImage = makeRandomImage(W, H, 42);
     const mockCtx = {
@@ -391,8 +393,8 @@ describe("analyzeMotionChallenge", () => {
     });
 
     expect(result.unavailable).toBe(true);
-    expect(result.score).toBe(0.5);
-    expect(result.classification).toBe("suspicious");
+    expect(result.score).toBe(0);             // không phạt
+    expect(result.classification).toBe("clean"); // inconclusive → neutral
 
     vi.unstubAllGlobals();
   });

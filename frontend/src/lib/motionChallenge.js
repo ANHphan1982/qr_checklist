@@ -314,17 +314,17 @@ export async function analyzeMotionChallenge(video, qrBox = null, opts = {}) {
   const result = computeParallaxSignal(frames, qrBox);
 
   if (result.unavailable) {
-    if (result.reason === "insufficient_motion") {
-      return {
-        score: 0.5,
-        classification: "suspicious",
-        validPairs: 0,
-        meanRelativeParallax: 0,
-        unavailable: true,
-        frameCount: frames.length,
-      };
-    }
-    return { ...fail(), frameCount: frames.length };
+    // "Camera không di chuyển đủ" ≠ bằng chứng gian lận.
+    // QR dán trên thiết bị ngoài công trường: người quét giữ yên camera → không phạt.
+    // Trả score=0 (inconclusive / clean) thay vì 0.5 (suspicious).
+    return {
+      score: 0,
+      classification: "clean",
+      validPairs: 0,
+      meanRelativeParallax: 0,
+      unavailable: true,
+      frameCount: frames.length,
+    };
   }
 
   return {

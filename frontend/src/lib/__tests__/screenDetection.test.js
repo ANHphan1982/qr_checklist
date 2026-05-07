@@ -295,6 +295,32 @@ describe("analyzeUniformity", () => {
     expect(result).toHaveProperty("meanInside");
   });
 
+  // P2: Uniformity đo vùng TRẮNG (L > 130) thay vì toàn bộ QR box.
+  // Màn hình: white pixels RẤT sáng (≥215) và đồng đều → covInside thấp + meanInside cao
+  it("P2: covInside thấp (<0.02) cho QR-like image có white=240 (screen-bright)", () => {
+    const img = qrLikeImage(64, 64); // white=240 (simulates screen luminance)
+    const result = analyzeUniformity(img, { x: 0, y: 0, w: 64, h: 64 });
+    // Chỉ đo white pixels → tất cả đều là 240 → covInside ≈ 0
+    expect(result.covInside).toBeLessThan(0.02);
+  });
+
+  // P2: meanInside cao (≥215) cho màn hình → có brightnessScore
+  it("P2: meanInside ≥ 200 cho vùng trắng sáng (mô phỏng màn hình LCD)", () => {
+    const img = uniformImage(64, 64, 240);
+    const result = analyzeUniformity(img, { x: 16, y: 16, w: 32, h: 32 });
+    expect(result.meanInside).toBeGreaterThanOrEqual(200);
+  });
+
+  // P2: QR giấy ánh sáng thấp → white pixels < 190 → score thấp ngay cả khi đồng đều
+  it("P2: score thấp (<0.2) khi white pixels tối (ánh sáng dim, giấy thực địa)", () => {
+    const img = makeImage(64, 64, (x, y) => {
+      const mod = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
+      return mod ? 0 : 150; // dim ambient light paper
+    });
+    const result = analyzeUniformity(img, { x: 0, y: 0, w: 64, h: 64 });
+    expect(result.score).toBeLessThan(0.2);
+  });
+
   it("score nằm trong [0, 1] cho mọi input hợp lệ", () => {
     const inputs = [
       uniformImage(64, 64, 0),
@@ -332,13 +358,21 @@ describe("analyzeMoire", () => {
     expect(result.score).toBeLessThan(0.3);
   });
 
-  it("score cao (>0.4) cho ảnh có pattern sóng cao tần (mô phỏng moiré)", () => {
-    // Tạo pattern sóng vuông góc tần số trung — đặc trưng moiré
-    const img = makeImage(64, 64, (x, y) =>
-      Math.round(127 + 100 * Math.sin(x * 0.6) * Math.cos(y * 0.6))
-    );
+  // P1: màn hình tự phát sáng → vùng trắng RẤT sáng (≥240) và đồng đều
+  it("score cao (>0.4) cho màn hình LCD (vùng trắng sáng ≥240, đồng đều tuyệt đối)", () => {
+    const img = uniformImage(64, 64, 240);
     const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
     expect(result.score).toBeGreaterThan(0.4);
+  });
+
+  // P1: QR giấy trong điều kiện ánh sáng bình thường → vùng trắng <215, score thấp
+  it("score thấp (<0.3) cho QR giấy (vùng trắng ~150, ánh sáng môi trường)", () => {
+    const img = makeImage(64, 64, (x, y) => {
+      const mod = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
+      return mod ? 0 : 150; // ambient light reflection, typical paper
+    });
+    const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
+    expect(result.score).toBeLessThan(0.3);
   });
 
   it("trả về object với fields {score, energyRatio}", () => {
@@ -378,16 +412,17 @@ describe("analyzeMoire", () => {
 // ---------------------------------------------------------------------------
 
 describe("combineScores", () => {
-  it("dùng SCORE_WEIGHTS public constants", () => {
-    expect(SCORE_WEIGHTS.flicker).toBeCloseTo(0.5, 2);
-    expect(SCORE_WEIGHTS.uniformity).toBeCloseTo(0.3, 2);
-    expect(SCORE_WEIGHTS.moire).toBeCloseTo(0.2, 2);
-    // Tổng phải bằng 1
+  // P1 rebalance: flicker giảm (không tin cậy với modern monitors),
+  // moire tăng (algorithm mới đáng tin hơn), uniformity tăng.
+  it("SCORE_WEIGHTS: flicker=0.3, uniformity=0.4, moire=0.3 (P1 rebalance)", () => {
+    expect(SCORE_WEIGHTS.flicker).toBeCloseTo(0.3, 2);
+    expect(SCORE_WEIGHTS.uniformity).toBeCloseTo(0.4, 2);
+    expect(SCORE_WEIGHTS.moire).toBeCloseTo(0.3, 2);
     const sum = SCORE_WEIGHTS.flicker + SCORE_WEIGHTS.uniformity + SCORE_WEIGHTS.moire;
     expect(sum).toBeCloseTo(1.0, 2);
   });
 
-  it("weighted sum = 0.5*F + 0.3*U + 0.2*M", () => {
+  it("weighted sum = 0.3*F + 0.4*U + 0.3*M — tổng vẫn 1.0 khi all=1", () => {
     const final = combineScores({ flicker: 1.0, uniformity: 1.0, moire: 1.0 });
     expect(final).toBeCloseTo(1.0, 3);
   });

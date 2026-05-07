@@ -284,10 +284,12 @@ export default function ScanPage() {
         ]);
         if (!screenR.unavailable) {
           const signals = { ...screenR.signals };
-          if (!motionR.unavailable || motionR.score > 0) {
+          if (!motionR.unavailable) {
+            // Camera di chuyển đủ → có kết quả parallax thực
             signals.motion_score = motionR.score;
             signals.motion_class = motionR.classification;
           } else {
+            // Không đo được parallax (camera yên, video lỗi) → neutral, không lưu score
             signals.motion_class = "unavailable";
           }
           screenResult = { score: screenR.score, signals };
