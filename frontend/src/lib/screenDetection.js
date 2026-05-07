@@ -196,23 +196,22 @@ export function analyzeFlicker(luminances, fps) {
  * P2 fix: đo CHỈ các pixel TRẮNG (L > WHITE_THRESHOLD) bên trong QR box thay vì
  * toàn bộ vùng (vốn bao gồm module đen → CoV luôn cao vì binary pattern).
  *
- * Ba tín hiệu:
- *   - flatScore:       CoV của white pixels thấp → vùng trắng đồng đều (màn hình tự phát sáng)
- *   - brightnessScore: mean của white pixels ≥ 215 → độ sáng cao (tự phát sáng, không phản xạ)
- *   - ratioScore:      outsideStd / insideStd cao → bên ngoài nhiều ánh sáng/shadow hơn
- *                      trong khi QR vẫn phẳng (đèn nền màn hình át đi)
+ * Hai tín hiệu:
+ *   - flatScore (primary): CoV của white pixels thấp → vùng trắng đồng đều
+ *   - ratioScore (bonus):  outsideStd / insideStd cao → màn hình làm nền phẳng hơn môi trường
  *
- * score = 0.5 * flatScore + 0.3 * brightnessScore + 0.2 * ratioScore
+ * Gate: wMean < BRIGHTNESS_GATE → quá tối để là màn hình → score = 0.
+ * Calibration: camera auto-exposure khi quét màn hình đưa white về ~180-210,
+ * không phải 215+. Ngưỡng 160 để không bỏ lọt real screen scans.
  */
 export function analyzeUniformity(img, qrBox) {
   const empty = { score: 0, covInside: 0, stdRatio: 0, meanInside: 0 };
   if (!qrBox || qrBox.w <= 0 || qrBox.h <= 0) return empty;
   if (!img || !img.data) return empty;
 
-  const WHITE_THRESHOLD = 130; // pixel sáng hơn → "white module"
-  const BRIGHTNESS_MIN  = 215; // self-illuminated screens: mean ≥ 215
-  const BRIGHTNESS_RANGE = 40;
-  const COV_FLAT_MAX    = 0.04; // screen whites: CoV < 0.04
+  const WHITE_THRESHOLD = 100; // pixel sáng hơn → "white module" (rộng hơn để bắt 160-200)
+  const BRIGHTNESS_GATE = 160; // dưới mức này → dim, không thể là màn hình
+  const COV_FLAT_MAX    = 0.06; // screen whites: CoV < 0.06 (bao gồm camera noise ~±3)
 
   // --- Welford's trên white pixels inside QR box ---
   const x0 = Math.max(0, Math.floor(qrBox.x));
@@ -265,15 +264,15 @@ export function analyzeUniformity(img, qrBox) {
 
   const stdRatio = outsideStd / Math.max(wStd, 1.0);
 
-  const flatScore       = clamp(1 - covInside / COV_FLAT_MAX, 0, 1);
-  const brightnessScore = clamp((wMean - BRIGHTNESS_MIN) / BRIGHTNESS_RANGE, 0, 1);
-  const ratioScore      = clamp((stdRatio - 1) / 3, 0, 1);
+  // Gate: quá tối → không thể là màn hình (paper under dim light)
+  if (wMean < BRIGHTNESS_GATE) {
+    return { score: 0, covInside, stdRatio, meanInside: wMean };
+  }
 
-  // Multiplicative: cần ĐỒng thời đồng đều VÀ sáng → màn hình tự phát sáng.
-  // Giấy tối (wMean < 215) → brightnessScore = 0 → score = 0, bất kể CoV.
-  const base  = flatScore * brightnessScore;
-  // ratioScore (ring contrast) là bonus nhỏ, không thay đổi kết luận chính.
-  const score = clamp(base + 0.15 * ratioScore * base, 0, 1);
+  const flatScore  = clamp(1 - covInside / COV_FLAT_MAX, 0, 1);
+  const ratioScore = clamp((stdRatio - 1) / 3, 0, 1);
+  // flatScore là signal chính; ratioScore là bonus nhỏ khi môi trường ngoài phức tạp hơn QR
+  const score = clamp(flatScore + 0.12 * ratioScore * flatScore, 0, 1);
   return { score: +score.toFixed(3), covInside, stdRatio, meanInside: wMean };
 }
 
@@ -282,17 +281,15 @@ export function analyzeUniformity(img, qrBox) {
  *
  * White Screen Indicator — thay thế FFT moiré vốn bị nhiễu bởi pattern QR.
  *
- * Nguyên lý: màn hình LCD/OLED tự phát sáng → vùng trắng trong QR RẤT sáng
- * (luminance ≥ 215) VÀ đồng đều (CoV thấp). Giấy in phản xạ ánh sáng môi
- * trường → luminance thấp hơn (thường 80-180) và có biến thiên tự nhiên.
+ * Nguyên lý: màn hình LCD/OLED tự phát sáng → vùng trắng rất đồng đều (CoV thấp).
+ * Giấy in phản xạ ánh sáng môi trường → có biến thiên tự nhiên (paper grain, shadow).
  *
- * Logic: score = covScore × brightnessScore (multiplicative → cần CẢ HAI điều kiện)
- *   - covScore:        CoV của white pixels ≤ 0.04 → score 1.0 (rất đồng đều)
- *   - brightnessScore: mean white ≥ 215 → score 1.0 (tự phát sáng)
+ * Gate: mean white < 160 → quá tối để là màn hình → score = 0.
+ * Calibration: camera auto-exposure đưa screen white về ~180-210, không phải 215+.
+ * Dùng gate thay vì multiplicative để không bỏ lọt real screen scans (score = 0).
  *
- * False positive đã biết: giấy QR laminated sáng bóng dưới đèn LED mạnh.
- * Đây là trade-off chấp nhận được (warning-only mode, không block check-in).
- *
+ * Primary signal: CoV của white pixels (screen < 0.06, paper 0.05-0.15).
+ * False positive đã biết: giấy laminated sáng bóng dưới đèn LED mạnh (CoV thấp).
  * energyRatio: repurposed → covWhite (để báo cáo, field name giữ nguyên).
  */
 export function analyzeMoire(img, qrBox) {
@@ -300,10 +297,9 @@ export function analyzeMoire(img, qrBox) {
   if (!qrBox || qrBox.w <= 0 || qrBox.h <= 0) return empty;
   if (!img || !img.data) return empty;
 
-  const WHITE_THRESHOLD = 130; // pixel sáng hơn threshold → coi là "white module"
-  const BRIGHTNESS_MIN  = 215; // screen whites typically ≥ 215 (self-illuminated)
-  const BRIGHTNESS_RANGE = 40; // 215-255 = full score range
-  const COV_MAX = 0.04;        // screen whites: CoV < 0.04 (rất đồng đều)
+  const WHITE_THRESHOLD = 100; // pixel sáng hơn threshold → coi là "white module"
+  const BRIGHTNESS_GATE = 160; // dưới mức này → quá tối để là màn hình (gated out)
+  const COV_MAX = 0.06;        // screen whites: CoV < 0.06 (bao gồm camera noise) (rất đồng đều)
 
   const x0 = Math.max(0, Math.floor(qrBox.x));
   const y0 = Math.max(0, Math.floor(qrBox.y));
@@ -333,12 +329,12 @@ export function analyzeMoire(img, qrBox) {
   const std = Math.sqrt(m2 / count);
   const covWhite = mean > 0 ? std / mean : 0;
 
-  const covScore        = clamp(1 - covWhite / COV_MAX, 0, 1);
-  const brightnessScore = clamp((mean - BRIGHTNESS_MIN) / BRIGHTNESS_RANGE, 0, 1);
+  // Gate: quá tối → không thể là màn hình (paper under dim/ambient light)
+  if (mean < BRIGHTNESS_GATE) return { score: 0, energyRatio: +covWhite.toFixed(3) };
 
-  // Multiplicative: phải ĐỒng thời sáng VÀ đồng đều mới là màn hình
-  const score = covScore * brightnessScore;
-  return { score: +score.toFixed(3), energyRatio: +covWhite.toFixed(3) };
+  // Primary signal: CoV uniformity (screen = very uniform white, CoV < 0.06)
+  const covScore = clamp(1 - covWhite / COV_MAX, 0, 1);
+  return { score: +covScore.toFixed(3), energyRatio: +covWhite.toFixed(3) };
 }
 
 // ---------------------------------------------------------------------------

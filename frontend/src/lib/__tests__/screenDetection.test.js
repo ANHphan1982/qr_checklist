@@ -268,6 +268,17 @@ describe("analyzeFlicker", () => {
 // ---------------------------------------------------------------------------
 
 describe("analyzeUniformity", () => {
+  // Calibration: camera auto-exposure → screen white ≈ 180-210 (không phải 215+).
+  it("score cao (>0.5) cho màn hình camera-adjusted trong Uniformity (white ~190, CoV thấp)", () => {
+    const img = makeImage(64, 64, (x, y) => {
+      const mod = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
+      const noise = ((x * 13 + y * 7) % 7) - 3;
+      return mod ? 5 : 190 + noise;
+    });
+    const result = analyzeUniformity(img, { x: 0, y: 0, w: 64, h: 64 });
+    expect(result.score).toBeGreaterThan(0.5); // currently fails — BRIGHTNESS_MIN 215 too high
+  });
+
   it("score thấp (<0.3) cho ảnh có gradient (giấy ngoài trời)", () => {
     const img = gradientImage(64, 64);
     const result = analyzeUniformity(img, { x: 16, y: 16, w: 32, h: 32 });
@@ -352,24 +363,40 @@ describe("analyzeUniformity", () => {
 // ---------------------------------------------------------------------------
 
 describe("analyzeMoire", () => {
-  it("score thấp (<0.3) cho ảnh uniform (không có pattern)", () => {
-    const img = uniformImage(64, 64, 200);
+  it("score thấp (<0.3) cho ảnh tối (luminance thấp, không phải màn hình)", () => {
+    // Đổi từ 200→130: uniform 200 nay là screen-like (sáng + đồng đều)
+    // 130 = dim ambient light, dưới BRIGHTNESS_GATE → score=0
+    const img = uniformImage(64, 64, 130);
     const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
     expect(result.score).toBeLessThan(0.3);
   });
 
-  // P1: màn hình tự phát sáng → vùng trắng RẤT sáng (≥240) và đồng đều
-  it("score cao (>0.4) cho màn hình LCD (vùng trắng sáng ≥240, đồng đều tuyệt đối)", () => {
-    const img = uniformImage(64, 64, 240);
-    const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
-    expect(result.score).toBeGreaterThan(0.4);
-  });
-
-  // P1: QR giấy trong điều kiện ánh sáng bình thường → vùng trắng <215, score thấp
-  it("score thấp (<0.3) cho QR giấy (vùng trắng ~150, ánh sáng môi trường)", () => {
+  // Calibration: camera auto-exposure khi quét màn hình đưa white về ~180-210.
+  // BRIGHTNESS_GATE phải ≤ 180 để không bỏ lọt screen scan thực tế.
+  it("score cao (>0.5) cho màn hình camera-adjusted (white ~190, CoV thấp)", () => {
+    // Mô phỏng màn hình sau auto-exposure: white modules ≈190, rất đồng đều
     const img = makeImage(64, 64, (x, y) => {
       const mod = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
-      return mod ? 0 : 150; // ambient light reflection, typical paper
+      // Thêm chút noise camera (±3) để gần thực tế
+      const noise = ((x * 13 + y * 7) % 7) - 3;
+      return mod ? 5 : 190 + noise;
+    });
+    const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
+    expect(result.score).toBeGreaterThan(0.5); // currently fails — brightness gate too high
+  });
+
+  // Màn hình sáng tốt (white ≥240) vẫn phải detect được
+  it("score cao (>0.5) cho màn hình LCD sáng (white ≥240, đồng đều tuyệt đối)", () => {
+    const img = uniformImage(64, 64, 240);
+    const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
+    expect(result.score).toBeGreaterThan(0.5);
+  });
+
+  // QR giấy dim (white ~150) phải trả về thấp
+  it("score thấp (<0.3) cho QR giấy dim (vùng trắng ~150, ánh sáng yếu)", () => {
+    const img = makeImage(64, 64, (x, y) => {
+      const mod = (Math.floor(x / 8) + Math.floor(y / 8)) % 2;
+      return mod ? 0 : 150;
     });
     const result = analyzeMoire(img, { x: 0, y: 0, w: 64, h: 64 });
     expect(result.score).toBeLessThan(0.3);
