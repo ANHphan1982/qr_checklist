@@ -374,6 +374,29 @@ describe("analyzeMotionChallenge", () => {
     vi.unstubAllGlobals();
   });
 
+  it("returns suspicious when camera is too still (insufficient_motion)", async () => {
+    const W = 80, H = 80;
+    const staticImage = makeRandomImage(W, H, 42);
+    const mockCtx = {
+      drawImage: vi.fn(),
+      getImageData: vi.fn(() => staticImage),
+    };
+    const mockCanvas = { width: 0, height: 0, getContext: () => mockCtx };
+    vi.stubGlobal("document", { createElement: () => mockCanvas });
+
+    const mockVideo = { readyState: 4, videoWidth: W, videoHeight: H };
+    const result = await analyzeMotionChallenge(mockVideo, null, {
+      frameCount: 4,
+      intervalMs: 1,
+    });
+
+    expect(result.unavailable).toBe(true);
+    expect(result.score).toBe(0.5);
+    expect(result.classification).toBe("suspicious");
+
+    vi.unstubAllGlobals();
+  });
+
   it("does not throw when getImageData throws (tainted canvas)", async () => {
     const mockCtx = {
       drawImage: vi.fn(),

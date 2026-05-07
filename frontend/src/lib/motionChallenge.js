@@ -314,6 +314,16 @@ export async function analyzeMotionChallenge(video, qrBox = null, opts = {}) {
   const result = computeParallaxSignal(frames, qrBox);
 
   if (result.unavailable) {
+    if (result.reason === "insufficient_motion") {
+      return {
+        score: 0.5,
+        classification: "suspicious",
+        validPairs: 0,
+        meanRelativeParallax: 0,
+        unavailable: true,
+        frameCount: frames.length,
+      };
+    }
     return { ...fail(), frameCount: frames.length };
   }
 

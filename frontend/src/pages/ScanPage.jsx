@@ -284,11 +284,10 @@ export default function ScanPage() {
         ]);
         if (!screenR.unavailable) {
           const signals = { ...screenR.signals };
-          if (!motionR.unavailable) {
+          if (!motionR.unavailable || motionR.score > 0) {
             signals.motion_score = motionR.score;
             signals.motion_class = motionR.classification;
           } else {
-            // Ghi "unavailable" để admin biết challenge đã chạy nhưng camera quá yên
             signals.motion_class = "unavailable";
           }
           screenResult = { score: screenR.score, signals };
