@@ -162,7 +162,7 @@ function AdminDashboard({ adminKey, onLogout }) {
 // Stations Panel
 // ---------------------------------------------------------------------------
 function StationsPanel({ stations, client, onRefresh, flash }) {
-  const empty = { name: "", lat: "", lng: "", radius: "300" };
+  const empty = { name: "", lat: "", lng: "", radius: "300", qr_content: "" };
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null); // station name đang sửa
   const [saving, setSaving] = useState(false);
@@ -222,15 +222,28 @@ function StationsPanel({ stations, client, onRefresh, flash }) {
         </h2>
 
         {!editing && (
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Tên trạm *</label>
-            <input
-              value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value.toUpperCase() }))}
-              placeholder="VD: TK-5201A"
-              required
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          </div>
+          <>
+            <div>
+              <label className="text-xs text-slate-500 dark:text-slate-400">Tên trạm *</label>
+              <input
+                value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value.toUpperCase() }))}
+                placeholder="VD: PUMP_STATION_7"
+                required
+                className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 dark:text-slate-400">Nội dung QR code tại trạm (nếu khác tên trạm)</label>
+              <input
+                value={form.qr_content} onChange={e => setForm(f => ({ ...f, qr_content: e.target.value }))}
+                placeholder="VD: 052-PG-071"
+                className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+              />
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                Điền để hệ thống tự nhận diện QR → trạm. Bỏ trống nếu QR đã ghi đúng tên trạm.
+              </p>
+            </div>
+          </>
         )}
 
         <div className="grid grid-cols-2 gap-3">

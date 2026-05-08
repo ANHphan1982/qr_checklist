@@ -49,9 +49,10 @@ def create_station():
         return _db_unavailable()
 
     data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip().upper()
-    lat  = data.get("lat")
-    lng  = data.get("lng")
+    name       = (data.get("name") or "").strip().upper()
+    lat        = data.get("lat")
+    lng        = data.get("lng")
+    qr_content = (data.get("qr_content") or "").strip()
 
     if not name or lat is None or lng is None:
         return jsonify({"error": "Thiếu name, lat hoặc lng"}), 400
@@ -66,11 +67,14 @@ def create_station():
         with SessionLocal() as s:
             st = Station(name=name, lat=lat, lng=lng, radius=radius)
             s.add(st)
+            if qr_content:
+                alias = QrAlias(qr_content=qr_content, station_name=name, note=None)
+                s.add(alias)
             s.commit()
             s.refresh(st)
             return jsonify(st.to_dict()), 201
     except IntegrityError:
-        return jsonify({"error": f"Trạm '{name}' đã tồn tại"}), 409
+        return jsonify({"error": f"Trạm '{name}' hoặc QR '{qr_content}' đã tồn tại"}), 409
 
 
 @admin_bp.route("/admin/stations/<name>", methods=["PUT"])

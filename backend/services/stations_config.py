@@ -33,6 +33,7 @@ QR_ALIAS_MAP: dict[str, str] = {
     "052-LI-110B": "TK-5214",
     "052-LI-745": "A-5205",
     "052-PG-703": "A-5250",
+    "052-PG-071": "PUMP_STATION_7",
 }
 
 STATIONS: dict[str, dict] = {
