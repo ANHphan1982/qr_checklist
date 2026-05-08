@@ -16,30 +16,10 @@ const ASSESSMENT_LABEL = {
   skipped:  "Bỏ qua (thiếu tọa độ)",
 };
 
-const SCREEN_CLASS_LABEL = {
-  clean:      "Bình thường",
-  suspicious: "Nghi vấn",
-  high_risk:  "Nguy cơ cao",
-};
-
-const MOTION_CLASS_LABEL = {
-  clean:       "Bình thường",
-  suspicious:  "Nghi vấn (phẳng)",
-  high_risk:   "Nguy cơ cao (phẳng)",
-  unavailable: "Camera quá yên",
-};
-
 function roundOrEmpty(value, decimals = 0) {
   if (value == null || Number.isNaN(value)) return "";
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
-}
-
-// Convert 0-1 score → 0-100 integer percentage. Trả "" khi null/undefined
-// (phân biệt với score=0 vẫn hiển thị 0 vì là giá trị hợp lệ).
-function pctOrEmpty(value) {
-  if (value == null || Number.isNaN(value)) return "";
-  return Math.round(value * 100);
 }
 
 function toVnDateTime(isoString) {
@@ -70,7 +50,6 @@ export function buildAliasesRows(aliases) {
 
 export function buildHistoryRows(logs) {
   return logs.map((log) => {
-    const sig = log.screen_signals || {};
     return {
       "ID":                              log.id,
       "Trạm":                            log.location,
@@ -82,13 +61,6 @@ export function buildHistoryRows(logs) {
       "Thời gian dự kiến (phút)":        roundOrEmpty(log.expected_travel_min, 1),
       "Thời gian thực tế (phút)":        roundOrEmpty(log.actual_travel_min, 1),
       "Đánh giá tốc độ":                 log.assessment ? (ASSESSMENT_LABEL[log.assessment] || log.assessment) : "",
-      "Nghi vấn màn hình":               SCREEN_CLASS_LABEL[log.screen_class] || "",
-      "Điểm nghi vấn (%)":               pctOrEmpty(log.screen_score),
-      "Flicker (%)":                     pctOrEmpty(sig.flicker),
-      "Uniformity (%)":                  pctOrEmpty(sig.uniformity),
-      "Moiré (%)":                       pctOrEmpty(sig.moire),
-      "Motion Score (%)":                pctOrEmpty(sig.motion_score),
-      "Motion Class":                    MOTION_CLASS_LABEL[sig.motion_class] || "",
       "Email":                           log.email_sent ? "Đã gửi" : "Chưa gửi",
     };
   });

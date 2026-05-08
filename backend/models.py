@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Float, Integer, JSON, func
+from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Float, Integer, func
 from config import Base
 
 
@@ -14,10 +14,6 @@ class ScanLog(Base):
     geo_distance = Column(Float, nullable=True)   # khoảng cách thực tế đến trạm (mét)
     geo_status   = Column(String(20), default="no_gps")  # ok | out_of_range | unverified | cached | no_gps
     token_valid  = Column(Boolean, default=False)  # True = dùng Rotating QR hợp lệ
-    # Screen detection — nghi vấn QR scan từ màn hình LCD/LED (warning-only)
-    screen_score   = Column(Float, nullable=True)            # 0-1, NULL = client chưa gửi
-    screen_signals = Column(JSON, nullable=True)             # {flicker, uniformity, moire}
-    screen_class   = Column(String(20), nullable=True)       # clean | suspicious | high_risk
     scanned_at   = Column(DateTime(timezone=True), server_default=func.now())
     email_sent   = Column(Boolean, default=False)
     created_at   = Column(DateTime(timezone=True), server_default=func.now())
@@ -33,9 +29,6 @@ class ScanLog(Base):
             "geo_distance": self.geo_distance,
             "geo_status": self.geo_status,
             "token_valid": self.token_valid,
-            "screen_score": self.screen_score,
-            "screen_signals": self.screen_signals,
-            "screen_class": self.screen_class,
             "scanned_at": self.scanned_at.isoformat() if self.scanned_at else None,
             "email_sent": self.email_sent,
         }

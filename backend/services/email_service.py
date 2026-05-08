@@ -2,17 +2,12 @@ import resend
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from config import RESEND_API_KEY, EMAIL_FROM, EMAIL_TO
-from services.screen_signal_service import (
-    get_screen_subject_prefix,
-    format_screen_warning_html,
-)
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 
 EMAIL_TEMPLATE = """
 <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto;">
   <h2 style="color: #16a34a; margin-bottom: 16px;">📍 Báo Cáo Checklist</h2>
-  {screen_warning}
   <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
     <tr>
       <td style="padding: 8px 12px; font-weight: bold; width: 120px;">Trạm:</td>
@@ -60,9 +55,6 @@ def send_scan_email(
     geo_status: str = "no_gps",
     token_valid: bool = False,
     cache_age_ms: float | None = None,
-    screen_score: float | None = None,
-    screen_signals: dict | None = None,
-    screen_class: str | None = None,
 ) -> tuple[bool, str]:
     """Trả về (ok, error_message). error_message = "" nếu thành công."""
     if not RESEND_API_KEY:
@@ -123,16 +115,7 @@ def send_scan_email(
         token_info = "⚠️ QR tĩnh (không xác thực thời gian)"
 
     subject_time = scanned_at.astimezone(VN_TZ).strftime("%d/%m/%Y %H:%M")
-    geo_prefix = "🚨 [CẢNH BÁO]" if geo_status == "out_of_range" else "[Checklist]"
-    # Screen detection prefix (text only, e.g. "[NGHI VAN] " or "[NGUY CO CAO] ")
-    screen_prefix = get_screen_subject_prefix(screen_class)
-    subject_prefix = f"{screen_prefix}{geo_prefix}".strip()
-
-    screen_warning_html = format_screen_warning_html(
-        screen_class=screen_class or "clean",
-        score=screen_score or 0.0,
-        signals=screen_signals,
-    )
+    subject_prefix = "🚨 [CẢNH BÁO]" if geo_status == "out_of_range" else "[Checklist]"
 
     params: resend.Emails.SendParams = {
         "from": EMAIL_FROM,
@@ -146,7 +129,6 @@ def send_scan_email(
             maps_link=maps_link,
             token_info=token_info,
             status_info=status_info,
-            screen_warning=screen_warning_html,
         ),
     }
 

@@ -27,10 +27,8 @@ export async function pingServer() {
  * (chip GPS fail tại điểm scan). Server đánh dấu geo_status="cached" để admin
  * phân biệt với fix GPS thật tại thời điểm scan.
  *
- * screenDetection (optional): { score, signals: {flicker, uniformity, moire} }
- * Server lưu vào DB + thêm cảnh báo email nếu score >= 0.5 (warning-only).
  */
-export async function postScan(location, deviceId, gpsData = null, scannedAt = null, screenDetection = null) {
+export async function postScan(location, deviceId, gpsData = null, scannedAt = null) {
   const payload = {
     location,
     device_id: deviceId,
@@ -47,11 +45,6 @@ export async function postScan(location, deviceId, gpsData = null, scannedAt = n
         payload.cache_age_ms = gpsData.cache_age_ms;
       }
     }
-  }
-
-  if (screenDetection && typeof screenDetection.score === "number") {
-    payload.screen_score = screenDetection.score;
-    if (screenDetection.signals) payload.screen_signals = screenDetection.signals;
   }
 
   const { data } = await api.post("/api/scan", payload);
@@ -83,10 +76,6 @@ export async function postQueuedScan(item) {
         payload.cache_age_ms = item.cache_age_ms;
       }
     }
-  }
-  if (typeof item.screen_score === "number") {
-    payload.screen_score = item.screen_score;
-    if (item.screen_signals) payload.screen_signals = item.screen_signals;
   }
   try {
     const { data } = await api.post("/api/scan", payload);
