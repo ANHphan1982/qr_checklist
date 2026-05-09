@@ -6,6 +6,8 @@ import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loadLastFix } from "../lib/geolocation";
 import { enqueue, flushQueue, queueSize, clearQueue } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
+import OperationalParamsModal, { PARAM_STATIONS } from "../components/OperationalParamsModal";
+import { patchScanParams } from "../lib/api";
 /**
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
@@ -40,6 +42,7 @@ export default function ScanPage() {
   const [step, setStep] = useState("idle");
   const [gpsPermission, setGpsPermission] = useState(null);
   const [result, setResult] = useState(null);
+  const [pendingParamsScanId, setPendingParamsScanId] = useState(null);
   const [coldStart, setColdStart] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(queueSize());
@@ -205,7 +208,7 @@ export default function ScanPage() {
   // Acquire wake lock trong toàn bộ flow scan, release khi về idle/done.
   // Đảm bảo OS không suspend chip GPS khi user đang dùng app.
   useEffect(() => {
-    const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending";
+    const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending" || step === "params";
     if (active) acquireWakeLock();
     else releaseWakeLock();
   }, [step, acquireWakeLock, releaseWakeLock]);
@@ -213,7 +216,7 @@ export default function ScanPage() {
   // Khi user back ra rồi quay lại tab, Wake Lock bị browser thu hồi → xin lại nếu đang scan.
   useEffect(() => {
     const onVisible = () => {
-      const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending";
+      const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending" || step === "params";
       if (document.visibilityState === "visible" && active) {
         acquireWakeLock();
       }
@@ -324,7 +327,12 @@ export default function ScanPage() {
     try {
       const data = await postScan(location, getDeviceId(), gpsData, scannedAt);
       setResult({ status: "ok", location, scanned_at: scannedAt, ...data });
-      setStep("done");
+      if (PARAM_STATIONS.has(data.location || location) && data.scan_id) {
+        setPendingParamsScanId(data.scan_id);
+        setStep("params");
+      } else {
+        setStep("done");
+      }
     } catch (err) {
       const classified = classifyApiError(err, navigator.onLine);
 
@@ -372,6 +380,24 @@ export default function ScanPage() {
   const handleReset = () => {
     setStep("idle");
     setResult(null);
+    setPendingParamsScanId(null);
+  };
+
+  const handleParamsSubmit = async (params) => {
+    if (pendingParamsScanId) {
+      try {
+        await patchScanParams(pendingParamsScanId, params);
+      } catch (_) {
+        // Không block user — params là thông tin bổ sung, không bắt buộc
+      }
+    }
+    setPendingParamsScanId(null);
+    setStep("done");
+  };
+
+  const handleParamsSkip = () => {
+    setPendingParamsScanId(null);
+    setStep("done");
   };
 
   // ---------------------------------------------------------------------------
@@ -381,6 +407,7 @@ export default function ScanPage() {
   const isBusy = step === "permission" || step === "gps" || step === "sending";
   const isScanning = step === "scanning";
   const isDone = step === "done";
+  const isParams = step === "params";
   const permInfo = gpsPermission ? PERMISSION_LABEL[gpsPermission] : null;
 
   // ---------------------------------------------------------------------------
@@ -569,6 +596,15 @@ export default function ScanPage() {
         </button>
       )}
 
+      {/* Operational params modal */}
+      {isParams && result?.location && (
+        <OperationalParamsModal
+          location={result.location}
+          onSubmit={handleParamsSubmit}
+          onSkip={handleParamsSkip}
+        />
+      )}
+
       {/* Step indicator */}
       <StepIndicator step={step} />
 
@@ -589,6 +625,7 @@ const STEPS = [
   { key: "scanning",   label: "Scan" },
   { key: "gps",        label: "Vị trí" },
   { key: "sending",    label: "Gửi" },
+  { key: "params",     label: "Thông số" },
   { key: "done",       label: "Xong" },
 ];
 

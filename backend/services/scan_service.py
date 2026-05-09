@@ -16,6 +16,7 @@ def process_scan(
     geo_status: str = "no_gps",
     token_valid: bool = False,
     cache_age_ms: float | None = None,
+    oil_level_mm: float | None = None,
 ) -> dict:
     if not location or not location.strip():
         return {"status": "error", "message": "Thiếu trường location"}
@@ -53,6 +54,7 @@ def process_scan(
             geo_distance=geo_distance,
             geo_status=geo_status,
             token_valid=token_valid,
+            oil_level_mm=oil_level_mm,
             scanned_at=dt,
             email_sent=False,
         )

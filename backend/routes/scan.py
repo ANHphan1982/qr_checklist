@@ -4,6 +4,8 @@ from services.geo_service import validate_location
 from services.stations_db import get_stations, get_qr_aliases
 from services.qr_token_service import parse_qr_content, validate_token
 from services.anti_fraud_service import check_gps_enforcement
+from config import SessionLocal
+from models import ScanLog
 import os
 
 scan_bp = Blueprint("scan", __name__)
@@ -44,6 +46,7 @@ def create_scan():
     accuracy     = data.get("accuracy")
     geo_cached   = bool(data.get("geo_cached"))
     cache_age_ms = data.get("cache_age_ms")
+    oil_level_mm = data.get("oil_level_mm")
 
     # --- GPS Enforcement ---
     gps_err = check_gps_enforcement(scan_lat, scan_lng, accuracy)
@@ -88,6 +91,7 @@ def create_scan():
             geo_status=geo_status,
             token_valid=token_valid,
             cache_age_ms=cache_age_ms if geo_cached else None,
+            oil_level_mm=oil_level_mm,
         )
         # OUT_OF_RANGE: đã lưu DB nhưng trả 403 để frontend hiện cảnh báo
         if geo_status == "out_of_range":
@@ -102,3 +106,19 @@ def create_scan():
         return jsonify(result), status_code
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@scan_bp.route("/scan/<int:scan_id>/params", methods=["PATCH"])
+def update_scan_params(scan_id):
+    """Cập nhật thông số vận hành (Mức dầu mm) sau khi check-in."""
+    data = request.get_json(silent=True) or {}
+    oil_level_mm = data.get("oil_level_mm")
+
+    with SessionLocal() as session:
+        log = session.get(ScanLog, scan_id)
+        if log is None:
+            return jsonify({"status": "error", "message": "Không tìm thấy scan"}), 404
+        log.oil_level_mm = oil_level_mm
+        session.commit()
+
+    return jsonify({"status": "ok"}), 200

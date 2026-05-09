@@ -94,6 +94,14 @@ export async function postQueuedScan(item) {
 }
 
 /**
+ * Cập nhật thông số vận hành (Mức dầu mm) cho một lần scan đã lưu.
+ */
+export async function patchScanParams(scanId, params) {
+  const { data } = await api.patch(`/api/scan/${scanId}/params`, params);
+  return data;
+}
+
+/**
  * Lấy danh sách scan theo ngày.
  */
 export async function getReports(date) {
