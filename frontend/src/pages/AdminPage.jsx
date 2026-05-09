@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { buildStationsRows, buildAliasesRows, exportToExcel } from "../lib/exportExcel";
+import {
+  getAdminStationParams,
+  createAdminStationParam,
+  updateAdminStationParam,
+  deleteAdminStationParam,
+} from "../lib/api";
 
 const BASE = import.meta.env.VITE_API_URL || "";
 const SESSION_KEY = "admin_authed";
@@ -73,10 +79,11 @@ export default function AdminPage() {
 }
 
 function AdminDashboard({ adminKey, onLogout }) {
-  const [stations, setStations]   = useState([]);
-  const [aliases,  setAliases]    = useState([]);
-  const [tab,      setTab]        = useState("stations"); // "stations" | "aliases"
-  const [msg,      setMsg]        = useState(null);       // { ok, text }
+  const [stations,     setStations]     = useState([]);
+  const [aliases,      setAliases]      = useState([]);
+  const [stationParams, setStationParams] = useState([]);
+  const [tab,          setTab]          = useState("stations");
+  const [msg,          setMsg]          = useState(null); // { ok, text }
 
   const client = api(adminKey);
 
@@ -87,12 +94,14 @@ function AdminDashboard({ adminKey, onLogout }) {
 
   const loadAll = useCallback(async () => {
     try {
-      const [s, a] = await Promise.all([
+      const [s, a, p] = await Promise.all([
         client.get("/api/admin/stations"),
         client.get("/api/admin/qr-aliases"),
+        getAdminStationParams(adminKey),
       ]);
       setStations(s.data);
       setAliases(a.data);
+      setStationParams(p);
     } catch (e) {
       flash(false, `Lỗi tải dữ liệu: ${e?.response?.data?.error || e.message}`);
     }
@@ -121,38 +130,34 @@ function AdminDashboard({ adminKey, onLogout }) {
 
       {/* Tabs + Export */}
       <div className="flex items-center justify-between gap-2 mx-4 mt-4 flex-wrap">
-        <div className="flex gap-1">
-          {["stations", "aliases"].map(t => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors min-h-[44px] ${
-                tab === t ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-              }`}
-            >
-              {t === "stations" ? `📍 Trạm (${stations.length})` : `🔗 QR Alias (${aliases.length})`}
-            </button>
-          ))}
+        <div className="flex gap-1 flex-wrap">
+          <button onClick={() => setTab("stations")} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors min-h-[44px] ${tab === "stations" ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
+            📍 Trạm ({stations.length})
+          </button>
+          <button onClick={() => setTab("aliases")} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors min-h-[44px] ${tab === "aliases" ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
+            🔗 QR Alias ({aliases.length})
+          </button>
+          <button onClick={() => setTab("params")} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors min-h-[44px] ${tab === "params" ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
+            ⚙️ Thông số ({stationParams.length})
+          </button>
         </div>
-        <button
-          onClick={() => {
-            if (tab === "stations") {
-              exportToExcel(buildStationsRows(stations), "tram-checkpoint.xlsx", "Trạm");
-            } else {
-              exportToExcel(buildAliasesRows(aliases), "qr-alias.xlsx", "QR Alias");
-            }
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold active:bg-green-700 transition-colors min-h-[44px]"
-        >
-          📥 Xuất Excel
-        </button>
+        {tab !== "params" && (
+          <button
+            onClick={() => {
+              if (tab === "stations") exportToExcel(buildStationsRows(stations), "tram-checkpoint.xlsx", "Trạm");
+              else exportToExcel(buildAliasesRows(aliases), "qr-alias.xlsx", "QR Alias");
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold active:bg-green-700 transition-colors min-h-[44px]"
+          >
+            📥 Xuất Excel
+          </button>
+        )}
       </div>
 
       <div className="mx-4 mt-4 space-y-4">
-        {tab === "stations"
-          ? <StationsPanel stations={stations} client={client} onRefresh={loadAll} flash={flash} />
-          : <AliasesPanel aliases={aliases} stations={stations} client={client} onRefresh={loadAll} flash={flash} />
-        }
+        {tab === "stations" && <StationsPanel stations={stations} client={client} onRefresh={loadAll} flash={flash} />}
+        {tab === "aliases"  && <AliasesPanel aliases={aliases} stations={stations} client={client} onRefresh={loadAll} flash={flash} />}
+        {tab === "params"   && <StationParamsPanel stationParams={stationParams} stations={stations} adminKey={adminKey} onRefresh={loadAll} flash={flash} />}
       </div>
     </div>
   );
@@ -312,6 +317,183 @@ function StationsPanel({ stations, client, onRefresh, flash }) {
                 ✏️
               </button>
               <button onClick={() => handleDelete(st.name)} className="text-sm px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium">
+                🗑️
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Station Params Panel — cấu hình thông số vận hành
+// ---------------------------------------------------------------------------
+function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flash }) {
+  const empty = { station_name: "", param_label: "Tank level", param_unit: "mm" };
+  const [form,    setForm]    = useState(empty);
+  const [editing, setEditing] = useState(null); // id đang sửa
+  const [saving,  setSaving]  = useState(false);
+
+  const stationOptions = stations.length > 0
+    ? stations.map(s => s.name)
+    : [...new Set(stationParams.map(p => p.station_name))];
+
+  const existingNames = new Set(stationParams.map(p => p.station_name));
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      if (editing != null) {
+        await updateAdminStationParam(adminKey, editing, {
+          param_label: form.param_label,
+          param_unit:  form.param_unit,
+        });
+        flash(true, `Đã cập nhật cấu hình ${form.station_name}`);
+      } else {
+        await createAdminStationParam(adminKey, form);
+        flash(true, `Đã thêm thông số cho ${form.station_name}`);
+      }
+      setForm(empty);
+      setEditing(null);
+      onRefresh();
+    } catch (e) {
+      flash(false, e?.response?.data?.error || e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = (p) => {
+    setEditing(p.id);
+    setForm({ station_name: p.station_name, param_label: p.param_label, param_unit: p.param_unit });
+  };
+
+  const handleDelete = async (p) => {
+    if (!confirm(`Xóa cấu hình thông số cho "${p.station_name}"?`)) return;
+    try {
+      await deleteAdminStationParam(adminKey, p.id);
+      flash(true, `Đã xóa cấu hình ${p.station_name}`);
+      onRefresh();
+    } catch (e) {
+      flash(false, e?.response?.data?.error || e.message);
+    }
+  };
+
+  const handleToggle = async (p) => {
+    try {
+      await updateAdminStationParam(adminKey, p.id, { active: !p.active });
+      onRefresh();
+    } catch (e) {
+      flash(false, e?.response?.data?.error || e.message);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={handleSave} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
+        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
+          {editing != null ? "✏️ Sửa cấu hình thông số" : "➕ Thêm cấu hình thông số"}
+        </h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Sau khi scan QR tại trạm được cấu hình, hệ thống sẽ hiện popup yêu cầu nhập thông số vận hành.
+        </p>
+
+        <div>
+          <label className="text-xs text-slate-500 dark:text-slate-400">Trạm *</label>
+          {editing != null ? (
+            <p className="mt-1 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-base font-semibold">
+              {form.station_name}
+            </p>
+          ) : stationOptions.length > 0 ? (
+            <select
+              value={form.station_name}
+              onChange={e => setForm(f => ({ ...f, station_name: e.target.value }))}
+              required
+              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            >
+              <option value="">-- Chọn trạm --</option>
+              {stationOptions.filter(n => !existingNames.has(n)).map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={form.station_name}
+              onChange={e => setForm(f => ({ ...f, station_name: e.target.value.toUpperCase() }))}
+              placeholder="VD: TK-5203A"
+              required
+              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            />
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-slate-500 dark:text-slate-400">Tên thông số *</label>
+            <input
+              value={form.param_label}
+              onChange={e => setForm(f => ({ ...f, param_label: e.target.value }))}
+              placeholder="VD: Tank level, Áp suất"
+              required
+              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 dark:text-slate-400">Đơn vị *</label>
+            <input
+              value={form.param_unit}
+              onChange={e => setForm(f => ({ ...f, param_unit: e.target.value }))}
+              placeholder="VD: mm, kg/cm2/g, %"
+              required
+              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button type="submit" disabled={saving}
+            className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl disabled:opacity-50">
+            {saving ? "Đang lưu..." : editing != null ? "Cập nhật" : "Thêm"}
+          </button>
+          {editing != null && (
+            <button type="button" onClick={() => { setEditing(null); setForm(empty); }}
+              className="px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-semibold">
+              Huỷ
+            </button>
+          )}
+        </div>
+      </form>
+
+      <div className="space-y-2">
+        {stationParams.length === 0 && (
+          <p className="text-center text-slate-400 py-4 text-sm">Chưa có cấu hình thông số nào</p>
+        )}
+        {stationParams.map(p => (
+          <div key={p.id} className={`bg-white dark:bg-slate-800 rounded-xl border px-4 py-3 flex items-center justify-between gap-2 ${
+            p.active ? "border-slate-200 dark:border-slate-700" : "border-slate-100 dark:border-slate-800 opacity-50"
+          }`}>
+            <div>
+              <p className="font-semibold text-slate-800 dark:text-slate-100">{p.station_name}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {p.param_label} · <span className="font-mono">{p.param_unit}</span>
+                {!p.active && <span className="ml-2 text-orange-500">· Tắt</span>}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => handleToggle(p)}
+                title={p.active ? "Tắt" : "Bật"}
+                className="text-sm px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium">
+                {p.active ? "🔕" : "🔔"}
+              </button>
+              <button onClick={() => handleEdit(p)}
+                className="text-sm px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium">
+                ✏️
+              </button>
+              <button onClick={() => handleDelete(p)}
+                className="text-sm px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium">
                 🗑️
               </button>
             </div>

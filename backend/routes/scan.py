@@ -5,7 +5,7 @@ from services.stations_db import get_stations, get_qr_aliases
 from services.qr_token_service import parse_qr_content, validate_token
 from services.anti_fraud_service import check_gps_enforcement
 from config import SessionLocal
-from models import ScanLog
+from models import ScanLog, StationParam
 import os
 
 scan_bp = Blueprint("scan", __name__)
@@ -108,6 +108,16 @@ def create_scan():
         return jsonify(result), status_code
     except Exception as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@scan_bp.route("/station-params", methods=["GET"])
+def get_station_params():
+    """Danh sách trạm có cấu hình thông số vận hành (public, không cần auth)."""
+    if not SessionLocal:
+        return jsonify({"configs": []}), 200
+    with SessionLocal() as session:
+        rows = session.query(StationParam).filter_by(active=True).order_by(StationParam.station_name).all()
+        return jsonify({"configs": [r.to_dict() for r in rows]})
 
 
 @scan_bp.route("/scan/<int:scan_id>/params", methods=["PATCH"])

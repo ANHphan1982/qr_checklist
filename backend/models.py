@@ -58,6 +58,27 @@ class Station(Base):
         }
 
 
+class StationParam(Base):
+    """Cấu hình thông số vận hành cần nhập sau khi check-in tại một trạm."""
+    __tablename__ = "station_params"
+
+    id           = Column(BigInteger, primary_key=True, index=True)
+    station_name = Column(String(100), nullable=False, unique=True)
+    param_label  = Column(String(100), nullable=False, default="Thông số")
+    param_unit   = Column(String(50),  nullable=False, default="mm")
+    active       = Column(Boolean, default=True)
+    created_at   = Column(DateTime(timezone=True), server_default=func.now())
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "station_name": self.station_name,
+            "param_label": self.param_label,
+            "param_unit": self.param_unit,
+            "active": self.active,
+        }
+
+
 class QrAlias(Base):
     __tablename__ = "qr_aliases"
 

@@ -1,14 +1,15 @@
 import { useState } from "react";
 
-export const PARAM_STATIONS = new Set(["TK-5203A", "TK-5205A"]);
+export default function OperationalParamsModal({ location, config, onSubmit, onSkip }) {
+  const [value, setValue] = useState("");
 
-export default function OperationalParamsModal({ location, onSubmit, onSkip }) {
-  const [oilLevel, setOilLevel] = useState("");
+  const label = config?.param_label || "Thông số";
+  const unit  = config?.param_unit  || "mm";
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const value = oilLevel.trim();
-    onSubmit({ oil_level_mm: value !== "" ? parseFloat(value) : null });
+    const v = value.trim();
+    onSubmit({ oil_level_mm: v !== "" ? parseFloat(v) : null });
   };
 
   return (
@@ -27,19 +28,19 @@ export default function OperationalParamsModal({ location, onSubmit, onSkip }) {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label
-              htmlFor="tank-level-input"
+              htmlFor="op-param-input"
               className="text-base font-medium text-slate-700 dark:text-slate-200"
             >
-              Tank level (mm)
+              {label} ({unit})
             </label>
             <input
-              id="tank-level-input"
+              id="op-param-input"
               type="number"
-              step="0.1"
+              step="0.01"
               min="0"
-              value={oilLevel}
-              onChange={(e) => setOilLevel(e.target.value)}
-              placeholder="Nhập tank level..."
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={`Nhập ${label}...`}
               className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
               style={{ fontSize: "16px" }}
               autoFocus

@@ -4,7 +4,7 @@ Bảo vệ bằng header X-Admin-Key khớp với ADMIN_SECRET env var.
 """
 from flask import Blueprint, request, jsonify
 from config import SessionLocal, ADMIN_SECRET
-from models import Station, QrAlias
+from models import Station, QrAlias, StationParam
 from sqlalchemy.exc import IntegrityError
 
 admin_bp = Blueprint("admin", __name__)
@@ -175,5 +175,88 @@ def delete_alias(alias_id):
         if not alias:
             return jsonify({"error": "Không tìm thấy alias"}), 404
         s.delete(alias)
+        s.commit()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Station Params (thông số vận hành)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/admin/station-params", methods=["GET"])
+def list_station_params():
+    err = _auth()
+    if err:
+        return err
+    if not SessionLocal:
+        return _db_unavailable()
+    with SessionLocal() as s:
+        rows = s.query(StationParam).order_by(StationParam.station_name).all()
+    return jsonify([r.to_dict() for r in rows])
+
+
+@admin_bp.route("/admin/station-params", methods=["POST"])
+def create_station_param():
+    err = _auth()
+    if err:
+        return err
+    if not SessionLocal:
+        return _db_unavailable()
+
+    data = request.get_json(silent=True) or {}
+    station_name = (data.get("station_name") or "").strip().upper()
+    param_label  = (data.get("param_label") or "Thông số").strip()
+    param_unit   = (data.get("param_unit") or "mm").strip()
+
+    if not station_name:
+        return jsonify({"error": "Thiếu station_name"}), 400
+
+    try:
+        with SessionLocal() as s:
+            sp = StationParam(station_name=station_name, param_label=param_label, param_unit=param_unit)
+            s.add(sp)
+            s.commit()
+            s.refresh(sp)
+            return jsonify(sp.to_dict()), 201
+    except IntegrityError:
+        return jsonify({"error": f"Trạm '{station_name}' đã có cấu hình thông số"}), 409
+
+
+@admin_bp.route("/admin/station-params/<int:param_id>", methods=["PUT"])
+def update_station_param(param_id):
+    err = _auth()
+    if err:
+        return err
+    if not SessionLocal:
+        return _db_unavailable()
+
+    data = request.get_json(silent=True) or {}
+    with SessionLocal() as s:
+        sp = s.get(StationParam, param_id)
+        if not sp:
+            return jsonify({"error": "Không tìm thấy cấu hình"}), 404
+        if data.get("param_label") is not None:
+            sp.param_label = data["param_label"].strip()
+        if data.get("param_unit") is not None:
+            sp.param_unit = data["param_unit"].strip()
+        if data.get("active") is not None:
+            sp.active = bool(data["active"])
+        s.commit()
+        s.refresh(sp)
+        return jsonify(sp.to_dict())
+
+
+@admin_bp.route("/admin/station-params/<int:param_id>", methods=["DELETE"])
+def delete_station_param(param_id):
+    err = _auth()
+    if err:
+        return err
+    if not SessionLocal:
+        return _db_unavailable()
+    with SessionLocal() as s:
+        sp = s.get(StationParam, param_id)
+        if not sp:
+            return jsonify({"error": "Không tìm thấy cấu hình"}), 404
+        s.delete(sp)
         s.commit()
     return jsonify({"ok": True})

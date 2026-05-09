@@ -165,28 +165,28 @@ describe("buildHistoryRows", () => {
 // buildHistoryRows — operational params (TDD)
 // ---------------------------------------------------------------------------
 describe("buildHistoryRows — operational params", () => {
-  it("includes 'Tank level (mm)' column always", () => {
+  it("includes 'Thông số' column always", () => {
     const log = { id: 1, location: "TK-5203A", scanned_at: "2026-04-18T01:30:00.000Z", device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true, oil_level_mm: 1250.5 };
     const [row] = buildHistoryRows([log]);
-    expect(row).toHaveProperty("Tank level (mm)");
+    expect(row).toHaveProperty("Thông số");
   });
 
   it("renders oil_level_mm value when present", () => {
     const log = { id: 1, location: "TK-5203A", scanned_at: "2026-04-18T01:30:00.000Z", device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true, oil_level_mm: 1250.5 };
     const [row] = buildHistoryRows([log]);
-    expect(row["Tank level (mm)"]).toBe(1250.5);
+    expect(row["Thông số"]).toBe(1250.5);
   });
 
-  it("leaves 'Tank level (mm)' empty when null", () => {
+  it("leaves 'Thông số' empty when null", () => {
     const log = { id: 2, location: "TK-5201A", scanned_at: "2026-04-18T01:30:00.000Z", device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: false, oil_level_mm: null };
     const [row] = buildHistoryRows([log]);
-    expect(row["Tank level (mm)"]).toBe("");
+    expect(row["Thông số"]).toBe("");
   });
 
-  it("leaves 'Tank level (mm)' empty when field absent (backward compat)", () => {
+  it("leaves 'Thông số' empty when field absent (backward compat)", () => {
     const log = { id: 3, location: "TK-5201A", scanned_at: "2026-04-18T01:30:00.000Z", device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: false };
     const [row] = buildHistoryRows([log]);
-    expect(row["Tank level (mm)"]).toBe("");
+    expect(row["Thông số"]).toBe("");
   });
 });
 

@@ -6,8 +6,8 @@ import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loadLastFix } from "../lib/geolocation";
 import { enqueue, flushQueue, queueSize, clearQueue } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
-import OperationalParamsModal, { PARAM_STATIONS } from "../components/OperationalParamsModal";
-import { patchScanParams } from "../lib/api";
+import OperationalParamsModal from "../components/OperationalParamsModal";
+import { patchScanParams, getStationParamConfigs } from "../lib/api";
 /**
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
@@ -43,6 +43,9 @@ export default function ScanPage() {
   const [gpsPermission, setGpsPermission] = useState(null);
   const [result, setResult] = useState(null);
   const [pendingParamsScanId, setPendingParamsScanId] = useState(null);
+  const [pendingParamConfig,  setPendingParamConfig]  = useState(null);
+  // map: station_name → { station_name, param_label, param_unit }
+  const [stationParamConfigs, setStationParamConfigs] = useState({});
   const [coldStart, setColdStart] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(queueSize());
@@ -129,6 +132,15 @@ export default function ScanPage() {
     pingServer();
     if (navigator.onLine) syncQueue(true); // auto sync lúc mount — im lặng khi lỗi
   }, [syncQueue]);
+
+  // Load cấu hình thông số vận hành từ DB (fail silently — không block scan)
+  useEffect(() => {
+    getStationParamConfigs().then((configs) => {
+      const map = {};
+      configs.forEach((c) => { if (c.active) map[c.station_name] = c; });
+      setStationParamConfigs(map);
+    }).catch(() => {});
+  }, []);
 
   // Kiểm tra quyền + bắt đầu GPS watch lúc mount.
   // watchPosition giữ chip GPS chạy liên tục → fix luôn có sẵn cho scan kế tiếp.
@@ -327,8 +339,10 @@ export default function ScanPage() {
     try {
       const data = await postScan(location, getDeviceId(), gpsData, scannedAt);
       setResult({ status: "ok", location, scanned_at: scannedAt, ...data });
-      if (PARAM_STATIONS.has(data.location || location) && data.scan_id) {
+      const paramConfig = stationParamConfigs[data.location || location];
+      if (paramConfig && data.scan_id) {
         setPendingParamsScanId(data.scan_id);
+        setPendingParamConfig(paramConfig);
         setStep("params");
       } else {
         setStep("done");
@@ -366,8 +380,10 @@ export default function ScanPage() {
           distance: apiData.distance,
           location: resolvedLocation,
         });
-        if (apiData.code === "OUT_OF_RANGE" && PARAM_STATIONS.has(resolvedLocation) && apiData.scan_id) {
+        const paramConfig = stationParamConfigs[resolvedLocation];
+        if (apiData.code === "OUT_OF_RANGE" && paramConfig && apiData.scan_id) {
           setPendingParamsScanId(apiData.scan_id);
+          setPendingParamConfig(paramConfig);
           setStep("params");
         } else {
           setStep("idle");
@@ -388,6 +404,7 @@ export default function ScanPage() {
     setStep("idle");
     setResult(null);
     setPendingParamsScanId(null);
+    setPendingParamConfig(null);
   };
 
   const handleParamsSubmit = async (params) => {
@@ -399,11 +416,13 @@ export default function ScanPage() {
       }
     }
     setPendingParamsScanId(null);
+    setPendingParamConfig(null);
     setStep("done");
   };
 
   const handleParamsSkip = () => {
     setPendingParamsScanId(null);
+    setPendingParamConfig(null);
     setStep("done");
   };
 
@@ -604,9 +623,10 @@ export default function ScanPage() {
       )}
 
       {/* Operational params modal */}
-      {isParams && result?.location && (
+      {isParams && result?.location && pendingParamConfig && (
         <OperationalParamsModal
           location={result.location}
+          config={pendingParamConfig}
           onSubmit={handleParamsSubmit}
           onSkip={handleParamsSkip}
         />

@@ -94,6 +94,46 @@ export async function postQueuedScan(item) {
 }
 
 /**
+ * Lấy danh sách cấu hình thông số vận hành (public — dùng ở scan flow).
+ * @returns {Promise<Array<{station_name, param_label, param_unit, active}>>}
+ */
+export async function getStationParamConfigs() {
+  const { data } = await api.get("/api/station-params");
+  return data.configs || [];
+}
+
+// ---------------------------------------------------------------------------
+// Admin — station params
+// ---------------------------------------------------------------------------
+function adminApi(adminKey) {
+  return axios.create({
+    baseURL: import.meta.env.VITE_API_URL || "",
+    timeout: 15000,
+    headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
+  });
+}
+
+export async function getAdminStationParams(adminKey) {
+  const { data } = await adminApi(adminKey).get("/api/admin/station-params");
+  return data;
+}
+
+export async function createAdminStationParam(adminKey, body) {
+  const { data } = await adminApi(adminKey).post("/api/admin/station-params", body);
+  return data;
+}
+
+export async function updateAdminStationParam(adminKey, id, body) {
+  const { data } = await adminApi(adminKey).put(`/api/admin/station-params/${id}`, body);
+  return data;
+}
+
+export async function deleteAdminStationParam(adminKey, id) {
+  const { data } = await adminApi(adminKey).delete(`/api/admin/station-params/${id}`);
+  return data;
+}
+
+/**
  * Cập nhật thông số vận hành (Mức dầu mm) cho một lần scan đã lưu.
  */
 export async function patchScanParams(scanId, params) {

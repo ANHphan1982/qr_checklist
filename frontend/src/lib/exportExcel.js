@@ -61,7 +61,7 @@ export function buildHistoryRows(logs) {
       "Thời gian dự kiến (phút)":        roundOrEmpty(log.expected_travel_min, 1),
       "Thời gian thực tế (phút)":        roundOrEmpty(log.actual_travel_min, 1),
       "Đánh giá tốc độ":                 log.assessment ? (ASSESSMENT_LABEL[log.assessment] || log.assessment) : "",
-      "Tank level (mm)":                  log.oil_level_mm ?? "",
+      "Thông số":                          log.oil_level_mm ?? "",
       "Email":                           log.email_sent ? "Đã gửi" : "Chưa gửi",
     };
   });
