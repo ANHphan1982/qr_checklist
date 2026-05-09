@@ -20,7 +20,7 @@ def _parse_origins(raw: str):
     return parts if len(parts) > 1 else parts[0] if parts else "*"
 
 _origins = _parse_origins(CORS_ORIGIN)
-CORS(app, origins=_origins, methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+CORS(app, origins=_origins, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
      allow_headers=["Content-Type", "Authorization", "X-Admin-Key"])
 
 app.register_blueprint(scan_bp, url_prefix="/api")
