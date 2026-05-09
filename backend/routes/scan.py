@@ -1,11 +1,11 @@
 from flask import Blueprint, request, jsonify
 from services.scan_service import process_scan
 from services.geo_service import validate_location
-from services.stations_db import get_stations, get_qr_aliases
+from services.stations_db import get_stations, get_qr_aliases, get_station_params
 from services.qr_token_service import parse_qr_content, validate_token
 from services.anti_fraud_service import check_gps_enforcement
 from config import SessionLocal
-from models import ScanLog, StationParam
+from models import ScanLog
 import os
 
 scan_bp = Blueprint("scan", __name__)
@@ -111,13 +111,15 @@ def create_scan():
 
 
 @scan_bp.route("/station-params", methods=["GET"])
-def get_station_params():
+def station_params_endpoint():
     """Danh sách trạm có cấu hình thông số vận hành (public, không cần auth)."""
-    if not SessionLocal:
-        return jsonify({"configs": []}), 200
-    with SessionLocal() as session:
-        rows = session.query(StationParam).filter_by(active=True).order_by(StationParam.station_name).all()
-        return jsonify({"configs": [r.to_dict() for r in rows]})
+    params = get_station_params()
+    configs = [
+        {"station_name": name, **data}
+        for name, data in sorted(params.items())
+        if data.get("active", True)
+    ]
+    return jsonify({"configs": configs}), 200
 
 
 @scan_bp.route("/scan/<int:scan_id>/params", methods=["PATCH"])

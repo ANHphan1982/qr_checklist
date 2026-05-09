@@ -36,6 +36,13 @@ QR_ALIAS_MAP: dict[str, str] = {
     "052-PG-071": "PUMP_STATION_7",
 }
 
+STATION_PARAMS: dict[str, dict] = {
+    "TK-5211A": {
+        "param_label": "Tank level",
+        "param_unit": "mm",
+    },
+}
+
 STATIONS: dict[str, dict] = {
     "TK-5201A": {
         "lat": 15.408751,

@@ -7,6 +7,7 @@ from config import SessionLocal, ADMIN_SECRET
 from models import Station, QrAlias, StationParam, ScanLog
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta
+from services.stations_config import STATION_PARAMS as STATIC_STATION_PARAMS
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -201,8 +202,6 @@ def create_station_param():
     err = _auth()
     if err:
         return err
-    if not SessionLocal:
-        return _db_unavailable()
 
     data = request.get_json(silent=True) or {}
     station_name = (data.get("station_name") or "").strip().upper()
@@ -211,6 +210,12 @@ def create_station_param():
 
     if not station_name:
         return jsonify({"error": "Thiếu station_name"}), 400
+
+    if station_name in STATIC_STATION_PARAMS:
+        return jsonify({"error": f"Trạm '{station_name}' đã được cấu hình sẵn trong config — không thể thay đổi qua admin"}), 409
+
+    if not SessionLocal:
+        return _db_unavailable()
 
     try:
         with SessionLocal() as s:
@@ -236,6 +241,8 @@ def update_station_param(param_id):
         sp = s.get(StationParam, param_id)
         if not sp:
             return jsonify({"error": "Không tìm thấy cấu hình"}), 404
+        if sp.station_name in STATIC_STATION_PARAMS:
+            return jsonify({"error": f"Trạm '{sp.station_name}' đã được cấu hình sẵn trong config — không thể thay đổi qua admin"}), 409
         if data.get("param_label") is not None:
             sp.param_label = data["param_label"].strip()
         if data.get("param_unit") is not None:
