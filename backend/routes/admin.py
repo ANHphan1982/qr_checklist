@@ -4,8 +4,9 @@ Bảo vệ bằng header X-Admin-Key khớp với ADMIN_SECRET env var.
 """
 from flask import Blueprint, request, jsonify
 from config import SessionLocal, ADMIN_SECRET
-from models import Station, QrAlias, StationParam
+from models import Station, QrAlias, StationParam, ScanLog
 from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timezone, timedelta
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -260,3 +261,33 @@ def delete_station_param(param_id):
         s.delete(sp)
         s.commit()
     return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Purge — xóa scan_logs cũ để giải phóng dung lượng Supabase
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/admin/purge", methods=["POST"])
+def purge_old_scans():
+    """Xóa bản ghi scan_logs cũ hơn N ngày. Mặc định 7 ngày."""
+    err = _auth()
+    if err:
+        return err
+    if not SessionLocal:
+        return _db_unavailable()
+
+    data = request.get_json(silent=True) or {}
+    try:
+        days = int(data.get("older_than_days", 7))
+    except (ValueError, TypeError):
+        return jsonify({"error": "older_than_days phải là số nguyên"}), 400
+
+    if days < 1:
+        return jsonify({"error": "older_than_days phải >= 1"}), 400
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    with SessionLocal() as s:
+        deleted = s.query(ScanLog).filter(ScanLog.scanned_at < cutoff).delete(synchronize_session=False)
+        s.commit()
+
+    return jsonify({"status": "ok", "deleted": deleted, "older_than_days": days})

@@ -112,11 +112,14 @@ function AdminDashboard({ adminKey, onLogout }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-12">
       {/* Header */}
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between">
+      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between gap-2">
         <h1 className="font-bold text-lg text-slate-800 dark:text-slate-100">⚙️ Admin — Quản lý Checkpoint</h1>
-        <button onClick={onLogout} className="text-sm text-slate-500 hover:text-red-600 dark:text-slate-400">
-          Đăng xuất
-        </button>
+        <div className="flex items-center gap-3">
+          <PurgeButton adminKey={adminKey} flash={flash} />
+          <button onClick={onLogout} className="text-sm text-slate-500 hover:text-red-600 dark:text-slate-400">
+            Đăng xuất
+          </button>
+        </div>
       </div>
 
       {/* Flash message */}
@@ -324,6 +327,48 @@ function StationsPanel({ stations, client, onRefresh, flash }) {
         ))}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Purge Button — xóa scan_logs cũ để giải phóng dung lượng
+// ---------------------------------------------------------------------------
+function PurgeButton({ adminKey, flash }) {
+  const [loading, setLoading] = useState(false);
+
+  const handlePurge = async () => {
+    const input = window.prompt(
+      "Xóa scan logs cũ hơn bao nhiêu ngày?\n(Nhập số, tối thiểu 1 — mặc định 7)",
+      "7"
+    );
+    if (input === null) return; // user bấm Cancel
+    const days = parseInt(input, 10);
+    if (!days || days < 1) {
+      flash(false, "Số ngày không hợp lệ (phải >= 1)");
+      return;
+    }
+    if (!window.confirm(`Xóa tất cả scan logs cũ hơn ${days} ngày?\nHành động này không thể hoàn tác.`)) return;
+
+    setLoading(true);
+    try {
+      const { data } = await api(adminKey).post("/api/admin/purge", { older_than_days: days });
+      flash(true, `Đã xóa ${data.deleted} bản ghi cũ hơn ${days} ngày`);
+    } catch (e) {
+      flash(false, e?.response?.data?.error || e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handlePurge}
+      disabled={loading}
+      title="Xóa scan logs cũ để giải phóng dung lượng"
+      className="text-sm px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium disabled:opacity-50 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+    >
+      {loading ? "Đang xóa..." : "🗑️ Dọn dẹp DB"}
+    </button>
   );
 }
 
