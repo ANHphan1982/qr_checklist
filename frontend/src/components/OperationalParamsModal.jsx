@@ -27,19 +27,19 @@ export default function OperationalParamsModal({ location, onSubmit, onSkip }) {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label
-              htmlFor="oil-level-input"
+              htmlFor="tank-level-input"
               className="text-base font-medium text-slate-700 dark:text-slate-200"
             >
-              Mức dầu (mm)
+              Tank level (mm)
             </label>
             <input
-              id="oil-level-input"
+              id="tank-level-input"
               type="number"
               step="0.1"
               min="0"
               value={oilLevel}
               onChange={(e) => setOilLevel(e.target.value)}
-              placeholder="Nhập mức dầu..."
+              placeholder="Nhập tank level..."
               className="w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
               style={{ fontSize: "16px" }}
               autoFocus
