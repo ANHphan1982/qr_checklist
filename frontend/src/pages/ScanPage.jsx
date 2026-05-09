@@ -358,13 +358,20 @@ export default function ScanPage() {
         setStep("done");
       } else {
         const apiData = classified.data || {};
+        const resolvedLocation = apiData.location || location;
         setResult({
           status: "error",
           message: classified.message,
           outOfRange: apiData.code === "OUT_OF_RANGE",
           distance: apiData.distance,
+          location: resolvedLocation,
         });
-        setStep("idle");
+        if (apiData.code === "OUT_OF_RANGE" && PARAM_STATIONS.has(resolvedLocation) && apiData.scan_id) {
+          setPendingParamsScanId(apiData.scan_id);
+          setStep("params");
+        } else {
+          setStep("idle");
+        }
       }
     } finally {
       clearTimeout(coldTimer);

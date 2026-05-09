@@ -101,7 +101,9 @@ def create_scan():
                 "message": geo_result["message"],
                 "distance": geo_result["distance"],
                 "scan_id": result.get("scan_id"),
+                "location": location,
             }), 403
+        result["location"] = location
         status_code = 200 if result["status"] == "ok" else 400
         return jsonify(result), status_code
     except Exception as exc:
