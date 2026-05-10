@@ -64,3 +64,11 @@ export async function flushQueue(postFn) {
 export function queueSize() {
   return getQueue().length;
 }
+
+/** Cập nhật item cuối trong queue với các field bổ sung (dùng cho offline params) */
+export function updateLastItem(patch) {
+  const queue = getQueue();
+  if (queue.length === 0) return;
+  queue[queue.length - 1] = { ...queue[queue.length - 1], ...patch };
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+}

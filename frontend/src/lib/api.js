@@ -77,6 +77,9 @@ export async function postQueuedScan(item) {
       }
     }
   }
+  if (item.oil_level_mm != null) {
+    payload.oil_level_mm = item.oil_level_mm;
+  }
   try {
     const { data } = await api.post("/api/scan", payload);
     return data;

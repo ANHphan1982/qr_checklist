@@ -4,7 +4,7 @@ import ScanResult from "../components/ScanResult";
 import { postScan, postQueuedScan, pingServer, checkConnectivity } from "../lib/api";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loadLastFix } from "../lib/geolocation";
-import { enqueue, flushQueue, queueSize, clearQueue } from "../lib/offlineQueue";
+import { enqueue, flushQueue, queueSize, clearQueue, updateLastItem } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
 import OperationalParamsModal from "../components/OperationalParamsModal";
 import { patchScanParams, getStationParamConfigs } from "../lib/api";
@@ -45,7 +45,11 @@ export default function ScanPage() {
   const [pendingParamsScanId, setPendingParamsScanId] = useState(null);
   const [pendingParamConfig,  setPendingParamConfig]  = useState(null);
   // map: station_name → { station_name, param_label, param_unit }
-  const [stationParamConfigs, setStationParamConfigs] = useState({});
+  // Khởi tạo từ cache localStorage để dùng được khi offline ngay từ đầu session
+  const [stationParamConfigs, setStationParamConfigs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("qr_station_param_configs") || "{}"); }
+    catch (_) { return {}; }
+  });
   const [coldStart, setColdStart] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(queueSize());
@@ -134,11 +138,13 @@ export default function ScanPage() {
   }, [syncQueue]);
 
   // Load cấu hình thông số vận hành từ DB (fail silently — không block scan)
+  // Cache vào localStorage để dùng được khi offline
   useEffect(() => {
     getStationParamConfigs().then((configs) => {
       const map = {};
       configs.forEach((c) => { if (c.active) map[c.station_name] = c; });
       setStationParamConfigs(map);
+      try { localStorage.setItem("qr_station_param_configs", JSON.stringify(map)); } catch (_) {}
     }).catch(() => {});
   }, []);
 
@@ -328,7 +334,16 @@ export default function ScanPage() {
         location,
         scanned_at: scannedAt,
       });
-      setStep("done");
+      const paramConfig = stationParamConfigs[location];
+      if (paramConfig) {
+        // Hiện modal nhập thông số — params sẽ được ghi vào item queue cuối
+        // "offline" là sentinel phân biệt với scan_id thật (số nguyên)
+        setPendingParamsScanId("offline");
+        setPendingParamConfig(paramConfig);
+        setStep("params");
+      } else {
+        setStep("done");
+      }
       return;
     }
 
@@ -408,7 +423,10 @@ export default function ScanPage() {
   };
 
   const handleParamsSubmit = async (params) => {
-    if (pendingParamsScanId) {
+    if (pendingParamsScanId === "offline") {
+      // Offline: ghi params vào item cuối của queue — sẽ được gửi kèm khi đồng bộ
+      updateLastItem(params);
+    } else if (pendingParamsScanId) {
       try {
         await patchScanParams(pendingParamsScanId, params);
       } catch (_) {
