@@ -362,7 +362,25 @@ export default function ScanPage() {
     try {
       const data = await postScan(location, getDeviceId(), gpsData, scannedAt);
       setResult({ status: "ok", location, scanned_at: scannedAt, ...data });
-      const paramConfig = stationParamConfigs[data.location || location];
+      const resolvedLocation = data.location || location;
+      let paramConfig = stationParamConfigs[resolvedLocation];
+
+      // Race condition guard: stationParamConfigs có thể rỗng nếu user scan
+      // ngay sau khi có mạng (fetchAndCacheParamConfigs chưa kịp resolve).
+      // Re-fetch tại chỗ để không bỏ lỡ modal thông số.
+      if (!paramConfig) {
+        try {
+          const fresh = await getStationParamConfigs();
+          const freshMap = {};
+          fresh.forEach((c) => { if (c.active) freshMap[c.station_name] = c; });
+          setStationParamConfigs(freshMap);
+          try { localStorage.setItem("qr_station_param_configs", JSON.stringify(freshMap)); } catch (_) {}
+          paramConfig = freshMap[resolvedLocation];
+        } catch (_) {
+          // fetch thất bại — tiếp tục không có modal
+        }
+      }
+
       if (paramConfig && data.scan_id) {
         setPendingParamsScanId(data.scan_id);
         setPendingParamConfig(paramConfig);
