@@ -9,6 +9,7 @@ import { classifyApiError } from "../lib/apiError";
 import OperationalParamsModal from "../components/OperationalParamsModal";
 import { patchScanParams, getStationParamConfigs } from "../lib/api";
 import { mergeWithBuiltin } from "../lib/builtinConfigs";
+import { resolveStationName } from "../lib/stationsConfig";
 /**
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
@@ -292,6 +293,10 @@ export default function ScanPage() {
   const handleScan = async (qrText, opts = {}) => {
     const location = qrText.trim();
     if (!location) return;
+    // Resolve QR alias → tên trạm thật (vd: "052-LI-042B" → "TK-5211A").
+    // Cần cho offline path vì server không xử lý alias khi chưa sync.
+    // Online path dùng data.location từ server response (đã resolve).
+    const stationName = resolveStationName(location);
 
     setResult(null);
 
@@ -344,10 +349,10 @@ export default function ScanPage() {
       setResult({
         status: "offline",
         message: "Đã lưu offline — sẽ tự đồng bộ khi có mạng",
-        location,
+        location: stationName, // tên trạm đã resolve để hiển thị đúng
         scanned_at: scannedAt,
       });
-      const paramConfig = stationParamConfigs[location];
+      const paramConfig = stationParamConfigs[stationName]; // lookup bằng tên trạm, không phải alias
       if (paramConfig) {
         // Hiện modal nhập thông số — params sẽ được ghi vào item queue cuối
         // "offline" là sentinel phân biệt với scan_id thật (số nguyên)
@@ -412,13 +417,13 @@ export default function ScanPage() {
         setResult({
           status: "offline",
           message: classified.message,
-          location,
+          location: stationName, // tên trạm đã resolve
           scanned_at: scannedAt,
         });
         // navigator.onLine có thể là true khi WiFi nội bộ không có internet thực sự.
         // Khi đó API fail → shouldQueue=true nhưng modal thông số sẽ bị bỏ qua nếu không
         // kiểm tra paramConfig ở đây — giống hệt logic nhánh !navigator.onLine bên trên.
-        const paramConfigQueued = stationParamConfigs[location];
+        const paramConfigQueued = stationParamConfigs[stationName]; // resolve alias
         if (paramConfigQueued) {
           setPendingParamsScanId("offline");
           setPendingParamConfig(paramConfigQueued);

@@ -264,3 +264,68 @@ describe("ScanPage — OUT_OF_RANGE path race condition guard (IDs 452, 453)", (
     expect(step).toBe("params");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: QR alias không được resolve trong offline + shouldQueue path
+// Root cause: QR code tại trạm chứa "052-LI-042B" (alias), không phải "TK-5211A"
+// Frontend phải resolve alias trước khi tra cứu paramConfig
+// ---------------------------------------------------------------------------
+
+import { resolveStationName } from "../../lib/stationsConfig.js";
+
+// Logic từ offline path sau fix: resolve alias trước khi lookup
+function resolveStepOfflineWithAlias(stationParamConfigs, rawQrText) {
+  const stationName = resolveStationName(rawQrText);
+  const paramConfig = stationParamConfigs[stationName];
+  if (paramConfig) return { step: "params", stationName };
+  return { step: "done", stationName };
+}
+
+describe("ScanPage — QR alias resolution trong offline + shouldQueue path", () => {
+  const builtinConfigs = {
+    "TK-5211A":     { station_name: "TK-5211A",     param_label: "Tank level",              param_unit: "mm",      active: true },
+    "TK-5205A":     { station_name: "TK-5205A",     param_label: "Tank level",              param_unit: "mm",      active: true },
+    "PUMP_STATION_7": { station_name: "PUMP_STATION_7", param_label: "P-5225A_Discharge_Pressure", param_unit: "kg/cm2g", active: true },
+  };
+
+  it("BUG REGRESSION: QR '052-LI-042B' offline → resolve → 'TK-5211A' → modal hiện", () => {
+    const { step, stationName } = resolveStepOfflineWithAlias(builtinConfigs, "052-LI-042B");
+    expect(step).toBe("params");
+    expect(stationName).toBe("TK-5211A"); // hiển thị đúng tên trạm trong modal
+  });
+
+  it("BUG REGRESSION: QR '052-PG-071' offline → resolve → 'PUMP_STATION_7' → modal hiện", () => {
+    const { step, stationName } = resolveStepOfflineWithAlias(builtinConfigs, "052-PG-071");
+    expect(step).toBe("params");
+    expect(stationName).toBe("PUMP_STATION_7");
+  });
+
+  it("BUG REGRESSION: QR '052-LI-066B' offline → resolve → 'TK-5205A' → modal hiện", () => {
+    const { step, stationName } = resolveStepOfflineWithAlias(builtinConfigs, "052-LI-066B");
+    expect(step).toBe("params");
+    expect(stationName).toBe("TK-5205A");
+  });
+
+  it("admin config bằng tên trạm thật 'TK-5211A' → không bị resolve sai", () => {
+    // Nếu ai đó cấu hình QR chứa tên trạm trực tiếp (không dùng alias), vẫn hoạt động
+    const { step, stationName } = resolveStepOfflineWithAlias(builtinConfigs, "TK-5211A");
+    expect(step).toBe("params");
+    expect(stationName).toBe("TK-5211A");
+  });
+
+  it("alias không có config → step 'done', không crash", () => {
+    const emptyConfigs = {};
+    const { step } = resolveStepOfflineWithAlias(emptyConfigs, "052-LI-042B");
+    expect(step).toBe("done");
+  });
+
+  it("alias resolve đúng nhưng config inactive → step 'done'", () => {
+    const inactiveConfigs = {
+      "TK-5211A": { station_name: "TK-5211A", param_label: "Tank level", param_unit: "mm", active: false },
+    };
+    // active=false không vào map (filter trong fetchAndCacheParamConfigs)
+    const emptyMap = {};
+    const { step } = resolveStepOfflineWithAlias(emptyMap, "052-LI-042B");
+    expect(step).toBe("done");
+  });
+});
