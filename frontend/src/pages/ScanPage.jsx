@@ -50,6 +50,7 @@ export default function ScanPage() {
     try { return JSON.parse(localStorage.getItem("qr_station_param_configs") || "{}"); }
     catch (_) { return {}; }
   });
+  const paramCacheCount = Object.keys(stationParamConfigs).length;
   const [coldStart, setColdStart] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(queueSize());
@@ -115,11 +116,23 @@ export default function ScanPage() {
     }
   }, []); // deps rỗng — dùng ref để guard, tránh re-run các effect
 
+  // Load + cache cấu hình thông số vận hành. Gọi mỗi khi có mạng để đảm bảo
+  // localStorage luôn được cập nhật kể cả khi app đang mở sẵn trước khi có WiFi.
+  const fetchAndCacheParamConfigs = useCallback(() => {
+    getStationParamConfigs().then((configs) => {
+      const map = {};
+      configs.forEach((c) => { if (c.active) map[c.station_name] = c; });
+      setStationParamConfigs(map);
+      try { localStorage.setItem("qr_station_param_configs", JSON.stringify(map)); } catch (_) {}
+    }).catch(() => {});
+  }, []);
+
   // Theo dõi trạng thái mạng
   useEffect(() => {
     const goOnline = () => {
       setIsOnline(true);
       syncQueue(true); // auto sync — im lặng khi lỗi
+      fetchAndCacheParamConfigs(); // refresh cache khi có mạng trở lại
     };
     const goOffline = () => setIsOnline(false);
 
@@ -129,7 +142,7 @@ export default function ScanPage() {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
     };
-  }, [syncQueue]);
+  }, [syncQueue, fetchAndCacheParamConfigs]);
 
   // Ping server + thử sync khi mount
   useEffect(() => {
@@ -137,16 +150,11 @@ export default function ScanPage() {
     if (navigator.onLine) syncQueue(true); // auto sync lúc mount — im lặng khi lỗi
   }, [syncQueue]);
 
-  // Load cấu hình thông số vận hành từ DB (fail silently — không block scan)
-  // Cache vào localStorage để dùng được khi offline
+  // Load cấu hình thông số vận hành lúc mount (có mạng hay không đều thử,
+  // nếu thất bại thì stationParamConfigs giữ nguyên giá trị từ localStorage)
   useEffect(() => {
-    getStationParamConfigs().then((configs) => {
-      const map = {};
-      configs.forEach((c) => { if (c.active) map[c.station_name] = c; });
-      setStationParamConfigs(map);
-      try { localStorage.setItem("qr_station_param_configs", JSON.stringify(map)); } catch (_) {}
-    }).catch(() => {});
-  }, []);
+    fetchAndCacheParamConfigs();
+  }, [fetchAndCacheParamConfigs]);
 
   // Kiểm tra quyền + bắt đầu GPS watch lúc mount.
   // watchPosition giữ chip GPS chạy liên tục → fix luôn có sẵn cho scan kế tiếp.
@@ -384,7 +392,17 @@ export default function ScanPage() {
           location,
           scanned_at: scannedAt,
         });
-        setStep("done");
+        // navigator.onLine có thể là true khi WiFi nội bộ không có internet thực sự.
+        // Khi đó API fail → shouldQueue=true nhưng modal thông số sẽ bị bỏ qua nếu không
+        // kiểm tra paramConfig ở đây — giống hệt logic nhánh !navigator.onLine bên trên.
+        const paramConfigQueued = stationParamConfigs[location];
+        if (paramConfigQueued) {
+          setPendingParamsScanId("offline");
+          setPendingParamConfig(paramConfigQueued);
+          setStep("params");
+        } else {
+          setStep("done");
+        }
       } else {
         const apiData = classified.data || {};
         const resolvedLocation = apiData.location || location;
@@ -473,7 +491,14 @@ export default function ScanPage() {
       {!isOnline && (
         <div className="rounded-xl border px-4 py-3 text-base flex items-center gap-2 bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-700 dark:text-orange-300">
           <span>📵</span>
-          <span>Không có mạng — scan vẫn hoạt động, dữ liệu lưu offline</span>
+          <span>
+            Không có mạng — scan vẫn hoạt động, dữ liệu lưu offline
+            {paramCacheCount === 0 && (
+              <span className="block text-sm mt-0.5 font-semibold">
+                ⚠️ Chưa có cache thông số vận hành — cần kết nối mạng 1 lần để tải về
+              </span>
+            )}
+          </span>
         </div>
       )}
 
