@@ -8,6 +8,7 @@ import { enqueue, flushQueue, queueSize, clearQueue, updateLastItem } from "../l
 import { classifyApiError } from "../lib/apiError";
 import OperationalParamsModal from "../components/OperationalParamsModal";
 import { patchScanParams, getStationParamConfigs } from "../lib/api";
+import { mergeWithBuiltin } from "../lib/builtinConfigs";
 /**
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
@@ -47,8 +48,12 @@ export default function ScanPage() {
   // map: station_name → { station_name, param_label, param_unit }
   // Khởi tạo từ cache localStorage để dùng được khi offline ngay từ đầu session
   const [stationParamConfigs, setStationParamConfigs] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("qr_station_param_configs") || "{}"); }
-    catch (_) { return {}; }
+    try {
+      const cached = JSON.parse(localStorage.getItem("qr_station_param_configs") || "{}");
+      return mergeWithBuiltin(cached);
+    } catch (_) {
+      return mergeWithBuiltin({});
+    }
   });
   const paramCacheCount = Object.keys(stationParamConfigs).length;
   const [coldStart, setColdStart] = useState(false);
@@ -122,7 +127,7 @@ export default function ScanPage() {
     getStationParamConfigs().then((configs) => {
       const map = {};
       configs.forEach((c) => { if (c.active) map[c.station_name] = c; });
-      setStationParamConfigs(map);
+      setStationParamConfigs(mergeWithBuiltin(map)); // builtin là fallback, API thắng
       try { localStorage.setItem("qr_station_param_configs", JSON.stringify(map)); } catch (_) {}
     }).catch(() => {});
   }, []);
@@ -373,9 +378,9 @@ export default function ScanPage() {
           const fresh = await getStationParamConfigs();
           const freshMap = {};
           fresh.forEach((c) => { if (c.active) freshMap[c.station_name] = c; });
-          setStationParamConfigs(freshMap);
+          setStationParamConfigs(mergeWithBuiltin(freshMap));
           try { localStorage.setItem("qr_station_param_configs", JSON.stringify(freshMap)); } catch (_) {}
-          paramConfig = freshMap[resolvedLocation];
+          paramConfig = mergeWithBuiltin(freshMap)[resolvedLocation];
         } catch (_) {
           // fetch thất bại — tiếp tục không có modal
         }
