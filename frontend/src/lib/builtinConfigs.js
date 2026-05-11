@@ -20,6 +20,18 @@ export const BUILTIN_PARAM_CONFIGS = {
     param_unit: "mm",
     active: true,
   },
+  "TK-5205A": {
+    station_name: "TK-5205A",
+    param_label: "Tank level",
+    param_unit: "mm",
+    active: true,
+  },
+  "TK-5211A": {
+    station_name: "TK-5211A",
+    param_label: "Tank level",
+    param_unit: "mm",
+    active: true,
+  },
 };
 
 /**

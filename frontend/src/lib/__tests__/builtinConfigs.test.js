@@ -6,6 +6,24 @@ import { describe, it, expect } from "vitest";
 import { BUILTIN_PARAM_CONFIGS, mergeWithBuiltin } from "../builtinConfigs.js";
 
 describe("BUILTIN_PARAM_CONFIGS — nội dung cấu hình", () => {
+  it("chứa TK-5211A với đúng thông số", () => {
+    const cfg = BUILTIN_PARAM_CONFIGS["TK-5211A"];
+    expect(cfg).toBeDefined();
+    expect(cfg.station_name).toBe("TK-5211A");
+    expect(cfg.param_label).toBe("Tank level");
+    expect(cfg.param_unit).toBe("mm");
+    expect(cfg.active).toBe(true);
+  });
+
+  it("chứa TK-5205A với đúng thông số", () => {
+    const cfg = BUILTIN_PARAM_CONFIGS["TK-5205A"];
+    expect(cfg).toBeDefined();
+    expect(cfg.station_name).toBe("TK-5205A");
+    expect(cfg.param_label).toBe("Tank level");
+    expect(cfg.param_unit).toBe("mm");
+    expect(cfg.active).toBe(true);
+  });
+
   it("chứa PUMP_STATION_7 với đúng thông số", () => {
     const cfg = BUILTIN_PARAM_CONFIGS["PUMP_STATION_7"];
     expect(cfg).toBeDefined();

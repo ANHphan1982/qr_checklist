@@ -200,3 +200,67 @@ describe("ScanPage — race condition guard: re-fetch khi stationParamConfigs r�
     expect(step).toBe("done");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: OUT_OF_RANGE path thiếu race condition guard (IDs 452, 453)
+// Bug: nhánh catch OUT_OF_RANGE không có re-fetch guard như nhánh success
+// ---------------------------------------------------------------------------
+
+import { mergeWithBuiltin } from "../../lib/builtinConfigs.js";
+
+// Logic trích từ nhánh OUT_OF_RANGE sau fix (ScanPage.jsx catch → else branch)
+async function resolveStepOutOfRangeWithGuard(stationParamConfigs, resolvedLocation, apiData, fetchFn) {
+  let paramConfig = stationParamConfigs[resolvedLocation];
+
+  // Guard: nếu cache trống + OUT_OF_RANGE có scan_id → re-fetch trước khi quyết định
+  if (!paramConfig && apiData.code === "OUT_OF_RANGE" && apiData.scan_id) {
+    try {
+      const fresh = await fetchFn();
+      const freshMap = {};
+      fresh.forEach((c) => { if (c.active) freshMap[c.station_name] = c; });
+      paramConfig = mergeWithBuiltin(freshMap)[resolvedLocation];
+    } catch (_) {}
+  }
+
+  if (apiData.code === "OUT_OF_RANGE" && paramConfig && apiData.scan_id) return "params";
+  return "idle";
+}
+
+describe("ScanPage — OUT_OF_RANGE path race condition guard (IDs 452, 453)", () => {
+  const tk5211Config = { station_name: "TK-5211A", param_label: "Tank level", param_unit: "mm", active: true };
+  const outOfRangeData = { code: "OUT_OF_RANGE", scan_id: 452, location: "TK-5211A", distance: 31677 };
+
+  it("BUG REGRESSION (ID 452): cache rỗng + OUT_OF_RANGE + re-fetch thành công → step 'params'", async () => {
+    const fetchFn = async () => [tk5211Config];
+    const step = await resolveStepOutOfRangeWithGuard({}, "TK-5211A", outOfRangeData, fetchFn);
+    expect(step).toBe("params");
+  });
+
+  it("cache đã có TK-5211A → modal hiện ngay, không cần re-fetch", async () => {
+    const fetchFn = async () => { throw new Error("should not be called"); };
+    const configs = { "TK-5211A": tk5211Config };
+    const step = await resolveStepOutOfRangeWithGuard(configs, "TK-5211A", outOfRangeData, fetchFn);
+    expect(step).toBe("params");
+  });
+
+  it("re-fetch thất bại → step 'idle', không crash", async () => {
+    const fetchFn = async () => { throw new Error("network error"); };
+    const step = await resolveStepOutOfRangeWithGuard({}, "TK-5211A", outOfRangeData, fetchFn);
+    expect(step).toBe("idle");
+  });
+
+  it("OUT_OF_RANGE nhưng scan_id null → không re-fetch, step 'idle'", async () => {
+    const fetchFn = async () => { throw new Error("should not be called"); };
+    const noScanId = { ...outOfRangeData, scan_id: null };
+    const step = await resolveStepOutOfRangeWithGuard({}, "TK-5211A", noScanId, fetchFn);
+    expect(step).toBe("idle");
+  });
+
+  it("TK-5205A với builtin config → OUT_OF_RANGE hiện modal (ID 453 sau fix)", async () => {
+    const fetchFn = async () => [];
+    const tk5205Data = { code: "OUT_OF_RANGE", scan_id: 453, location: "TK-5205A", distance: 31776 };
+    // stationParamConfigs rỗng nhưng mergeWithBuiltin sẽ tìm thấy TK-5205A trong builtin
+    const step = await resolveStepOutOfRangeWithGuard({}, "TK-5205A", tk5205Data, fetchFn);
+    expect(step).toBe("params");
+  });
+});

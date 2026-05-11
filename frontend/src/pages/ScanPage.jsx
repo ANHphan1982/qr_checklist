@@ -436,7 +436,23 @@ export default function ScanPage() {
           distance: apiData.distance,
           location: resolvedLocation,
         });
-        const paramConfig = stationParamConfigs[resolvedLocation];
+        let paramConfig = stationParamConfigs[resolvedLocation];
+
+        // Race condition guard: giống nhánh success — re-fetch nếu cache rỗng
+        // và scan đã được lưu DB (có scan_id).
+        if (!paramConfig && apiData.code === "OUT_OF_RANGE" && apiData.scan_id) {
+          try {
+            const fresh = await getStationParamConfigs();
+            const freshMap = {};
+            fresh.forEach((c) => { if (c.active) freshMap[c.station_name] = c; });
+            setStationParamConfigs(mergeWithBuiltin(freshMap));
+            try { localStorage.setItem("qr_station_param_configs", JSON.stringify(freshMap)); } catch (_) {}
+            paramConfig = mergeWithBuiltin(freshMap)[resolvedLocation];
+          } catch (_) {
+            // fetch thất bại — tiếp tục không có modal
+          }
+        }
+
         if (apiData.code === "OUT_OF_RANGE" && paramConfig && apiData.scan_id) {
           setPendingParamsScanId(apiData.scan_id);
           setPendingParamConfig(paramConfig);
