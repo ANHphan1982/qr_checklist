@@ -7,6 +7,7 @@ import {
   updateAdminStationParam,
   deleteAdminStationParam,
 } from "../lib/api";
+import { PARAM_UNIT_OPTIONS } from "../lib/paramUnits";
 
 const BASE = import.meta.env.VITE_API_URL || "";
 const SESSION_KEY = "admin_authed";
@@ -488,13 +489,17 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
           </div>
           <div>
             <label className="text-xs text-slate-500 dark:text-slate-400">Đơn vị *</label>
-            <input
+            <select
               value={form.param_unit}
               onChange={e => setForm(f => ({ ...f, param_unit: e.target.value }))}
-              placeholder="VD: mm, kg/cm2/g, %"
               required
               className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
+            >
+              <option value="">-- Chọn đơn vị --</option>
+              {PARAM_UNIT_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </div>
         </div>
 
