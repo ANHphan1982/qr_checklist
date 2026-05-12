@@ -31,6 +31,10 @@ app.register_blueprint(admin_bp, url_prefix="/api")
 app.register_blueprint(summary_bp, url_prefix="/api")
 
 
+@app.route("/")
+def index():
+    return {"service": "QR Checklist API", "status": "ok", "docs": "/api/"}
+
 @app.route("/health")
 def health():
     return {"status": "ok"}
