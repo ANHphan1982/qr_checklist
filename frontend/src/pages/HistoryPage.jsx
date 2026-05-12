@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import ScanHistory from "../components/ScanHistory";
-import { getReports } from "../lib/api";
+import { getReports, getStationParamConfigs } from "../lib/api";
 import { exportHistoryToExcel } from "../lib/exportExcel";
 
 function todayVN() {
@@ -13,6 +13,25 @@ export default function HistoryPage() {
   const [total, setTotal]     = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
+
+  // paramConfigs: map station_name → { param_low, param_high, ... }
+  // Fetch từ API khi mount; fallback về localStorage nếu offline
+  const paramConfigsRef = useRef({});
+
+  useEffect(() => {
+    getStationParamConfigs()
+      .then((configs) => {
+        const map = {};
+        configs.forEach((c) => { if (c.active) map[c.station_name] = c; });
+        paramConfigsRef.current = map;
+      })
+      .catch(() => {
+        try {
+          const cached = JSON.parse(localStorage.getItem("qr_station_param_configs") || "{}");
+          paramConfigsRef.current = cached;
+        } catch (_) {}
+      });
+  }, []);
 
   const fetchLogs = async (d) => {
     setLoading(true);
@@ -44,10 +63,7 @@ export default function HistoryPage() {
           )}
           {logs.length > 0 && (
             <button
-              onClick={() => {
-                const cached = JSON.parse(localStorage.getItem("qr_station_param_configs") || "{}");
-                exportHistoryToExcel(logs, `checkin-${date}.xlsx`, cached);
-              }}
+              onClick={() => exportHistoryToExcel(logs, `checkin-${date}.xlsx`, paramConfigsRef.current)}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold active:bg-green-700 transition-colors min-h-[44px]"
             >
               📥 Excel
