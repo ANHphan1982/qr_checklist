@@ -41,9 +41,11 @@ def get_station_params() -> dict:
         for r in rows:
             merged[r.station_name] = {
                 "param_label": r.param_label,
-                "param_unit": r.param_unit,
-                "active": r.active,
-                "id": r.id,
+                "param_unit":  r.param_unit,
+                "param_low":   r.param_low,
+                "param_high":  r.param_high,
+                "active":      r.active,
+                "id":          r.id,
             }
     except Exception as e:
         print(f"[stations_db] get_station_params DB error: {e}")
