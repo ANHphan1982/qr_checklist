@@ -208,6 +208,15 @@ def create_station_param():
     param_label  = (data.get("param_label") or "Thông số").strip()
     param_unit   = (data.get("param_unit") or "mm").strip()
 
+    def _to_float_or_none(val):
+        try:
+            return float(val) if val not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    param_low  = _to_float_or_none(data.get("param_low"))
+    param_high = _to_float_or_none(data.get("param_high"))
+
     if not station_name:
         return jsonify({"error": "Thiếu station_name"}), 400
 
@@ -219,7 +228,8 @@ def create_station_param():
 
     try:
         with SessionLocal() as s:
-            sp = StationParam(station_name=station_name, param_label=param_label, param_unit=param_unit)
+            sp = StationParam(station_name=station_name, param_label=param_label, param_unit=param_unit,
+                              param_low=param_low, param_high=param_high)
             s.add(sp)
             s.commit()
             s.refresh(sp)
@@ -243,10 +253,20 @@ def update_station_param(param_id):
             return jsonify({"error": "Không tìm thấy cấu hình"}), 404
         if sp.station_name in STATIC_STATION_PARAMS:
             return jsonify({"error": f"Trạm '{sp.station_name}' đã được cấu hình sẵn trong config — không thể thay đổi qua admin"}), 409
+        def _to_float_or_none(val):
+            try:
+                return float(val) if val not in (None, "") else None
+            except (TypeError, ValueError):
+                return None
+
         if data.get("param_label") is not None:
             sp.param_label = data["param_label"].strip()
         if data.get("param_unit") is not None:
             sp.param_unit = data["param_unit"].strip()
+        if "param_low" in data:
+            sp.param_low = _to_float_or_none(data["param_low"])
+        if "param_high" in data:
+            sp.param_high = _to_float_or_none(data["param_high"])
         if data.get("active") is not None:
             sp.active = bool(data["active"])
         s.commit()

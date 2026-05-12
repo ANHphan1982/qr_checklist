@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildStationsRows, buildAliasesRows, buildHistoryRows } from "../exportExcel";
+import { buildStationsRows, buildAliasesRows, buildHistoryRows, isOutOfRange } from "../exportExcel";
 
 // ---------------------------------------------------------------------------
 // buildStationsRows
@@ -311,6 +311,114 @@ describe("buildHistoryRows — route assessment columns", () => {
     }];
     const [row] = buildHistoryRows(log);
     expect(row["Đánh giá tốc độ"]).toBe("Bỏ qua (thiếu tọa độ)");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isOutOfRange — helper giới hạn vận hành (TDD)
+// ---------------------------------------------------------------------------
+
+describe("isOutOfRange", () => {
+  it("false khi value là null", () => {
+    expect(isOutOfRange(null, 100, 1500)).toBe(false);
+  });
+
+  it("false khi cả low và high đều null (không cấu hình giới hạn)", () => {
+    expect(isOutOfRange(500, null, null)).toBe(false);
+  });
+
+  it("false khi value nằm trong [low, high]", () => {
+    expect(isOutOfRange(800, 100, 1500)).toBe(false);
+  });
+
+  it("false khi value bằng đúng giới hạn dưới (biên L)", () => {
+    expect(isOutOfRange(100, 100, 1500)).toBe(false);
+  });
+
+  it("false khi value bằng đúng giới hạn trên (biên H)", () => {
+    expect(isOutOfRange(1500, 100, 1500)).toBe(false);
+  });
+
+  it("true khi value < low (dưới giới hạn L)", () => {
+    expect(isOutOfRange(50, 100, 1500)).toBe(true);
+  });
+
+  it("true khi value > high (vượt giới hạn H)", () => {
+    expect(isOutOfRange(2000, 100, 1500)).toBe(true);
+  });
+
+  it("true khi chỉ có low và value < low", () => {
+    expect(isOutOfRange(50, 100, null)).toBe(true);
+  });
+
+  it("false khi chỉ có low và value >= low", () => {
+    expect(isOutOfRange(150, 100, null)).toBe(false);
+  });
+
+  it("true khi chỉ có high và value > high", () => {
+    expect(isOutOfRange(2000, null, 1500)).toBe(true);
+  });
+
+  it("false khi chỉ có high và value <= high", () => {
+    expect(isOutOfRange(1200, null, 1500)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildHistoryRows — giới hạn vận hành (TDD)
+// Khi truyền paramConfigs, thêm cột "Cảnh báo" hiển thị trạng thái giới hạn
+// ---------------------------------------------------------------------------
+
+describe("buildHistoryRows — giới hạn vận hành", () => {
+  const makeLog = (location, oil_level_mm) => ({
+    id: 1, location, scanned_at: "2026-04-18T01:30:00.000Z",
+    device_id: "d", geo_status: "ok", geo_distance: 30,
+    email_sent: true, oil_level_mm,
+  });
+
+  const configs = {
+    "TK-5203A": { param_label: "Tank level", param_unit: "mm", param_low: 200, param_high: 1400 },
+    "TK-5205A": { param_label: "Tank level", param_unit: "mm", param_low: null, param_high: null },
+  };
+
+  it("luôn có cột 'Cảnh báo' khi truyền paramConfigs", () => {
+    const [row] = buildHistoryRows([makeLog("TK-5203A", 800)], configs);
+    expect(row).toHaveProperty("Cảnh báo");
+  });
+
+  it("'Cảnh báo' rỗng khi value trong giới hạn", () => {
+    const [row] = buildHistoryRows([makeLog("TK-5203A", 800)], configs);
+    expect(row["Cảnh báo"]).toBe("");
+  });
+
+  it("'Cảnh báo' có nội dung khi value < low", () => {
+    const [row] = buildHistoryRows([makeLog("TK-5203A", 100)], configs);
+    expect(row["Cảnh báo"]).not.toBe("");
+  });
+
+  it("'Cảnh báo' có nội dung khi value > high", () => {
+    const [row] = buildHistoryRows([makeLog("TK-5203A", 1600)], configs);
+    expect(row["Cảnh báo"]).not.toBe("");
+  });
+
+  it("'Cảnh báo' rỗng khi trạm không có giới hạn (low=null, high=null)", () => {
+    const [row] = buildHistoryRows([makeLog("TK-5205A", 9999)], configs);
+    expect(row["Cảnh báo"]).toBe("");
+  });
+
+  it("'Cảnh báo' rỗng khi trạm không có trong paramConfigs", () => {
+    const [row] = buildHistoryRows([makeLog("UNKNOWN", 9999)], configs);
+    expect(row["Cảnh báo"]).toBe("");
+  });
+
+  it("backward compat: không có cột 'Cảnh báo' khi gọi không có paramConfigs", () => {
+    const [row] = buildHistoryRows([makeLog("TK-5203A", 100)]);
+    expect(row).not.toHaveProperty("Cảnh báo");
+  });
+
+  it("'Cảnh báo' rỗng khi oil_level_mm là null dù ngoài giới hạn về lý thuyết", () => {
+    const [row] = buildHistoryRows([makeLog("TK-5203A", null)], configs);
+    expect(row["Cảnh báo"]).toBe("");
   });
 });
 

@@ -377,7 +377,7 @@ function PurgeButton({ adminKey, flash }) {
 // Station Params Panel — cấu hình thông số vận hành
 // ---------------------------------------------------------------------------
 function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flash }) {
-  const empty = { station_name: "", param_label: "Tank level", param_unit: "mm" };
+  const empty = { station_name: "", param_label: "Tank level", param_unit: "mm", param_low: "", param_high: "" };
   const [form,    setForm]    = useState(empty);
   const [editing, setEditing] = useState(null); // id đang sửa
   const [saving,  setSaving]  = useState(false);
@@ -392,10 +392,13 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
     e.preventDefault();
     setSaving(true);
     try {
+      const toFloatOrNull = v => v !== "" && v !== null ? parseFloat(v) : null;
       if (editing != null) {
         await updateAdminStationParam(adminKey, editing, {
           param_label: form.param_label,
           param_unit:  form.param_unit,
+          param_low:   toFloatOrNull(form.param_low),
+          param_high:  toFloatOrNull(form.param_high),
         });
         flash(true, `Đã cập nhật cấu hình ${form.station_name}`);
       } else {
@@ -414,7 +417,13 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
 
   const handleEdit = (p) => {
     setEditing(p.id);
-    setForm({ station_name: p.station_name, param_label: p.param_label, param_unit: p.param_unit });
+    setForm({
+      station_name: p.station_name,
+      param_label:  p.param_label,
+      param_unit:   p.param_unit,
+      param_low:    p.param_low  ?? "",
+      param_high:   p.param_high ?? "",
+    });
   };
 
   const handleDelete = async (p) => {
@@ -503,6 +512,31 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-slate-500 dark:text-slate-400">Giới hạn dưới L</label>
+            <input
+              type="number"
+              step="any"
+              value={form.param_low}
+              onChange={e => setForm(f => ({ ...f, param_low: e.target.value }))}
+              placeholder="Không giới hạn"
+              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 dark:text-slate-400">Giới hạn trên H</label>
+            <input
+              type="number"
+              step="any"
+              value={form.param_high}
+              onChange={e => setForm(f => ({ ...f, param_high: e.target.value }))}
+              placeholder="Không giới hạn"
+              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            />
+          </div>
+        </div>
+
         <div className="flex gap-2">
           <button type="submit" disabled={saving}
             className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl disabled:opacity-50">
@@ -529,6 +563,11 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
               <p className="font-semibold text-slate-800 dark:text-slate-100">{p.station_name}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {p.param_label} · <span className="font-mono">{p.param_unit}</span>
+                {(p.param_low != null || p.param_high != null) && (
+                  <span className="ml-2 font-mono">
+                    · L:{p.param_low ?? "—"} / H:{p.param_high ?? "—"}
+                  </span>
+                )}
                 {!p.active && <span className="ml-2 text-orange-500">· Tắt</span>}
               </p>
             </div>

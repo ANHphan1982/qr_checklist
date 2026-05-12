@@ -66,6 +66,8 @@ class StationParam(Base):
     station_name = Column(String(100), nullable=False, unique=True)
     param_label  = Column(String(100), nullable=False, default="Thông số")
     param_unit   = Column(String(50),  nullable=False, default="mm")
+    param_low    = Column(Float, nullable=True)   # giới hạn dưới (L)
+    param_high   = Column(Float, nullable=True)   # giới hạn trên (H)
     active       = Column(Boolean, default=True)
     created_at   = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -75,6 +77,8 @@ class StationParam(Base):
             "station_name": self.station_name,
             "param_label": self.param_label,
             "param_unit": self.param_unit,
+            "param_low": self.param_low,
+            "param_high": self.param_high,
             "active": self.active,
         }
 

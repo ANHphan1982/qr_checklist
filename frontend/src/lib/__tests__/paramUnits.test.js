@@ -37,6 +37,12 @@ describe("PARAM_UNIT_OPTIONS", () => {
     const unique = new Set(values);
     expect(unique.size).toBe(values.length);
   });
+
+  it("không có label nào chứa ' — ' (không có mô tả dài)", () => {
+    PARAM_UNIT_OPTIONS.forEach(opt => {
+      expect(opt.label).not.toContain(" — ");
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -58,8 +64,19 @@ describe("PARAM_UNIT_OPTIONS — đơn vị bắt buộc", () => {
     expect(values()).toContain("%");
   });
 
-  it("chứa đơn vị 'Yes/No' (trạng thái)", () => {
-    expect(values()).toContain("Yes/No");
+  it("chứa 'Yes' và 'No' là 2 lựa chọn riêng biệt", () => {
+    expect(values()).toContain("Yes");
+    expect(values()).toContain("No");
+  });
+
+  it("KHÔNG chứa 'Yes/No' gộp chung (đã tách thành 2 lựa chọn)", () => {
+    expect(values()).not.toContain("Yes/No");
+  });
+
+  it("label của 'A' chỉ là 'A' (không có mô tả thêm)", () => {
+    const aOpt = PARAM_UNIT_OPTIONS.find(o => o.value === "A");
+    expect(aOpt).toBeDefined();
+    expect(aOpt.label).toBe("A");
   });
 });
 
@@ -78,6 +95,18 @@ describe("isValidParamUnit", () => {
 
   it("trả về true cho value hợp lệ '%'", () => {
     expect(isValidParamUnit("%")).toBe(true);
+  });
+
+  it("trả về true cho 'Yes'", () => {
+    expect(isValidParamUnit("Yes")).toBe(true);
+  });
+
+  it("trả về true cho 'No'", () => {
+    expect(isValidParamUnit("No")).toBe(true);
+  });
+
+  it("trả về false cho 'Yes/No' gộp (không còn hợp lệ)", () => {
+    expect(isValidParamUnit("Yes/No")).toBe(false);
   });
 
   it("trả về false cho giá trị không tồn tại", () => {

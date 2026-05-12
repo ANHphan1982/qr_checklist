@@ -30,6 +30,18 @@ function toVnDateTime(isoString) {
   return `${date} ${time}`;
 }
 
+/**
+ * Kiểm tra value có nằm ngoài [low, high] không.
+ * Trả về true nếu ngoài giới hạn, false nếu OK hoặc không có giới hạn.
+ */
+export function isOutOfRange(value, low, high) {
+  if (value == null) return false;
+  if (low == null && high == null) return false;
+  if (low != null && value < low) return true;
+  if (high != null && value > high) return true;
+  return false;
+}
+
 export function buildStationsRows(stations) {
   return stations.map((st) => ({
     "Tên trạm":    st.name,
@@ -48,9 +60,16 @@ export function buildAliasesRows(aliases) {
   }));
 }
 
-export function buildHistoryRows(logs) {
+/**
+ * @param {Array} logs - danh sách scan log
+ * @param {Object} [paramConfigs] - map station_name → { param_low, param_high }
+ *   Nếu truyền vào, mỗi row sẽ có thêm cột "Cảnh báo" khi value ngoài giới hạn.
+ */
+export function buildHistoryRows(logs, paramConfigs) {
+  const hasConfigs = paramConfigs != null;
   return logs.map((log) => {
-    return {
+    const val = log.oil_level_mm ?? null;
+    const row = {
       "ID":                              log.id,
       "Trạm":                            log.location,
       "Thời gian (VN)":                  toVnDateTime(log.scanned_at),
@@ -61,9 +80,19 @@ export function buildHistoryRows(logs) {
       "Thời gian dự kiến (phút)":        roundOrEmpty(log.expected_travel_min, 1),
       "Thời gian thực tế (phút)":        roundOrEmpty(log.actual_travel_min, 1),
       "Đánh giá tốc độ":                 log.assessment ? (ASSESSMENT_LABEL[log.assessment] || log.assessment) : "",
-      "Thông số":                          log.oil_level_mm ?? "",
+      "Thông số":                          val ?? "",
       "Email":                           log.email_sent ? "Đã gửi" : "Chưa gửi",
     };
+
+    if (hasConfigs) {
+      const cfg = paramConfigs[log.location];
+      const outOfRange = cfg ? isOutOfRange(val, cfg.param_low, cfg.param_high) : false;
+      row["Cảnh báo"] = outOfRange
+        ? `⚠️ Ngoài giới hạn (L:${cfg.param_low ?? "-"} / H:${cfg.param_high ?? "-"})`
+        : "";
+    }
+
+    return row;
   });
 }
 
@@ -72,4 +101,39 @@ export function exportToExcel(rows, filename, sheetName = "Sheet1") {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, filename);
+}
+
+/**
+ * Xuất lịch sử với highlight đỏ cho giá trị ngoài giới hạn.
+ * @param {Array} logs
+ * @param {string} filename
+ * @param {Object} paramConfigs - map station_name → { param_low, param_high }
+ */
+export function exportHistoryToExcel(logs, filename, paramConfigs = {}) {
+  const rows = buildHistoryRows(logs, paramConfigs);
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  // Áp dụng màu đỏ cho cell "Thông số" khi ngoài giới hạn
+  if (rows.length > 0) {
+    const headers = Object.keys(rows[0]);
+    const paramColIdx = headers.indexOf("Thông số");
+
+    if (paramColIdx >= 0) {
+      logs.forEach((log, i) => {
+        const cfg = paramConfigs[log.location];
+        if (!cfg) return;
+        const val = log.oil_level_mm ?? null;
+        if (!isOutOfRange(val, cfg.param_low, cfg.param_high)) return;
+
+        const cellAddr = XLSX.utils.encode_cell({ r: i + 1, c: paramColIdx });
+        if (ws[cellAddr]) {
+          ws[cellAddr].s = { font: { color: { rgb: "CC0000" }, bold: true } };
+        }
+      });
+    }
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Lịch sử");
+  XLSX.writeFile(wb, filename, { cellStyles: true });
 }
