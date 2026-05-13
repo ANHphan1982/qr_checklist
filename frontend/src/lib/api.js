@@ -47,7 +47,7 @@ export async function postScan(location, deviceId, gpsData = null, scannedAt = n
     }
   }
 
-  const { data } = await api.post("/api/scan", payload);
+  const { data } = await api.post("/api/scan", payload, { timeout: 8000 });
   return data;
 }
 
