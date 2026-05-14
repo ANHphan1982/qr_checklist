@@ -4,12 +4,13 @@ import ScanResult from "../components/ScanResult";
 import { postScan, postQueuedScan, pingServer, checkConnectivity } from "../lib/api";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loadLastFix } from "../lib/geolocation";
-import { enqueue, flushQueue, queueSize, clearQueue, updateLastItem } from "../lib/offlineQueue";
+import { enqueue, flushQueue, queueSize, clearQueue, updateLastItem, hasQueueItem, updateItemByQueuedAt } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
 import OperationalParamsModal from "../components/OperationalParamsModal";
 import { patchScanParams, getStationParamConfigs } from "../lib/api";
 import { mergeWithBuiltin } from "../lib/builtinConfigs";
 import { resolveStationName } from "../lib/stationsConfig";
+import { savePendingParams, loadPendingParams, clearPendingParams } from "../lib/pendingParams";
 /**
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
@@ -46,6 +47,7 @@ export default function ScanPage() {
   const [result, setResult] = useState(null);
   const [pendingParamsScanId, setPendingParamsScanId] = useState(null);
   const [pendingParamConfig,  setPendingParamConfig]  = useState(null);
+  const [pendingQueuedAt,     setPendingQueuedAt]     = useState(null);
   // map: station_name → { station_name, param_label, param_unit }
   // Khởi tạo từ cache localStorage để dùng được khi offline ngay từ đầu session
   const [stationParamConfigs, setStationParamConfigs] = useState(() => {
@@ -161,6 +163,24 @@ export default function ScanPage() {
   useEffect(() => {
     fetchAndCacheParamConfigs();
   }, [fetchAndCacheParamConfigs]);
+
+  // Hướng B: restore modal thông số nếu user thoát app trước khi nhập.
+  // Kiểm tra localStorage xem có pending params chưa hoàn thành không.
+  // Chỉ restore nếu queue item vẫn còn (chưa được sync lên server).
+  useEffect(() => {
+    const pending = loadPendingParams();
+    if (!pending) return;
+    const { stationName, config, queuedAt } = pending;
+    if (!hasQueueItem(queuedAt)) {
+      clearPendingParams();
+      return;
+    }
+    setPendingParamsScanId("offline");
+    setPendingParamConfig(config);
+    setPendingQueuedAt(queuedAt);
+    setResult({ status: "offline", message: "Vui lòng nhập thông số còn thiếu", location: stationName, scanned_at: "" });
+    setStep("params");
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Kiểm tra quyền + bắt đầu GPS watch lúc mount.
   // watchPosition giữ chip GPS chạy liên tục → fix luôn có sẵn cho scan kế tiếp.
@@ -344,7 +364,7 @@ export default function ScanPage() {
         geo_cached: gpsData?.cached || undefined,
         cache_age_ms: gpsData?.cache_age_ms,
       };
-      enqueue(item);
+      const queuedAt = enqueue(item);
       setPendingCount(queueSize());
       setResult({
         status: "offline",
@@ -354,10 +374,11 @@ export default function ScanPage() {
       });
       const paramConfig = stationParamConfigs[stationName]; // lookup bằng tên trạm, không phải alias
       if (paramConfig) {
-        // Hiện modal nhập thông số — params sẽ được ghi vào item queue cuối
-        // "offline" là sentinel phân biệt với scan_id thật (số nguyên)
+        // Persist pending params → modal không bị mất nếu user thoát app
+        savePendingParams(stationName, paramConfig, queuedAt);
         setPendingParamsScanId("offline");
         setPendingParamConfig(paramConfig);
+        setPendingQueuedAt(queuedAt);
         setStep("params");
       } else {
         setStep("done");
@@ -412,7 +433,7 @@ export default function ScanPage() {
           geo_cached: gpsData?.cached || undefined,
           cache_age_ms: gpsData?.cache_age_ms,
         };
-        enqueue(item);
+        const queuedAt = enqueue(item);
         setPendingCount(queueSize());
         setResult({
           status: "offline",
@@ -425,8 +446,10 @@ export default function ScanPage() {
         // kiểm tra paramConfig ở đây — giống hệt logic nhánh !navigator.onLine bên trên.
         const paramConfigQueued = stationParamConfigs[stationName]; // resolve alias
         if (paramConfigQueued) {
+          savePendingParams(stationName, paramConfigQueued, queuedAt);
           setPendingParamsScanId("offline");
           setPendingParamConfig(paramConfigQueued);
+          setPendingQueuedAt(queuedAt);
           setStep("params");
         } else {
           setStep("done");
@@ -478,16 +501,23 @@ export default function ScanPage() {
   };
 
   const handleReset = () => {
+    clearPendingParams();
     setStep("idle");
     setResult(null);
     setPendingParamsScanId(null);
     setPendingParamConfig(null);
+    setPendingQueuedAt(null);
   };
 
   const handleParamsSubmit = async (params) => {
     if (pendingParamsScanId === "offline") {
-      // Offline: ghi params vào item cuối của queue — sẽ được gửi kèm khi đồng bộ
-      updateLastItem(params);
+      // Offline: ghi params vào item đúng trong queue theo queued_at
+      if (pendingQueuedAt) {
+        updateItemByQueuedAt(pendingQueuedAt, params);
+      } else {
+        updateLastItem(params); // fallback cho items cũ chưa có queuedAt link
+      }
+      clearPendingParams();
     } else if (pendingParamsScanId) {
       try {
         await patchScanParams(pendingParamsScanId, params);
@@ -497,12 +527,15 @@ export default function ScanPage() {
     }
     setPendingParamsScanId(null);
     setPendingParamConfig(null);
+    setPendingQueuedAt(null);
     setStep("done");
   };
 
   const handleParamsSkip = () => {
+    clearPendingParams();
     setPendingParamsScanId(null);
     setPendingParamConfig(null);
+    setPendingQueuedAt(null);
     setStep("done");
   };
 

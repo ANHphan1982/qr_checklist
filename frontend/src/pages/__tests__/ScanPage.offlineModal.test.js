@@ -329,3 +329,78 @@ describe("ScanPage — QR alias resolution trong offline + shouldQueue path", ()
     expect(step).toBe("done");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Hướng B: Restore pending params khi app khởi động lại
+// Kịch bản: user thoát app trong 8s timeout → modal bị mất → cần restore khi mở lại
+// ---------------------------------------------------------------------------
+
+import {
+  savePendingParams,
+  loadPendingParams,
+  clearPendingParams,
+} from "../../lib/pendingParams.js";
+import { hasQueueItem } from "../../lib/offlineQueue.js";
+
+// Logic restore từ ScanPage useEffect (on mount)
+function resolveRestoreOnMount(pendingParams, queueItemExists) {
+  if (!pendingParams) return { shouldRestore: false };
+  const { stationName, config, queuedAt } = pendingParams;
+  if (!queueItemExists) {
+    // Item đã sync → clear, không cần modal
+    return { shouldRestore: false, shouldClear: true };
+  }
+  return { shouldRestore: true, stationName, config, queuedAt };
+}
+
+describe("ScanPage — Hướng B: restore pending params khi app restart (IDs 487, 486)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("không có pending params → không restore", () => {
+    const result = resolveRestoreOnMount(null, false);
+    expect(result.shouldRestore).toBe(false);
+  });
+
+  it("có pending params + queue item còn đó → shouldRestore=true, trả về đúng stationName/config", () => {
+    const config = { station_name: "PUMP_STATION_7", param_label: "Áp suất", param_unit: "kg/cm2g", active: true };
+    const result = resolveRestoreOnMount(
+      { stationName: "PUMP_STATION_7", config, queuedAt: "ts-1" },
+      true // queue item còn
+    );
+    expect(result.shouldRestore).toBe(true);
+    expect(result.stationName).toBe("PUMP_STATION_7");
+    expect(result.config).toEqual(config);
+    expect(result.queuedAt).toBe("ts-1");
+  });
+
+  it("có pending params nhưng queue item đã được sync → shouldClear=true, không restore", () => {
+    const config = { station_name: "PUMP_STATION_7", param_label: "Áp suất", param_unit: "kg/cm2g", active: true };
+    const result = resolveRestoreOnMount(
+      { stationName: "PUMP_STATION_7", config, queuedAt: "ts-already-synced" },
+      false // queue item đã bị xóa sau khi sync
+    );
+    expect(result.shouldRestore).toBe(false);
+    expect(result.shouldClear).toBe(true);
+  });
+
+  it("integration: savePendingParams → loadPendingParams → resolveRestoreOnMount", () => {
+    const config = { station_name: "TK-5203A", param_label: "Tank level", param_unit: "mm", active: true };
+    savePendingParams("TK-5203A", config, "ts-test");
+
+    const pending = loadPendingParams();
+    const result = resolveRestoreOnMount(pending, true);
+
+    expect(result.shouldRestore).toBe(true);
+    expect(result.stationName).toBe("TK-5203A");
+  });
+
+  it("clearPendingParams sau submit → không restore ở lần mở app kế tiếp", () => {
+    savePendingParams("PUMP_STATION_7", {}, "ts-x");
+    clearPendingParams();
+
+    const pending = loadPendingParams();
+    expect(pending).toBeNull(); // không còn pending → không restore
+  });
+});

@@ -14,11 +14,16 @@ export function getQueue() {
   }
 }
 
-/** Thêm 1 scan vào queue */
+/**
+ * Thêm 1 scan vào queue.
+ * @returns {string} queued_at — dùng để link với pendingParams
+ */
 export function enqueue(item) {
+  const queuedAt = new Date().toISOString();
   const queue = getQueue();
-  queue.push({ ...item, queued_at: new Date().toISOString() });
+  queue.push({ ...item, queued_at: queuedAt });
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  return queuedAt;
 }
 
 /** Xóa toàn bộ queue */
@@ -26,16 +31,24 @@ export function clearQueue() {
   localStorage.removeItem(QUEUE_KEY);
 }
 
-/** Xóa 1 item theo index */
-function removeItem(index) {
+/** Kiểm tra queue còn item với queued_at đó không */
+export function hasQueueItem(queuedAt) {
+  return getQueue().some((item) => item.queued_at === queuedAt);
+}
+
+/** Cập nhật item cụ thể theo queued_at với các field bổ sung */
+export function updateItemByQueuedAt(queuedAt, patch) {
   const queue = getQueue();
-  queue.splice(index, 1);
+  const idx = queue.findIndex((item) => item.queued_at === queuedAt);
+  if (idx === -1) return;
+  queue[idx] = { ...queue[idx], ...patch };
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
 }
 
 /**
- * Flush queue — gửi tất cả scan đang chờ lên server.
- * @param {Function} postFn — hàm gọi API (location, deviceId, gpsData, scannedAt)
+ * Flush queue — gửi tất cả scan đang chờ lên server theo thứ tự chronological.
+ * Duyệt xuôi để scan cũ nhất được gửi trước → nhận ID DB nhỏ hơn → đúng thứ tự.
+ * @param {Function} postFn — hàm gọi API nhận item
  * @returns {{ success: number, failed: number }}
  */
 export async function flushQueue(postFn) {
@@ -43,21 +56,19 @@ export async function flushQueue(postFn) {
   if (queue.length === 0) return { success: 0, failed: 0 };
 
   let success = 0;
-  let failed = 0;
+  const failed_items = [];
 
-  // Duyệt ngược để splice không làm lệch index
-  for (let i = queue.length - 1; i >= 0; i--) {
-    const item = queue[i];
+  for (const item of queue) {
     try {
       await postFn(item);
-      removeItem(i);
       success++;
     } catch {
-      failed++;
+      failed_items.push(item);
     }
   }
 
-  return { success, failed };
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(failed_items));
+  return { success, failed: failed_items.length };
 }
 
 /** Số lượng scan đang chờ */
@@ -65,7 +76,7 @@ export function queueSize() {
   return getQueue().length;
 }
 
-/** Cập nhật item cuối trong queue với các field bổ sung (dùng cho offline params) */
+/** Cập nhật item cuối trong queue với các field bổ sung (dùng cho offline params in-session) */
 export function updateLastItem(patch) {
   const queue = getQueue();
   if (queue.length === 0) return;
