@@ -11,6 +11,9 @@ import { patchScanParams, getStationParamConfigs } from "../lib/api";
 import { mergeWithBuiltin } from "../lib/builtinConfigs";
 import { resolveStationName } from "../lib/stationsConfig";
 import { savePendingParams, loadPendingParams, clearPendingParams } from "../lib/pendingParams";
+import { resolveStatusBanner } from "../lib/statusBanner";
+import { resolveButtonState } from "../lib/buttonState";
+import { resolveStepDisplay } from "../lib/stepDisplay";
 /**
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
@@ -29,17 +32,6 @@ import { savePendingParams, loadPendingParams, clearPendingParams } from "../lib
 // 30s đủ để chấp nhận fix vừa cũ, vẫn còn chính xác cho check-in tại chỗ.
 const GPS_FIX_MAX_AGE_MS = 30000;
 
-const PERMISSION_LABEL = {
-  granted: { icon: "✅", text: "GPS đã sẵn sàng",             bg: "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300" },
-  prompt:  { icon: "📍", text: "Sẽ hỏi quyền GPS khi scan",   bg: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300" },
-  denied:  { icon: "⚠️", text: "GPS bị từ chối — check-in vẫn hoạt động, không xác thực vị trí", bg: "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300" },
-  unknown: { icon: "📡", text: "Không kiểm tra được GPS",      bg: "bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400" },
-};
-
-const BUSY_LABEL = {
-  permission: "🔍 Kiểm tra quyền GPS...",
-  sending:    "⏳ Đang gửi dữ liệu...",
-};
 
 export default function ScanPage() {
   const [step, setStep] = useState("idle");
@@ -543,11 +535,14 @@ export default function ScanPage() {
   // Computed
   // ---------------------------------------------------------------------------
 
-  const isBusy = step === "permission" || step === "gps" || step === "sending";
   const isScanning = step === "scanning";
-  const isDone = step === "done";
   const isParams = step === "params";
-  const permInfo = gpsPermission ? PERMISSION_LABEL[gpsPermission] : null;
+
+  const banner     = resolveStatusBanner({ isOnline, syncMsg, coldStart, gpsPermission, step, paramCacheCount });
+  const btnState   = resolveButtonState(step);
+  const stepDisplay = resolveStepDisplay(step);
+
+  const handleBtnClick = step === "scanning" ? handleStop : step === "done" ? handleReset : handleStart;
 
   // ---------------------------------------------------------------------------
   // UI
@@ -564,129 +559,66 @@ export default function ScanPage() {
         </p>
       </div>
 
-      {/* Trạng thái mạng */}
-      {!isOnline && (
-        <div className="rounded-xl border px-4 py-3 text-base flex items-center gap-2 bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-700 dark:text-orange-300">
-          <span>📵</span>
-          <span>
-            Không có mạng — scan vẫn hoạt động, dữ liệu lưu offline
-            {paramCacheCount === 0 && (
-              <span className="block text-sm mt-0.5 font-semibold">
-                ⚠️ Chưa có cache thông số vận hành — cần kết nối mạng 1 lần để tải về
-              </span>
-            )}
-          </span>
-        </div>
-      )}
+      {/* Smart status banner — 1 block thay 5 banners */}
+      {banner && <StatusBanner banner={banner} />}
 
-      {/* Scan đang chờ đồng bộ */}
-      {pendingCount > 0 && isOnline && (
-        <div className="rounded-xl border px-4 py-3 text-base flex items-center justify-between gap-2 bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300">
-          <span>🕐 {pendingCount} scan chờ đồng bộ</span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => syncQueue(false)}
-              disabled={isSyncing}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 active:bg-blue-700 transition-colors min-h-[44px]"
-            >
-              {isSyncing ? (
-                <>
-                  <svg className="animate-spin h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Đang gửi...
-                </>
-              ) : "Đồng bộ ngay"}
-            </button>
-            <button
-              onClick={handleClearQueue}
-              disabled={isSyncing}
-              className="px-4 py-2.5 rounded-xl bg-red-100 text-red-700 text-sm font-semibold disabled:opacity-60 active:bg-red-200 transition-colors dark:bg-red-900/30 dark:text-red-300 min-h-[44px]"
-              title="Xóa tất cả scan đang chờ"
-            >
-              Xóa
-            </button>
-          </div>
-        </div>
-      )}
-
-      {pendingCount > 0 && !isOnline && (
-        <div className="rounded-xl border px-4 py-3 text-base bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
-          🕐 {pendingCount} scan đang chờ — sẽ gửi khi có mạng
-        </div>
-      )}
-
-      {/* Thông báo kết quả sync */}
-      {syncMsg && (
-        <div className={`rounded-xl border px-4 py-3 text-base ${
-          syncMsg.ok
-            ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300"
-            : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300"
-        }`}>
-          {syncMsg.text}
-        </div>
-      )}
-
-      {/* Nút và kết quả Test kết nối — hiện khi có scan chờ hoặc sync thất bại */}
-      {(pendingCount > 0 || syncMsg?.ok === false) && (
+      {/* Pending queue controls — gộp online/offline row + test connection */}
+      {pendingCount > 0 && (
         <div className="flex flex-col gap-2">
-          <button
-            onClick={handleTestConn}
-            disabled={isTestingConn}
-            className="w-full py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-base font-semibold disabled:opacity-60 active:bg-slate-100 dark:active:bg-slate-700 transition-colors min-h-[48px]"
-          >
-            {isTestingConn ? "⏳ Đang kiểm tra..." : "🔌 Test kết nối server"}
-          </button>
-          {connTest && (
-            <div className={`rounded-xl border px-4 py-3 text-sm font-mono break-all ${
-              connTest.ok
-                ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300"
-                : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300"
-            }`}>
-              {connTest.ok ? "✅ " : "❌ "}{connTest.detail}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* GPS permission hint */}
-      {permInfo && !isBusy && isOnline && (
-        <div className={`rounded-xl border px-4 py-3 text-base flex items-center gap-2 ${permInfo.bg}`}>
-          <span>{permInfo.icon}</span>
-          <span>{permInfo.text}</span>
-        </div>
-      )}
-
-      {/* Cold-start warning */}
-      {coldStart && (
-        <div className="rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300 text-base px-4 py-3">
-          ⏳ Server đang khởi động (cold start ~30s), vui lòng chờ...
-        </div>
-      )}
-
-      {/* Busy spinner */}
-      {isBusy && (
-        <div className="flex flex-col items-center gap-1 text-blue-600 dark:text-blue-400 py-3">
-          <div className="flex items-center gap-2 text-base">
-            <svg className="animate-spin h-5 w-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-            {step === "gps"
-              ? (isOnline ? "📍 Đang lấy vị trí GPS..." : "📍 Đang bắt tín hiệu vệ tinh...")
-              : BUSY_LABEL[step]}
+          <div className="rounded-xl border px-4 py-3 text-base flex items-center justify-between gap-2 bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300">
+            <span>🕐 {pendingCount} scan {isOnline ? "chờ đồng bộ" : "đang chờ — sẽ gửi khi có mạng"}</span>
+            {isOnline && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => syncQueue(false)}
+                  disabled={isSyncing}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 active:bg-blue-700 transition-colors min-h-[44px]"
+                >
+                  {isSyncing ? (
+                    <>
+                      <svg className="animate-spin h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                      Đang gửi...
+                    </>
+                  ) : "Đồng bộ"}
+                </button>
+                <button
+                  onClick={handleClearQueue}
+                  disabled={isSyncing}
+                  className="px-3 py-2.5 rounded-xl bg-red-100 text-red-700 text-sm font-semibold disabled:opacity-60 active:bg-red-200 transition-colors dark:bg-red-900/30 dark:text-red-300 min-h-[44px]"
+                  title="Xóa tất cả scan đang chờ"
+                >
+                  Xóa
+                </button>
+              </div>
+            )}
           </div>
-          {step === "gps" && !isOnline && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">Không có mạng — có thể mất 30-90 giây, vui lòng chờ</p>
-          )}
+
+          {/* Test kết nối — chỉ hiện khi có pending */}
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={handleTestConn}
+              disabled={isTestingConn}
+              className="w-full py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold disabled:opacity-60 active:bg-slate-100 dark:active:bg-slate-700 transition-colors min-h-[44px]"
+            >
+              {isTestingConn ? "⏳ Đang kiểm tra..." : "🔌 Test kết nối server"}
+            </button>
+            {connTest && (
+              <div className={`rounded-xl border px-4 py-3 text-sm font-mono break-all ${
+                connTest.ok
+                  ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300"
+                  : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300"
+              }`}>
+                {connTest.ok ? "✅ " : "❌ "}{connTest.detail}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Kết quả scan */}
-      <ScanResult result={result} onDismiss={handleReset} />
-
-      {/* GPS watch banner — chỉ hiện khi camera đang mở */}
+      {/* GPS watch banner — context-specific, chỉ khi camera mở */}
       {isScanning && gpsWatchState === "warming" && (
         <div className="rounded-xl border px-4 py-3 text-base flex items-start gap-2 bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
           <span className="mt-0.5">📡</span>
@@ -711,36 +643,8 @@ export default function ScanPage() {
         <QRScanner onScan={handleScan} onError={handleScanError} />
       )}
 
-      {/* Nút hành động */}
-      {step === "idle" && (
-        <button
-          onClick={handleStart}
-          data-scan-btn
-          className="w-full min-h-[68px] py-5 rounded-2xl bg-blue-600 text-white font-bold text-xl active:bg-blue-700 transition-colors"
-        >
-          📷 Bắt đầu Scan
-        </button>
-      )}
-
-      {isScanning && (
-        <button
-          onClick={handleStop}
-          data-scan-btn
-          className="w-full min-h-[68px] py-5 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xl active:bg-slate-200 dark:active:bg-slate-600 transition-colors"
-        >
-          ⏹ Dừng Camera
-        </button>
-      )}
-
-      {isDone && (
-        <button
-          onClick={handleReset}
-          data-scan-btn
-          className="w-full min-h-[68px] py-5 rounded-2xl bg-blue-600 text-white font-bold text-xl active:bg-blue-700 transition-colors"
-        >
-          📷 Quét tiếp
-        </button>
-      )}
+      {/* Kết quả scan */}
+      <ScanResult result={result} onDismiss={handleReset} />
 
       {/* Operational params modal */}
       {isParams && result?.location && pendingParamConfig && (
@@ -752,8 +656,30 @@ export default function ScanPage() {
         />
       )}
 
-      {/* Step indicator */}
-      <StepIndicator step={step} />
+      {/* Unified action button — loading state từ step hiện tại */}
+      {btnState.show && (
+        <button
+          onClick={handleBtnClick}
+          disabled={btnState.loading}
+          data-scan-btn
+          className={`w-full min-h-[68px] py-5 rounded-2xl font-bold text-xl transition-colors flex items-center justify-center gap-3 ${
+            btnState.variant === "secondary"
+              ? "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 active:bg-slate-200 dark:active:bg-slate-600 disabled:opacity-70"
+              : "bg-blue-600 text-white active:bg-blue-700 disabled:opacity-70"
+          }`}
+        >
+          {btnState.loading && (
+            <svg className="animate-spin h-5 w-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+          )}
+          {btnState.label}
+        </button>
+      )}
+
+      {/* Step progress bar — ẩn khi idle/done */}
+      <StepProgressBar stepDisplay={stepDisplay} />
 
       <p className="text-center text-sm text-slate-400 dark:text-slate-500">
         Yêu cầu HTTPS · Camera · GPS giúp xác thực vị trí
@@ -763,46 +689,48 @@ export default function ScanPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Step indicator
+// StatusBanner — render banner theo variant từ resolveStatusBanner
 // ---------------------------------------------------------------------------
 
-const STEPS = [
-  { key: "idle",       label: "Chờ" },
-  { key: "permission", label: "GPS" },
-  { key: "scanning",   label: "Scan" },
-  { key: "gps",        label: "Vị trí" },
-  { key: "sending",    label: "Gửi" },
-  { key: "params",     label: "Thông số" },
-  { key: "done",       label: "Xong" },
-];
+const BANNER_STYLES = {
+  warning:          "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300",
+  warning_secondary:"bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-700 dark:text-orange-300",
+  error:            "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300",
+  success:          "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300",
+  info:             "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300",
+  muted:            "bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400",
+};
 
-function StepIndicator({ step }) {
-  const currentIdx = STEPS.findIndex((s) => s.key === step);
-
+function StatusBanner({ banner }) {
+  const style = BANNER_STYLES[banner.variant] || BANNER_STYLES.muted;
   return (
-    <div className="flex items-center justify-center gap-1">
-      {STEPS.map((s, i) => {
-        const isActive = i === currentIdx;
-        const isDone = i < currentIdx;
-        return (
-          <div key={s.key} className="flex items-center gap-1">
-            <div
-              className={`flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold transition-colors ${
-                isDone
-                  ? "bg-green-500 text-white"
-                  : isActive
-                  ? "bg-blue-600 text-white"
-                  : "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
-              }`}
-            >
-              {isDone ? "✓" : i + 1}
-            </div>
-            {i < STEPS.length - 1 && (
-              <div className={`w-4 h-0.5 ${isDone ? "bg-green-400" : "bg-slate-200 dark:bg-slate-700"}`} />
-            )}
-          </div>
-        );
-      })}
+    <div className={`rounded-xl border px-4 py-3 text-base flex flex-col gap-0.5 ${style}`}>
+      <span>{banner.text}</span>
+      {banner.extra && (
+        <span className="text-sm font-semibold mt-0.5">⚠️ {banner.extra}</span>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StepProgressBar — label + progress bar thay cho 7 bước nhỏ
+// ---------------------------------------------------------------------------
+
+function StepProgressBar({ stepDisplay }) {
+  if (!stepDisplay.shouldShow) return null;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+        <span className="font-medium">{stepDisplay.label}</span>
+        <span>{stepDisplay.progressPct}%</span>
+      </div>
+      <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-blue-500 transition-all duration-300"
+          style={{ width: `${stepDisplay.progressPct}%` }}
+        />
+      </div>
     </div>
   );
 }
