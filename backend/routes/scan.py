@@ -47,6 +47,7 @@ def create_scan():
     geo_cached   = bool(data.get("geo_cached"))
     cache_age_ms = data.get("cache_age_ms")
     oil_level_mm = data.get("oil_level_mm")
+    param_values = data.get("param_values")  # danh sách thông số vận hành (multi-param)
 
     # --- GPS Enforcement ---
     gps_err = check_gps_enforcement(scan_lat, scan_lng, accuracy)
@@ -92,6 +93,7 @@ def create_scan():
             token_valid=token_valid,
             cache_age_ms=cache_age_ms if geo_cached else None,
             oil_level_mm=oil_level_mm,
+            param_values=param_values,
         )
         # OUT_OF_RANGE: đã lưu DB nhưng trả 403 để frontend hiện cảnh báo
         if geo_status == "out_of_range":
@@ -112,26 +114,50 @@ def create_scan():
 
 @scan_bp.route("/station-params", methods=["GET"])
 def station_params_endpoint():
-    """Danh sách trạm có cấu hình thông số vận hành (public, không cần auth)."""
+    """Danh sách trạm có cấu hình thông số vận hành (public, không cần auth).
+
+    Mỗi trạm trả về kèm danh sách `params` (multi-param):
+      { "configs": [ { "station_name": "...", "params": [ {...}, ... ] }, ... ] }
+    """
     params = get_station_params()
     configs = [
-        {"station_name": name, **data}
+        {"station_name": name, "params": data.get("params", [])}
         for name, data in sorted(params.items())
-        if data.get("active", True)
+        if data.get("params")
     ]
     return jsonify({"configs": configs}), 200
 
 
+def _first_numeric_value(param_values):
+    """Lấy giá trị số đầu tiên trong param_values để giữ oil_level_mm (backward compat)."""
+    if not param_values:
+        return None
+    for pv in param_values:
+        v = pv.get("value") if isinstance(pv, dict) else None
+        if isinstance(v, (int, float)):
+            return float(v)
+    return None
+
+
 @scan_bp.route("/scan/<int:scan_id>/params", methods=["PATCH"])
 def update_scan_params(scan_id):
-    """Cập nhật thông số vận hành (Mức dầu mm) sau khi check-in."""
+    """Cập nhật thông số vận hành sau khi check-in.
+
+    Nhận `param_values` (danh sách multi-param). Vẫn chấp nhận `oil_level_mm`
+    đơn lẻ từ client cũ để tương thích ngược.
+    """
     data = request.get_json(silent=True) or {}
+    param_values = data.get("param_values")
     oil_level_mm = data.get("oil_level_mm")
 
     with SessionLocal() as session:
         log = session.get(ScanLog, scan_id)
         if log is None:
             return jsonify({"status": "error", "message": "Không tìm thấy scan"}), 404
+        if param_values is not None:
+            log.param_values = param_values or None
+            if oil_level_mm is None:
+                oil_level_mm = _first_numeric_value(param_values)
         log.oil_level_mm = oil_level_mm
         session.commit()
 

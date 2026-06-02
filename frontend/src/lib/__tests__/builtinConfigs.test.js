@@ -5,46 +5,43 @@
 import { describe, it, expect } from "vitest";
 import { BUILTIN_PARAM_CONFIGS, mergeWithBuiltin } from "../builtinConfigs.js";
 
-describe("BUILTIN_PARAM_CONFIGS — nội dung cấu hình", () => {
-  it("chứa TK-5211A với đúng thông số", () => {
+describe("BUILTIN_PARAM_CONFIGS — nội dung cấu hình (shape grouped multi-param)", () => {
+  it("chứa TK-5211A với đúng thông số (params[0])", () => {
     const cfg = BUILTIN_PARAM_CONFIGS["TK-5211A"];
     expect(cfg).toBeDefined();
     expect(cfg.station_name).toBe("TK-5211A");
-    expect(cfg.param_label).toBe("Tank level");
-    expect(cfg.param_unit).toBe("mm");
-    expect(cfg.active).toBe(true);
+    expect(cfg.params[0].param_label).toBe("Tank level");
+    expect(cfg.params[0].param_unit).toBe("mm");
   });
 
   it("chứa TK-5205A với đúng thông số", () => {
     const cfg = BUILTIN_PARAM_CONFIGS["TK-5205A"];
     expect(cfg).toBeDefined();
     expect(cfg.station_name).toBe("TK-5205A");
-    expect(cfg.param_label).toBe("Tank level");
-    expect(cfg.param_unit).toBe("mm");
-    expect(cfg.active).toBe(true);
+    expect(cfg.params[0].param_label).toBe("Tank level");
+    expect(cfg.params[0].param_unit).toBe("mm");
   });
 
   it("chứa PUMP_STATION_7 với đúng thông số", () => {
     const cfg = BUILTIN_PARAM_CONFIGS["PUMP_STATION_7"];
     expect(cfg).toBeDefined();
     expect(cfg.station_name).toBe("PUMP_STATION_7");
-    expect(cfg.param_label).toBe("P-5225A_Discharge_Pressure");
-    expect(cfg.param_unit).toBe("kg/cm2g");
-    expect(cfg.active).toBe(true);
+    expect(cfg.params[0].param_label).toBe("P-5225A_Discharge_Pressure");
+    expect(cfg.params[0].param_unit).toBe("kg/cm2g");
   });
 
   it("chứa TK-5203A với đúng thông số", () => {
     const cfg = BUILTIN_PARAM_CONFIGS["TK-5203A"];
     expect(cfg).toBeDefined();
     expect(cfg.station_name).toBe("TK-5203A");
-    expect(cfg.param_label).toBe("Tank level");
-    expect(cfg.param_unit).toBe("mm");
-    expect(cfg.active).toBe(true);
+    expect(cfg.params[0].param_label).toBe("Tank level");
+    expect(cfg.params[0].param_unit).toBe("mm");
   });
 
-  it("mọi entry đều có active=true", () => {
+  it("mọi entry đều có mảng params không rỗng", () => {
     Object.values(BUILTIN_PARAM_CONFIGS).forEach((cfg) => {
-      expect(cfg.active).toBe(true);
+      expect(Array.isArray(cfg.params)).toBe(true);
+      expect(cfg.params.length).toBeGreaterThan(0);
     });
   });
 
@@ -96,6 +93,6 @@ describe("mergeWithBuiltin — ưu tiên cache/API, builtin là fallback", () =>
     const stationParamConfigs = mergeWithBuiltin({});
     const paramConfig = stationParamConfigs["PUMP_STATION_7"];
     expect(paramConfig).toBeDefined();
-    expect(paramConfig.param_label).toBe("P-5225A_Discharge_Pressure");
+    expect(paramConfig.params[0].param_label).toBe("P-5225A_Discharge_Pressure");
   });
 });

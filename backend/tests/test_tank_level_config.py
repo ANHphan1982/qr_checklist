@@ -35,11 +35,12 @@ class TestStationParamsConfig:
 
 
 # ---------------------------------------------------------------------------
-# 2. stations_db.get_station_params() — merge static + DB
+# 2. stations_db.get_station_params() — merge static + DB (shape grouped multi-param)
+#    Trả về {station_name: {station_name, params: [ {...}, ... ]}}
 # ---------------------------------------------------------------------------
 class TestGetStationParams:
     def test_returns_static_when_db_empty(self):
-        """Khi DB không có bản ghi, trả về static config TK-5211A."""
+        """Khi DB không có bản ghi, trả về static config TK-5211A (1 thông số)."""
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
@@ -50,15 +51,20 @@ class TestGetStationParams:
             result = get_station_params()
 
         assert "TK-5211A" in result
-        assert result["TK-5211A"]["param_label"] == "Tank level"
-        assert result["TK-5211A"]["param_unit"] == "mm"
+        params = result["TK-5211A"]["params"]
+        assert params[0]["param_label"] == "Tank level"
+        assert params[0]["param_unit"] == "mm"
 
     def test_db_entry_overrides_static(self):
         """DB row thắng khi trùng station_name."""
         mock_row = MagicMock()
         mock_row.station_name = "TK-5211A"
+        mock_row.tag = None
         mock_row.param_label = "Mức tank"
         mock_row.param_unit = "cm"
+        mock_row.param_low = None
+        mock_row.param_high = None
+        mock_row.sort_order = 0
         mock_row.active = True
         mock_row.id = 7
 
@@ -71,15 +77,54 @@ class TestGetStationParams:
             from services.stations_db import get_station_params
             result = get_station_params()
 
-        assert result["TK-5211A"]["param_label"] == "Mức tank"
-        assert result["TK-5211A"]["param_unit"] == "cm"
+        params = result["TK-5211A"]["params"]
+        assert params[0]["param_label"] == "Mức tank"
+        assert params[0]["param_unit"] == "cm"
+
+    def test_db_multiple_params_per_station(self):
+        """Một trạm có thể có NHIỀU thông số (sắp theo sort_order)."""
+        def _row(station, tag, label, order, rid):
+            r = MagicMock()
+            r.station_name = station
+            r.tag = tag
+            r.param_label = label
+            r.param_unit = "kg/cm2g"
+            r.param_low = None
+            r.param_high = None
+            r.sort_order = order
+            r.active = True
+            r.id = rid
+            return r
+
+        rows = [
+            _row("PUMP_STATION_6", "052-PG-890", "Seal pressure", 1, 2),
+            _row("PUMP_STATION_6", "052-PG-038", "Discharge pressure", 0, 1),
+        ]
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.query.return_value.filter_by.return_value.all.return_value = rows
+
+        with patch("services.stations_db.SessionLocal", return_value=mock_session):
+            from services.stations_db import get_station_params
+            result = get_station_params()
+
+        params = result["PUMP_STATION_6"]["params"]
+        assert len(params) == 2
+        # sắp theo sort_order: 052-PG-038 (0) trước 052-PG-890 (1)
+        assert params[0]["tag"] == "052-PG-038"
+        assert params[1]["tag"] == "052-PG-890"
 
     def test_db_can_add_extra_stations(self):
         """DB có thể thêm trạm không có trong static config."""
         mock_row = MagicMock()
         mock_row.station_name = "TK-9999"
+        mock_row.tag = None
         mock_row.param_label = "Áp suất"
         mock_row.param_unit = "bar"
+        mock_row.param_low = None
+        mock_row.param_high = None
+        mock_row.sort_order = 0
         mock_row.active = True
         mock_row.id = 99
 
@@ -110,15 +155,19 @@ class TestGetStationParams:
 
 
 # ---------------------------------------------------------------------------
-# 3. Public GET /api/station-params — includes TK-5211A from static
+# 3. Public GET /api/station-params — includes TK-5211A from static (grouped)
 # ---------------------------------------------------------------------------
 class TestPublicStationParamsEndpoint:
     def test_get_station_params_includes_tk5211a(self, flask_app):
         """/api/station-params phải trả về TK-5211A (từ static config)."""
-        static_data = {
-            "TK-5211A": {"param_label": "Tank level", "param_unit": "mm", "active": True, "id": None}
+        grouped = {
+            "TK-5211A": {
+                "station_name": "TK-5211A",
+                "params": [{"id": None, "tag": None, "param_label": "Tank level",
+                            "param_unit": "mm", "param_low": None, "param_high": None, "sort_order": 0}],
+            }
         }
-        with patch("routes.scan.get_station_params", return_value=static_data):
+        with patch("routes.scan.get_station_params", return_value=grouped):
             client = flask_app.test_client()
             resp = client.get("/api/station-params")
 
@@ -128,109 +177,108 @@ class TestPublicStationParamsEndpoint:
         assert "TK-5211A" in names
 
     def test_get_station_params_returns_correct_labels(self, flask_app):
-        """/api/station-params trả đúng param_label và param_unit."""
-        static_data = {
-            "TK-5211A": {"param_label": "Tank level", "param_unit": "mm", "active": True, "id": None}
+        """/api/station-params trả đúng param_label và param_unit trong params[0]."""
+        grouped = {
+            "TK-5211A": {
+                "station_name": "TK-5211A",
+                "params": [{"id": None, "tag": None, "param_label": "Tank level",
+                            "param_unit": "mm", "param_low": None, "param_high": None, "sort_order": 0}],
+            }
         }
-        with patch("routes.scan.get_station_params", return_value=static_data):
+        with patch("routes.scan.get_station_params", return_value=grouped):
             client = flask_app.test_client()
             resp = client.get("/api/station-params")
 
         configs = resp.get_json()["configs"]
         tk = next(c for c in configs if c["station_name"] == "TK-5211A")
-        assert tk["param_label"] == "Tank level"
-        assert tk["param_unit"] == "mm"
+        assert tk["params"][0]["param_label"] == "Tank level"
+        assert tk["params"][0]["param_unit"] == "mm"
 
 
 # ---------------------------------------------------------------------------
-# 4. Admin POST /admin/station-params — blocked for static-config stations
+# 4. Admin POST/PUT /admin/station-params — multi-param: cho phép mọi trạm
 # ---------------------------------------------------------------------------
-class TestAdminBlockStaticStationParam:
-    def _make_admin_client(self, flask_app):
-        from unittest.mock import patch as _patch
-        return flask_app.test_client()
-
-    def test_post_blocked_for_static_station(self, flask_app):
-        """POST /admin/station-params với TK-5211A → 409 vì đã có trong config."""
-        from config import ADMIN_SECRET as _sec
-        static_params = {"TK-5211A": {"param_label": "Tank level", "param_unit": "mm"}}
-
-        with patch("routes.admin.STATIC_STATION_PARAMS", static_params):
-            with patch("routes.admin.ADMIN_SECRET", "test-secret"):
-                client = flask_app.test_client()
-                resp = client.post(
-                    "/api/admin/station-params",
-                    json={"station_name": "TK-5211A", "param_label": "Tank level", "param_unit": "mm"},
-                    headers={"X-Admin-Key": "test-secret"},
-                    content_type="application/json",
-                )
-
-        assert resp.status_code == 409
-        assert "config" in resp.get_json().get("error", "").lower() or \
-               "cấu hình sẵn" in resp.get_json().get("error", "")
-
-    def test_post_allowed_for_non_static_station(self, flask_app):
-        """POST với trạm không có trong static config → được phép (201)."""
-        static_params = {"TK-5211A": {"param_label": "Tank level", "param_unit": "mm"}}
-
+class TestAdminStationParamMultiParam:
+    def test_post_allows_param_with_tag_and_sort_order(self, flask_app):
+        """POST tạo thông số kèm tag + sort_order → 201."""
         mock_sp = MagicMock()
-        mock_sp.id = 10
-        mock_sp.station_name = "TK-9999"
-        mock_sp.param_label = "Áp suất"
-        mock_sp.param_unit = "bar"
-        mock_sp.active = True
         mock_sp.to_dict.return_value = {
-            "id": 10, "station_name": "TK-9999",
-            "param_label": "Áp suất", "param_unit": "bar", "active": True,
+            "id": 10, "station_name": "PUMP_STATION_6", "tag": "052-PG-038",
+            "param_label": "Discharge pressure", "param_unit": "kg/cm2g",
+            "param_low": 5, "param_high": 14, "sort_order": 0, "active": True,
         }
 
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.add.side_effect = lambda obj: setattr(obj, "id", 10)
 
-        def fake_add(obj):
-            obj.id = 10
-
-        mock_session.add.side_effect = fake_add
-        mock_session.refresh.side_effect = lambda obj: mock_sp.to_dict()
-
-        with patch("routes.admin.STATIC_STATION_PARAMS", static_params):
-            with patch("routes.admin.ADMIN_SECRET", "test-secret"):
-                with patch("routes.admin.SessionLocal", return_value=mock_session):
+        with patch("routes.admin.ADMIN_SECRET", "test-secret"):
+            with patch("routes.admin.SessionLocal", return_value=mock_session):
+                with patch("routes.admin.StationParam", return_value=mock_sp):
                     client = flask_app.test_client()
                     resp = client.post(
                         "/api/admin/station-params",
-                        json={"station_name": "TK-9999", "param_label": "Áp suất", "param_unit": "bar"},
+                        json={"station_name": "PUMP_STATION_6", "tag": "052-PG-038",
+                              "param_label": "Discharge pressure", "param_unit": "kg/cm2g",
+                              "param_low": 5, "param_high": 14, "sort_order": 0},
+                        headers={"X-Admin-Key": "test-secret"},
+                        content_type="application/json",
+                    )
+
+        assert resp.status_code == 201
+        assert resp.get_json()["tag"] == "052-PG-038"
+
+    def test_post_allowed_for_any_station(self, flask_app):
+        """POST cho trạm bất kỳ (kể cả trùng tên trạm đã có thông số) → 201."""
+        mock_sp = MagicMock()
+        mock_sp.to_dict.return_value = {
+            "id": 11, "station_name": "TK-5211A", "tag": None,
+            "param_label": "Áp suất", "param_unit": "bar",
+            "param_low": None, "param_high": None, "sort_order": 0, "active": True,
+        }
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.add.side_effect = lambda obj: setattr(obj, "id", 11)
+
+        with patch("routes.admin.ADMIN_SECRET", "test-secret"):
+            with patch("routes.admin.SessionLocal", return_value=mock_session):
+                with patch("routes.admin.StationParam", return_value=mock_sp):
+                    client = flask_app.test_client()
+                    resp = client.post(
+                        "/api/admin/station-params",
+                        json={"station_name": "TK-5211A", "param_label": "Áp suất", "param_unit": "bar"},
                         headers={"X-Admin-Key": "test-secret"},
                         content_type="application/json",
                     )
 
         assert resp.status_code == 201
 
-    def test_put_blocked_for_static_station(self, flask_app):
-        """PUT /admin/station-params/<id> bị chặn nếu station thuộc static config."""
-        static_params = {"TK-5211A": {"param_label": "Tank level", "param_unit": "mm"}}
-
+    def test_put_updates_param(self, flask_app):
+        """PUT cập nhật thông số (không còn chặn static) → 200."""
         mock_sp = MagicMock()
         mock_sp.station_name = "TK-5211A"
-        mock_sp.param_label = "Tank level"
-        mock_sp.param_unit = "mm"
-        mock_sp.active = True
+        mock_sp.to_dict.return_value = {
+            "id": 1, "station_name": "TK-5211A", "tag": None,
+            "param_label": "Mức tank", "param_unit": "mm",
+            "param_low": None, "param_high": None, "sort_order": 0, "active": True,
+        }
 
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_session.get.return_value = mock_sp
 
-        with patch("routes.admin.STATIC_STATION_PARAMS", static_params):
-            with patch("routes.admin.ADMIN_SECRET", "test-secret"):
-                with patch("routes.admin.SessionLocal", return_value=mock_session):
-                    client = flask_app.test_client()
-                    resp = client.put(
-                        "/api/admin/station-params/1",
-                        json={"param_label": "Mức tank"},
-                        headers={"X-Admin-Key": "test-secret"},
-                        content_type="application/json",
-                    )
+        with patch("routes.admin.ADMIN_SECRET", "test-secret"):
+            with patch("routes.admin.SessionLocal", return_value=mock_session):
+                client = flask_app.test_client()
+                resp = client.put(
+                    "/api/admin/station-params/1",
+                    json={"param_label": "Mức tank"},
+                    headers={"X-Admin-Key": "test-secret"},
+                    content_type="application/json",
+                )
 
-        assert resp.status_code == 409
+        assert resp.status_code == 200

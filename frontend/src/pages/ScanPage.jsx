@@ -32,6 +32,12 @@ import { resolveStepDisplay } from "../lib/stepDisplay";
 // 30s đủ để chấp nhận fix vừa cũ, vẫn còn chính xác cho check-in tại chỗ.
 const GPS_FIX_MAX_AGE_MS = 30000;
 
+// Config trạm (shape mới) có dạng { station_name, params: [...] }.
+// Chỉ hiện modal khi trạm có ít nhất 1 thông số cần nhập.
+function hasParams(cfg) {
+  return !!(cfg && Array.isArray(cfg.params) && cfg.params.length > 0);
+}
+
 
 export default function ScanPage() {
   const [step, setStep] = useState("idle");
@@ -40,7 +46,7 @@ export default function ScanPage() {
   const [pendingParamsScanId, setPendingParamsScanId] = useState(null);
   const [pendingParamConfig,  setPendingParamConfig]  = useState(null);
   const [pendingQueuedAt,     setPendingQueuedAt]     = useState(null);
-  // map: station_name → { station_name, param_label, param_unit }
+  // map: station_name → { station_name, params: [...] } (multi-param)
   // Khởi tạo từ cache localStorage để dùng được khi offline ngay từ đầu session
   const [stationParamConfigs, setStationParamConfigs] = useState(() => {
     try {
@@ -121,7 +127,8 @@ export default function ScanPage() {
   const fetchAndCacheParamConfigs = useCallback(() => {
     getStationParamConfigs().then((configs) => {
       const map = {};
-      configs.forEach((c) => { if (c.active) map[c.station_name] = c; });
+      // Endpoint đã lọc sẵn trạm có thông số active → map trực tiếp theo tên trạm.
+      configs.forEach((c) => { map[c.station_name] = c; });
       setStationParamConfigs(mergeWithBuiltin(map)); // builtin là fallback, API thắng
       try { localStorage.setItem("qr_station_param_configs", JSON.stringify(map)); } catch (_) {}
     }).catch(() => {});
@@ -365,7 +372,7 @@ export default function ScanPage() {
         scanned_at: scannedAt,
       });
       const paramConfig = stationParamConfigs[stationName]; // lookup bằng tên trạm, không phải alias
-      if (paramConfig) {
+      if (hasParams(paramConfig)) {
         // Persist pending params → modal không bị mất nếu user thoát app
         savePendingParams(stationName, paramConfig, queuedAt);
         setPendingParamsScanId("offline");
@@ -391,11 +398,11 @@ export default function ScanPage() {
       // Race condition guard: stationParamConfigs có thể rỗng nếu user scan
       // ngay sau khi có mạng (fetchAndCacheParamConfigs chưa kịp resolve).
       // Re-fetch tại chỗ để không bỏ lỡ modal thông số.
-      if (!paramConfig) {
+      if (!hasParams(paramConfig)) {
         try {
           const fresh = await getStationParamConfigs();
           const freshMap = {};
-          fresh.forEach((c) => { if (c.active) freshMap[c.station_name] = c; });
+          fresh.forEach((c) => { freshMap[c.station_name] = c; });
           setStationParamConfigs(mergeWithBuiltin(freshMap));
           try { localStorage.setItem("qr_station_param_configs", JSON.stringify(freshMap)); } catch (_) {}
           paramConfig = mergeWithBuiltin(freshMap)[resolvedLocation];
@@ -404,7 +411,7 @@ export default function ScanPage() {
         }
       }
 
-      if (paramConfig && data.scan_id) {
+      if (hasParams(paramConfig) && data.scan_id) {
         setPendingParamsScanId(data.scan_id);
         setPendingParamConfig(paramConfig);
         setStep("params");
@@ -437,7 +444,7 @@ export default function ScanPage() {
         // Khi đó API fail → shouldQueue=true nhưng modal thông số sẽ bị bỏ qua nếu không
         // kiểm tra paramConfig ở đây — giống hệt logic nhánh !navigator.onLine bên trên.
         const paramConfigQueued = stationParamConfigs[stationName]; // resolve alias
-        if (paramConfigQueued) {
+        if (hasParams(paramConfigQueued)) {
           savePendingParams(stationName, paramConfigQueued, queuedAt);
           setPendingParamsScanId("offline");
           setPendingParamConfig(paramConfigQueued);
@@ -460,11 +467,11 @@ export default function ScanPage() {
 
         // Race condition guard: giống nhánh success — re-fetch nếu cache rỗng
         // và scan đã được lưu DB (có scan_id).
-        if (!paramConfig && apiData.code === "OUT_OF_RANGE" && apiData.scan_id) {
+        if (!hasParams(paramConfig) && apiData.code === "OUT_OF_RANGE" && apiData.scan_id) {
           try {
             const fresh = await getStationParamConfigs();
             const freshMap = {};
-            fresh.forEach((c) => { if (c.active) freshMap[c.station_name] = c; });
+            fresh.forEach((c) => { freshMap[c.station_name] = c; });
             setStationParamConfigs(mergeWithBuiltin(freshMap));
             try { localStorage.setItem("qr_station_param_configs", JSON.stringify(freshMap)); } catch (_) {}
             paramConfig = mergeWithBuiltin(freshMap)[resolvedLocation];
@@ -473,7 +480,7 @@ export default function ScanPage() {
           }
         }
 
-        if (apiData.code === "OUT_OF_RANGE" && paramConfig && apiData.scan_id) {
+        if (apiData.code === "OUT_OF_RANGE" && hasParams(paramConfig) && apiData.scan_id) {
           setPendingParamsScanId(apiData.scan_id);
           setPendingParamConfig(paramConfig);
           setStep("params");

@@ -77,6 +77,9 @@ export async function postQueuedScan(item) {
       }
     }
   }
+  if (Array.isArray(item.param_values) && item.param_values.length > 0) {
+    payload.param_values = item.param_values;
+  }
   if (item.oil_level_mm != null) {
     payload.oil_level_mm = item.oil_level_mm;
   }
@@ -98,7 +101,8 @@ export async function postQueuedScan(item) {
 
 /**
  * Lấy danh sách cấu hình thông số vận hành (public — dùng ở scan flow).
- * @returns {Promise<Array<{station_name, param_label, param_unit, active}>>}
+ * Mỗi phần tử là 1 trạm kèm danh sách thông số (multi-param).
+ * @returns {Promise<Array<{station_name, params: Array<{id, tag, param_label, param_unit, param_low, param_high, sort_order}>}>>}
  */
 export async function getStationParamConfigs() {
   const { data } = await api.get("/api/station-params");

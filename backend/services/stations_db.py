@@ -26,10 +26,30 @@ def get_stations() -> dict:
     return merged
 
 
+def _static_param_entry(name: str, cfg: dict) -> dict:
+    """Bọc static config (1 thông số/trạm) vào shape grouped {station_name, params:[...]}."""
+    return {
+        "station_name": name,
+        "params": [{
+            "id":          None,
+            "tag":         cfg.get("tag"),
+            "param_label": cfg.get("param_label", "Thông số"),
+            "param_unit":  cfg.get("param_unit", "mm"),
+            "param_low":   cfg.get("param_low"),
+            "param_high":  cfg.get("param_high"),
+            "sort_order":  0,
+        }],
+    }
+
+
 def get_station_params() -> dict:
-    """Trả về dict {station_name: {param_label, param_unit, active, id}} — merge static + DB (DB thắng)."""
+    """Trả về {station_name: {station_name, params: [ {...}, ... ]}}.
+
+    Một trạm có thể có NHIỀU thông số. Merge static + DB: nếu một trạm có bản ghi
+    trong DB thì DB thay thế hoàn toàn danh sách thông số static của trạm đó.
+    """
     merged: dict = {
-        name: {**cfg, "active": True, "id": None}
+        name: _static_param_entry(name, cfg)
         for name, cfg in _STATIC_PARAMS.items()
     }
     if SessionLocal is None:
@@ -38,15 +58,20 @@ def get_station_params() -> dict:
         with SessionLocal() as s:
             from models import StationParam
             rows = s.query(StationParam).filter_by(active=True).all()
+        db_by_station: dict = {}
         for r in rows:
-            merged[r.station_name] = {
+            db_by_station.setdefault(r.station_name, []).append({
+                "id":          r.id,
+                "tag":         r.tag,
                 "param_label": r.param_label,
                 "param_unit":  r.param_unit,
                 "param_low":   r.param_low,
                 "param_high":  r.param_high,
-                "active":      r.active,
-                "id":          r.id,
-            }
+                "sort_order":  r.sort_order or 0,
+            })
+        for station_name, params in db_by_station.items():
+            params.sort(key=lambda p: (p["sort_order"], p["id"] or 0))
+            merged[station_name] = {"station_name": station_name, "params": params}
     except Exception as e:
         print(f"[stations_db] get_station_params DB error: {e}")
     return merged

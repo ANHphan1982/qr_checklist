@@ -164,29 +164,62 @@ describe("buildHistoryRows", () => {
 // ---------------------------------------------------------------------------
 // buildHistoryRows — operational params (TDD)
 // ---------------------------------------------------------------------------
-describe("buildHistoryRows — operational params", () => {
-  it("includes 'Thông số' column always", () => {
+describe("buildHistoryRows — operational params (long format)", () => {
+  it("includes per-param columns always", () => {
     const log = { id: 1, location: "TK-5203A", scanned_at: "2026-04-18T01:30:00.000Z", device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true, oil_level_mm: 1250.5 };
     const [row] = buildHistoryRows([log]);
-    expect(row).toHaveProperty("Thông số");
+    expect(row).toHaveProperty("Mã thiết bị");
+    expect(row).toHaveProperty("Tên thông số");
+    expect(row).toHaveProperty("Giá trị");
+    expect(row).toHaveProperty("Đơn vị");
   });
 
-  it("renders oil_level_mm value when present", () => {
+  it("renders oil_level_mm value (backward compat) trong cột Giá trị", () => {
     const log = { id: 1, location: "TK-5203A", scanned_at: "2026-04-18T01:30:00.000Z", device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true, oil_level_mm: 1250.5 };
     const [row] = buildHistoryRows([log]);
-    expect(row["Thông số"]).toBe(1250.5);
+    expect(row["Giá trị"]).toBe(1250.5);
   });
 
-  it("leaves 'Thông số' empty when null", () => {
+  it("leaves 'Giá trị' empty when null", () => {
     const log = { id: 2, location: "TK-5201A", scanned_at: "2026-04-18T01:30:00.000Z", device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: false, oil_level_mm: null };
     const [row] = buildHistoryRows([log]);
-    expect(row["Thông số"]).toBe("");
+    expect(row["Giá trị"]).toBe("");
   });
 
-  it("leaves 'Thông số' empty when field absent (backward compat)", () => {
+  it("leaves 'Giá trị' empty when field absent (backward compat)", () => {
     const log = { id: 3, location: "TK-5201A", scanned_at: "2026-04-18T01:30:00.000Z", device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: false };
     const [row] = buildHistoryRows([log]);
-    expect(row["Thông số"]).toBe("");
+    expect(row["Giá trị"]).toBe("");
+  });
+
+  it("expands param_values thành nhiều dòng (1 dòng / thông số)", () => {
+    const log = {
+      id: 5, location: "PUMP_STATION_6", scanned_at: "2026-04-18T01:30:00.000Z",
+      device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true,
+      param_values: [
+        { tag: "052-PG-038", label: "Discharge pressure", value: 13, unit: "kg/cm2g", low: 5, high: 14 },
+        { tag: "052-PG-890", label: "Seal pressure", value: 0.6, unit: "kg/cm2g", low: null, high: 0.5 },
+      ],
+    };
+    const rows = buildHistoryRows([log]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]["Mã thiết bị"]).toBe("052-PG-038");
+    expect(rows[0]["Giá trị"]).toBe(13);
+    expect(rows[0]["Đơn vị"]).toBe("kg/cm2g");
+    expect(rows[1]["Tên thông số"]).toBe("Seal pressure");
+    expect(rows[1]["Giới hạn trên"]).toBe(0.5);
+  });
+
+  it("đánh dấu Cảnh báo cho param_values ngoài ngưỡng (dùng low/high của chính dòng đó)", () => {
+    const log = {
+      id: 6, location: "PUMP_STATION_6", scanned_at: "2026-04-18T01:30:00.000Z",
+      device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true,
+      param_values: [
+        { tag: "052-PG-890", label: "Seal pressure", value: 0.6, unit: "kg/cm2g", low: null, high: 0.5 },
+      ],
+    };
+    const [row] = buildHistoryRows([log], {});
+    expect(row["Cảnh báo"]).not.toBe("");
   });
 });
 

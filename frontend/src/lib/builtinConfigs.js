@@ -10,27 +10,27 @@
 export const BUILTIN_PARAM_CONFIGS = {
   "PUMP_STATION_7": {
     station_name: "PUMP_STATION_7",
-    param_label: "P-5225A_Discharge_Pressure",
-    param_unit: "kg/cm2g",
-    active: true,
+    params: [
+      { tag: "P-5225A", param_label: "P-5225A_Discharge_Pressure", param_unit: "kg/cm2g", param_low: null, param_high: null },
+    ],
   },
   "TK-5203A": {
     station_name: "TK-5203A",
-    param_label: "Tank level",
-    param_unit: "mm",
-    active: true,
+    params: [
+      { tag: null, param_label: "Tank level", param_unit: "mm", param_low: null, param_high: null },
+    ],
   },
   "TK-5205A": {
     station_name: "TK-5205A",
-    param_label: "Tank level",
-    param_unit: "mm",
-    active: true,
+    params: [
+      { tag: null, param_label: "Tank level", param_unit: "mm", param_low: null, param_high: null },
+    ],
   },
   "TK-5211A": {
     station_name: "TK-5211A",
-    param_label: "Tank level",
-    param_unit: "mm",
-    active: true,
+    params: [
+      { tag: null, param_label: "Tank level", param_unit: "mm", param_low: null, param_high: null },
+    ],
   },
 };
 

@@ -22,7 +22,7 @@ export default function HistoryPage() {
     getStationParamConfigs()
       .then((configs) => {
         const map = {};
-        configs.forEach((c) => { if (c.active) map[c.station_name] = c; });
+        configs.forEach((c) => { map[c.station_name] = c; });
         paramConfigsRef.current = map;
       })
       .catch(() => {

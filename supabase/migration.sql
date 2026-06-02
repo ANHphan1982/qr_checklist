@@ -35,3 +35,39 @@ CREATE INDEX IF NOT EXISTS idx_scan_logs_location
 --   ADD COLUMN IF NOT EXISTS gps_accuracy REAL,
 --   ADD COLUMN IF NOT EXISTS geo_distance REAL,
 --   ADD COLUMN IF NOT EXISTS geo_status   VARCHAR(20) DEFAULT 'no_gps';
+
+-- =============================================================================
+-- MULTI-PARAM (thông số vận hành nhiều dòng/trạm) — chạy trên DB đã có sẵn.
+-- An toàn để chạy lại nhiều lần (IF NOT EXISTS / IF EXISTS).
+-- =============================================================================
+
+-- 1) scan_logs: lưu danh sách thông số nhập tại trạm (mỗi phần tử tự mô tả).
+ALTER TABLE scan_logs
+  ADD COLUMN IF NOT EXISTS oil_level_mm DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS param_values JSONB;
+
+-- 2) station_params: cấu hình thông số vận hành. Một trạm có NHIỀU dòng.
+CREATE TABLE IF NOT EXISTS station_params (
+  id           BIGSERIAL PRIMARY KEY,
+  station_name VARCHAR(100) NOT NULL,
+  tag          VARCHAR(100),                 -- mã thiết bị, vd '052-PG-038'
+  param_label  VARCHAR(100) NOT NULL DEFAULT 'Thông số',
+  param_unit   VARCHAR(50)  NOT NULL DEFAULT 'mm',
+  param_low    DOUBLE PRECISION,             -- giới hạn dưới (L)
+  param_high   DOUBLE PRECISION,             -- giới hạn trên (H)
+  sort_order   INTEGER DEFAULT 0,            -- thứ tự hiển thị trong modal
+  active       BOOLEAN DEFAULT TRUE,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Nếu bảng station_params đã tồn tại từ schema cũ (1 thông số/trạm):
+ALTER TABLE station_params
+  ADD COLUMN IF NOT EXISTS tag        VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
+
+-- Bỏ ràng buộc UNIQUE(station_name) cũ để cho phép nhiều thông số/trạm.
+-- Tên constraint mặc định do Postgres sinh: station_params_station_name_key.
+ALTER TABLE station_params DROP CONSTRAINT IF EXISTS station_params_station_name_key;
+
+CREATE INDEX IF NOT EXISTS idx_station_params_station_name
+  ON station_params (station_name);

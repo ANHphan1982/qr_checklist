@@ -377,7 +377,7 @@ function PurgeButton({ adminKey, flash }) {
 // Station Params Panel — cấu hình thông số vận hành
 // ---------------------------------------------------------------------------
 function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flash }) {
-  const empty = { station_name: "", param_label: "Tank level", param_unit: "mm", param_low: "", param_high: "" };
+  const empty = { station_name: "", tag: "", param_label: "", param_unit: "mm", param_low: "", param_high: "", sort_order: "" };
   const [form,    setForm]    = useState(empty);
   const [editing, setEditing] = useState(null); // id đang sửa
   const [saving,  setSaving]  = useState(false);
@@ -386,26 +386,28 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
     ? stations.map(s => s.name)
     : [...new Set(stationParams.map(p => p.station_name))];
 
-  const existingNames = new Set(stationParams.map(p => p.station_name));
-
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
       const toFloatOrNull = v => v !== "" && v !== null ? parseFloat(v) : null;
+      const toIntOrZero = v => v !== "" && v !== null && !Number.isNaN(parseInt(v, 10)) ? parseInt(v, 10) : 0;
       if (editing != null) {
         await updateAdminStationParam(adminKey, editing, {
+          tag:         form.tag,
           param_label: form.param_label,
           param_unit:  form.param_unit,
           param_low:   toFloatOrNull(form.param_low),
           param_high:  toFloatOrNull(form.param_high),
+          sort_order:  toIntOrZero(form.sort_order),
         });
-        flash(true, `Đã cập nhật cấu hình ${form.station_name}`);
+        flash(true, `Đã cập nhật thông số ${form.tag || form.param_label}`);
       } else {
-        await createAdminStationParam(adminKey, form);
+        await createAdminStationParam(adminKey, { ...form, sort_order: toIntOrZero(form.sort_order) });
         flash(true, `Đã thêm thông số cho ${form.station_name}`);
       }
-      setForm(empty);
+      // Giữ lại station_name để nhập tiếp nhiều thông số cho cùng 1 trạm
+      setForm({ ...empty, station_name: editing != null ? "" : form.station_name });
       setEditing(null);
       onRefresh();
     } catch (e) {
@@ -419,10 +421,12 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
     setEditing(p.id);
     setForm({
       station_name: p.station_name,
+      tag:          p.tag ?? "",
       param_label:  p.param_label,
       param_unit:   p.param_unit,
       param_low:    p.param_low  ?? "",
       param_high:   p.param_high ?? "",
+      sort_order:   p.sort_order ?? "",
     });
   };
 
@@ -454,6 +458,7 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
         </h2>
         <p className="text-xs text-slate-500 dark:text-slate-400">
           Sau khi scan QR tại trạm được cấu hình, hệ thống sẽ hiện popup yêu cầu nhập thông số vận hành.
+          Một trạm có thể có <strong>nhiều thông số</strong> — thêm từng dòng, cùng chọn một trạm.
         </p>
 
         <div>
@@ -470,7 +475,7 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
               className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
             >
               <option value="">-- Chọn trạm --</option>
-              {stationOptions.filter(n => !existingNames.has(n)).map(n => (
+              {stationOptions.map(n => (
                 <option key={n} value={n}>{n}</option>
               ))}
             </select>
@@ -487,11 +492,34 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
 
         <div className="grid grid-cols-2 gap-3">
           <div>
+            <label className="text-xs text-slate-500 dark:text-slate-400">Mã thiết bị (tag)</label>
+            <input
+              value={form.tag}
+              onChange={e => setForm(f => ({ ...f, tag: e.target.value }))}
+              placeholder="VD: 052-PG-038"
+              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base font-mono dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 dark:text-slate-400">Thứ tự hiển thị</label>
+            <input
+              type="number"
+              step="1"
+              value={form.sort_order}
+              onChange={e => setForm(f => ({ ...f, sort_order: e.target.value }))}
+              placeholder="0"
+              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
             <label className="text-xs text-slate-500 dark:text-slate-400">Tên thông số *</label>
             <input
               value={form.param_label}
               onChange={e => setForm(f => ({ ...f, param_label: e.target.value }))}
-              placeholder="VD: Tank level, Áp suất"
+              placeholder="VD: Discharge pressure"
               required
               className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
             />
@@ -555,12 +583,21 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
         {stationParams.length === 0 && (
           <p className="text-center text-slate-400 py-4 text-sm">Chưa có cấu hình thông số nào</p>
         )}
-        {stationParams.map(p => (
+        {[...stationParams]
+          .sort((a, b) =>
+            a.station_name.localeCompare(b.station_name) ||
+            (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+            (a.id ?? 0) - (b.id ?? 0)
+          )
+          .map(p => (
           <div key={p.id} className={`bg-white dark:bg-slate-800 rounded-xl border px-4 py-3 flex items-center justify-between gap-2 ${
             p.active ? "border-slate-200 dark:border-slate-700" : "border-slate-100 dark:border-slate-800 opacity-50"
           }`}>
             <div>
-              <p className="font-semibold text-slate-800 dark:text-slate-100">{p.station_name}</p>
+              <p className="font-semibold text-slate-800 dark:text-slate-100">
+                {p.station_name}
+                {p.tag && <span className="ml-2 font-mono text-xs text-blue-600 dark:text-blue-400">{p.tag}</span>}
+              </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {p.param_label} · <span className="font-mono">{p.param_unit}</span>
                 {(p.param_low != null || p.param_high != null) && (

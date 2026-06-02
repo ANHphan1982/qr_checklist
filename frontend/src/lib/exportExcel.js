@@ -61,15 +61,60 @@ export function buildAliasesRows(aliases) {
 }
 
 /**
+ * Trích các thông số vận hành của một log để xuất Excel (long format).
+ * Mỗi phần tử trả về tương ứng 1 dòng Excel.
+ *
+ * Ưu tiên `param_values` (multi-param, tự mô tả). Nếu log cũ chỉ có
+ * `oil_level_mm` thì dựng 1 thông số từ paramConfigs[location]. Nếu không có
+ * thông số nào, vẫn trả 1 dòng rỗng để lượt check-in hiện diện trong báo cáo.
+ *
+ * @returns {Array<{tag, label, value, unit, low, high}>}
+ */
+function buildParamEntries(log, paramConfigs) {
+  const pv = Array.isArray(log.param_values) ? log.param_values : [];
+  if (pv.length > 0) {
+    return pv.map((p) => ({
+      tag:   p.tag   ?? "",
+      label: p.label ?? "",
+      value: p.value ?? null,
+      unit:  p.unit  ?? "",
+      low:   p.low   ?? null,
+      high:  p.high  ?? null,
+    }));
+  }
+
+  // Backward compat: log cũ chỉ lưu oil_level_mm + config theo trạm.
+  // Config có thể là shape mới ({params:[...]}) hoặc shape cũ phẳng ({param_label,...}).
+  if (log.oil_level_mm != null) {
+    const cfg = paramConfigs ? paramConfigs[log.location] : null;
+    const first = (cfg && Array.isArray(cfg.params) ? cfg.params[0] : cfg) || {};
+    return [{
+      tag:   first.tag ?? "",
+      label: first.param_label ?? "",
+      value: log.oil_level_mm,
+      unit:  first.param_unit ?? "",
+      low:   first.param_low ?? null,
+      high:  first.param_high ?? null,
+    }];
+  }
+
+  return [{ tag: "", label: "", value: null, unit: "", low: null, high: null }];
+}
+
+/**
+ * Xuất lịch sử dạng LONG: mỗi thông số vận hành là 1 dòng. Lượt check-in có
+ * nhiều thông số sẽ thành nhiều dòng (lặp lại các cột chung của lượt scan).
+ *
  * @param {Array} logs - danh sách scan log
- * @param {Object} [paramConfigs] - map station_name → { param_low, param_high }
+ * @param {Object} [paramConfigs] - map station_name → { param_low, param_high, ... }
  *   Nếu truyền vào, mỗi row sẽ có thêm cột "Cảnh báo" khi value ngoài giới hạn.
  */
 export function buildHistoryRows(logs, paramConfigs) {
   const hasConfigs = paramConfigs != null;
-  return logs.map((log) => {
-    const val = log.oil_level_mm ?? null;
-    const row = {
+  const rows = [];
+
+  logs.forEach((log) => {
+    const base = {
       "ID":                              log.id,
       "Trạm":                            log.location,
       "Thời gian (VN)":                  toVnDateTime(log.scanned_at),
@@ -80,20 +125,32 @@ export function buildHistoryRows(logs, paramConfigs) {
       "Thời gian dự kiến (phút)":        roundOrEmpty(log.expected_travel_min, 1),
       "Thời gian thực tế (phút)":        roundOrEmpty(log.actual_travel_min, 1),
       "Đánh giá tốc độ":                 log.assessment ? (ASSESSMENT_LABEL[log.assessment] || log.assessment) : "",
-      "Thông số":                          val ?? "",
-      "Email":                           log.email_sent ? "Đã gửi" : "Chưa gửi",
     };
 
-    if (hasConfigs) {
-      const cfg = paramConfigs[log.location];
-      const outOfRange = cfg ? isOutOfRange(val, cfg.param_low, cfg.param_high) : false;
-      row["Cảnh báo"] = outOfRange
-        ? `⚠️ Ngoài giới hạn (L:${cfg.param_low ?? "-"} / H:${cfg.param_high ?? "-"})`
-        : "";
-    }
+    buildParamEntries(log, paramConfigs).forEach((e) => {
+      const row = {
+        ...base,
+        "Mã thiết bị":   e.tag || "",
+        "Tên thông số":  e.label || "",
+        "Giá trị":       e.value ?? "",
+        "Đơn vị":        e.unit || "",
+        "Giới hạn dưới": e.low ?? "",
+        "Giới hạn trên": e.high ?? "",
+      };
 
-    return row;
+      if (hasConfigs) {
+        const outOfRange = isOutOfRange(e.value ?? null, e.low ?? null, e.high ?? null);
+        row["Cảnh báo"] = outOfRange
+          ? `⚠️ Ngoài giới hạn (L:${e.low ?? "-"} / H:${e.high ?? "-"})`
+          : "";
+      }
+
+      row["Email"] = log.email_sent ? "Đã gửi" : "Chưa gửi";
+      rows.push(row);
+    });
   });
+
+  return rows;
 }
 
 export function exportToExcel(rows, filename, sheetName = "Sheet1") {
@@ -103,8 +160,15 @@ export function exportToExcel(rows, filename, sheetName = "Sheet1") {
   XLSX.writeFile(wb, filename);
 }
 
+function _numOrNull(v) {
+  if (v === "" || v == null) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
+}
+
 /**
- * Xuất lịch sử với highlight đỏ cho giá trị ngoài giới hạn.
+ * Xuất lịch sử (long format) với highlight đỏ cho giá trị ngoài giới hạn.
+ * Out-of-range tính trực tiếp từ mỗi dòng (Giá trị vs Giới hạn dưới/trên).
  * @param {Array} logs
  * @param {string} filename
  * @param {Object} paramConfigs - map station_name → { param_low, param_high }
@@ -113,19 +177,19 @@ export function exportHistoryToExcel(logs, filename, paramConfigs = {}) {
   const rows = buildHistoryRows(logs, paramConfigs);
   const ws = XLSX.utils.json_to_sheet(rows);
 
-  // Áp dụng màu đỏ cho cell "Thông số" khi ngoài giới hạn
+  // Áp dụng màu đỏ cho cell "Giá trị" khi ngoài giới hạn
   if (rows.length > 0) {
     const headers = Object.keys(rows[0]);
-    const paramColIdx = headers.indexOf("Thông số");
+    const valColIdx = headers.indexOf("Giá trị");
 
-    if (paramColIdx >= 0) {
-      logs.forEach((log, i) => {
-        const cfg = paramConfigs[log.location];
-        if (!cfg) return;
-        const val = log.oil_level_mm ?? null;
-        if (!isOutOfRange(val, cfg.param_low, cfg.param_high)) return;
+    if (valColIdx >= 0) {
+      rows.forEach((row, i) => {
+        const val  = _numOrNull(row["Giá trị"]);
+        const low  = _numOrNull(row["Giới hạn dưới"]);
+        const high = _numOrNull(row["Giới hạn trên"]);
+        if (!isOutOfRange(val, low, high)) return;
 
-        const cellAddr = XLSX.utils.encode_cell({ r: i + 1, c: paramColIdx });
+        const cellAddr = XLSX.utils.encode_cell({ r: i + 1, c: valColIdx });
         if (ws[cellAddr]) {
           ws[cellAddr].s = { font: { color: { rgb: "CC0000" }, bold: true } };
         }

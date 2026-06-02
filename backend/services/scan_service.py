@@ -17,6 +17,7 @@ def process_scan(
     token_valid: bool = False,
     cache_age_ms: float | None = None,
     oil_level_mm: float | None = None,
+    param_values: list | None = None,
 ) -> dict:
     if not location or not location.strip():
         return {"status": "error", "message": "Thiếu trường location"}
@@ -34,6 +35,15 @@ def process_scan(
             return {"status": "error", "message": "scanned_at không hợp lệ (dùng ISO 8601)"}
     else:
         dt = datetime.now(timezone.utc)
+
+    # Backward compat: nếu client mới gửi param_values mà không gửi oil_level_mm,
+    # lấy giá trị số đầu tiên làm oil_level_mm để email / báo cáo cũ vẫn có dữ liệu.
+    if oil_level_mm is None and param_values:
+        for pv in param_values:
+            v = pv.get("value") if isinstance(pv, dict) else None
+            if isinstance(v, (int, float)):
+                oil_level_mm = float(v)
+                break
 
     with SessionLocal() as session:
         # --- Rate limiting ---
@@ -55,6 +65,7 @@ def process_scan(
             geo_status=geo_status,
             token_valid=token_valid,
             oil_level_mm=oil_level_mm,
+            param_values=param_values or None,
             scanned_at=dt,
             email_sent=False,
         )

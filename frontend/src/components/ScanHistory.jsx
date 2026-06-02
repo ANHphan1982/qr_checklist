@@ -1,4 +1,5 @@
 import { formatDateTime } from "../lib/utils";
+import { isOutOfRange } from "../lib/exportExcel";
 
 export default function ScanHistory({ logs, loading, error }) {
   if (loading) {
@@ -56,6 +57,25 @@ export default function ScanHistory({ logs, loading, error }) {
               )}
               {log.geo_status === "no_gps" && (
                 <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">⚠️ Không có GPS</p>
+              )}
+
+              {Array.isArray(log.param_values) && log.param_values.length > 0 && (
+                <div className="mt-1.5 flex flex-col gap-0.5">
+                  {log.param_values.map((pv, i) => {
+                    const out = isOutOfRange(pv.value ?? null, pv.low ?? null, pv.high ?? null);
+                    return (
+                      <p
+                        key={i}
+                        className={`text-sm ${out ? "text-red-600 dark:text-red-400 font-medium" : "text-slate-600 dark:text-slate-300"}`}
+                      >
+                        {pv.tag && <span className="font-mono text-xs mr-1">{pv.tag}</span>}
+                        {pv.label}: <span className="font-semibold">{pv.value ?? "—"}</span>
+                        {pv.unit ? ` ${pv.unit}` : ""}
+                        {out && " ⚠️"}
+                      </p>
+                    );
+                  })}
+                </div>
               )}
             </div>
             <span

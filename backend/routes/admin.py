@@ -7,7 +7,6 @@ from config import SessionLocal, ADMIN_SECRET
 from models import Station, QrAlias, StationParam, ScanLog
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta
-from services.stations_config import STATION_PARAMS as STATIC_STATION_PARAMS
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -197,45 +196,46 @@ def list_station_params():
     return jsonify([r.to_dict() for r in rows])
 
 
+def _to_float_or_none(val):
+    try:
+        return float(val) if val not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 @admin_bp.route("/admin/station-params", methods=["POST"])
 def create_station_param():
+    """Thêm MỘT thông số cho một trạm. Một trạm có thể có nhiều thông số."""
     err = _auth()
     if err:
         return err
 
     data = request.get_json(silent=True) or {}
     station_name = (data.get("station_name") or "").strip().upper()
+    tag          = (data.get("tag") or "").strip() or None
     param_label  = (data.get("param_label") or "Thông số").strip()
     param_unit   = (data.get("param_unit") or "mm").strip()
-
-    def _to_float_or_none(val):
-        try:
-            return float(val) if val not in (None, "") else None
-        except (TypeError, ValueError):
-            return None
-
-    param_low  = _to_float_or_none(data.get("param_low"))
-    param_high = _to_float_or_none(data.get("param_high"))
+    param_low    = _to_float_or_none(data.get("param_low"))
+    param_high   = _to_float_or_none(data.get("param_high"))
+    try:
+        sort_order = int(data.get("sort_order") or 0)
+    except (TypeError, ValueError):
+        sort_order = 0
 
     if not station_name:
         return jsonify({"error": "Thiếu station_name"}), 400
 
-    if station_name in STATIC_STATION_PARAMS:
-        return jsonify({"error": f"Trạm '{station_name}' đã được cấu hình sẵn trong config — không thể thay đổi qua admin"}), 409
-
     if not SessionLocal:
         return _db_unavailable()
 
-    try:
-        with SessionLocal() as s:
-            sp = StationParam(station_name=station_name, param_label=param_label, param_unit=param_unit,
-                              param_low=param_low, param_high=param_high)
-            s.add(sp)
-            s.commit()
-            s.refresh(sp)
-            return jsonify(sp.to_dict()), 201
-    except IntegrityError:
-        return jsonify({"error": f"Trạm '{station_name}' đã có cấu hình thông số"}), 409
+    with SessionLocal() as s:
+        sp = StationParam(station_name=station_name, tag=tag, param_label=param_label,
+                          param_unit=param_unit, param_low=param_low, param_high=param_high,
+                          sort_order=sort_order)
+        s.add(sp)
+        s.commit()
+        s.refresh(sp)
+        return jsonify(sp.to_dict()), 201
 
 
 @admin_bp.route("/admin/station-params/<int:param_id>", methods=["PUT"])
@@ -251,14 +251,8 @@ def update_station_param(param_id):
         sp = s.get(StationParam, param_id)
         if not sp:
             return jsonify({"error": "Không tìm thấy cấu hình"}), 404
-        if sp.station_name in STATIC_STATION_PARAMS:
-            return jsonify({"error": f"Trạm '{sp.station_name}' đã được cấu hình sẵn trong config — không thể thay đổi qua admin"}), 409
-        def _to_float_or_none(val):
-            try:
-                return float(val) if val not in (None, "") else None
-            except (TypeError, ValueError):
-                return None
-
+        if "tag" in data:
+            sp.tag = (data["tag"] or "").strip() or None
         if data.get("param_label") is not None:
             sp.param_label = data["param_label"].strip()
         if data.get("param_unit") is not None:
@@ -267,6 +261,11 @@ def update_station_param(param_id):
             sp.param_low = _to_float_or_none(data["param_low"])
         if "param_high" in data:
             sp.param_high = _to_float_or_none(data["param_high"])
+        if "sort_order" in data:
+            try:
+                sp.sort_order = int(data["sort_order"] or 0)
+            except (TypeError, ValueError):
+                pass
         if data.get("active") is not None:
             sp.active = bool(data["active"])
         s.commit()
