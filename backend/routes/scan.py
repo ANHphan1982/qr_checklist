@@ -120,10 +120,12 @@ def station_params_endpoint():
       { "configs": [ { "station_name": "...", "params": [ {...}, ... ] }, ... ] }
     """
     params = get_station_params()
+    # Emit MỌI trạm, kể cả trạm đã bị admin ẩn (params rỗng). Frontend cần entry
+    # rỗng này để override builtin offline — nếu bỏ qua, builtin sẽ tái hiện thông
+    # số đã ẩn trên thiết bị không có mạng.
     configs = [
         {"station_name": name, "params": data.get("params", [])}
         for name, data in sorted(params.items())
-        if data.get("params")
     ]
     return jsonify({"configs": configs}), 200
 

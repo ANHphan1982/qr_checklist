@@ -45,8 +45,10 @@ def _static_param_entry(name: str, cfg: dict) -> dict:
 def get_station_params() -> dict:
     """Trả về {station_name: {station_name, params: [ {...}, ... ]}}.
 
-    Một trạm có thể có NHIỀU thông số. Merge static + DB: nếu một trạm có bản ghi
-    trong DB thì DB thay thế hoàn toàn danh sách thông số static của trạm đó.
+    Một trạm có thể có NHIỀU thông số. Merge static + DB: nếu một trạm có BẤT KỲ
+    bản ghi nào trong DB thì DB nắm TOÀN QUYỀN trạm đó — danh sách thông số = các
+    bản ghi đang bật (active). Nếu admin tắt HẾT thông số của trạm, danh sách trả
+    về rỗng ([]) và vẫn override static/builtin → khi scan không hiện modal nữa.
     """
     merged: dict = {
         name: _static_param_entry(name, cfg)
@@ -57,19 +59,24 @@ def get_station_params() -> dict:
     try:
         with SessionLocal() as s:
             from models import StationParam
-            rows = s.query(StationParam).filter_by(active=True).all()
-        db_by_station: dict = {}
+            rows = s.query(StationParam).all()
+        # Trạm xuất hiện trong DB (kể cả khi mọi thông số đã tắt) → DB nắm toàn quyền.
+        managed_stations: set = set()
+        active_by_station: dict = {}
         for r in rows:
-            db_by_station.setdefault(r.station_name, []).append({
-                "id":          r.id,
-                "tag":         r.tag,
-                "param_label": r.param_label,
-                "param_unit":  r.param_unit,
-                "param_low":   r.param_low,
-                "param_high":  r.param_high,
-                "sort_order":  r.sort_order or 0,
-            })
-        for station_name, params in db_by_station.items():
+            managed_stations.add(r.station_name)
+            if r.active:
+                active_by_station.setdefault(r.station_name, []).append({
+                    "id":          r.id,
+                    "tag":         r.tag,
+                    "param_label": r.param_label,
+                    "param_unit":  r.param_unit,
+                    "param_low":   r.param_low,
+                    "param_high":  r.param_high,
+                    "sort_order":  r.sort_order or 0,
+                })
+        for station_name in managed_stations:
+            params = active_by_station.get(station_name, [])
             params.sort(key=lambda p: (p["sort_order"], p["id"] or 0))
             merged[station_name] = {"station_name": station_name, "params": params}
     except Exception as e:

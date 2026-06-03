@@ -93,6 +93,7 @@ test.describe("Admin page — login gate", () => {
 test.describe("Admin page — dashboard", () => {
   test.beforeEach(async ({ page }) => {
     await mockAdminApi(page);
+    await mockStationParams(page, { initial: [] }); // loadAll fetch cả station-params
     await loginAdmin(page);
   });
 
@@ -102,7 +103,7 @@ test.describe("Admin page — dashboard", () => {
   });
 
   test("station form has lat/lng/radius fields", async ({ page }) => {
-    await expect(page.locator("input[placeholder*='TK-5201A']")).toBeVisible();
+    await expect(page.locator("input[placeholder*='PUMP_STATION_7']")).toBeVisible();
     await expect(page.locator("input[placeholder*='15.408751']")).toBeVisible();
     await expect(page.locator("input[placeholder*='108.814616']")).toBeVisible();
   });
@@ -125,7 +126,7 @@ test.describe("Admin page — dashboard", () => {
       return r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(created) });
     });
 
-    await page.fill("input[placeholder*='TK-5201A']", "TRAM-TEST");
+    await page.fill("input[placeholder*='PUMP_STATION_7']", "TRAM-TEST");
     await page.fill("input[placeholder*='15.408751']", "10.7769");
     await page.fill("input[placeholder*='108.814616']", "106.7009");
     await page.locator("button[type='submit']").click();
@@ -160,5 +161,91 @@ test.describe("Admin page — dashboard", () => {
   test("logout button returns to login page", async ({ page }) => {
     await page.locator("button:has-text('Đăng xuất')").click();
     await expect(page.locator("input[type='password']")).toBeVisible({ timeout: 3_000 });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Luồng admin: đưa thông số builtin vào DB rồi ẩn (tắt) thông số
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Mock có state cho /api/admin/station-params (GET/POST/PUT/DELETE). */
+async function mockStationParams(page, { initial = [] } = {}) {
+  let data = [...initial];
+  let nextId = 100;
+  await page.route("**/api/admin/station-params**", async (r) => {
+    const key = r.request().headers()["x-admin-key"];
+    if (key !== ADMIN_KEY) {
+      return r.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "Unauthorized" }) });
+    }
+    const method = r.request().method();
+    const url = r.request().url();
+    const idFromUrl = () => Number(url.split("/").pop().split("?")[0]);
+
+    if (method === "GET") {
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(data) });
+    }
+    if (method === "POST") {
+      const body = JSON.parse(r.request().postData() || "{}");
+      const created = {
+        id: nextId++,
+        station_name: body.station_name,
+        tag: body.tag || null,
+        param_label: body.param_label,
+        param_unit: body.param_unit,
+        param_low: body.param_low ?? null,
+        param_high: body.param_high ?? null,
+        sort_order: body.sort_order ?? 0,
+        active: true,
+      };
+      data = [...data, created];
+      return r.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(created) });
+    }
+    if (method === "PUT") {
+      const id = idFromUrl();
+      const body = JSON.parse(r.request().postData() || "{}");
+      data = data.map((p) => (p.id === id ? { ...p, ...body } : p));
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(data.find((p) => p.id === id)) });
+    }
+    if (method === "DELETE") {
+      const id = idFromUrl();
+      data = data.filter((p) => p.id !== id);
+      return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    }
+    return r.continue();
+  });
+}
+
+test.describe("Admin page — ẩn/hiện thông số trạm", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAdminApi(page);
+    await mockStationParams(page, { initial: [] }); // DB trống → mọi trạm builtin đều "chưa quản lý"
+    await loginAdmin(page);
+    await page.getByRole("button", { name: /Thông số/ }).click();
+  });
+
+  test("trạm builtin chưa có trong DB hiển thị nút 'Đưa vào DB'", async ({ page }) => {
+    await expect(page.locator("text=cấu hình mặc định")).toBeVisible();
+    // TK-5211A, TK-5203A, TK-5205A, PUMP_STATION_7 đều builtin → 4 nút import
+    await expect(page.getByRole("button", { name: /Đưa vào DB/ })).toHaveCount(4);
+  });
+
+  test("import builtin xuống DB rồi ẩn thông số (tắt) hoạt động end-to-end", async ({ page }) => {
+    // 1. Đưa TK-5211A vào DB
+    const tkRow = page
+      .locator("div", { has: page.getByRole("button", { name: /Đưa vào DB/ }) })
+      .filter({ hasText: "TK-5211A" })
+      .last();
+    await tkRow.getByRole("button", { name: /Đưa vào DB/ }).click();
+
+    // Sau import: còn 3 trạm builtin chưa quản lý, và TK-5211A có nút toggle (title="Tắt")
+    await expect(page.getByRole("button", { name: /Đưa vào DB/ })).toHaveCount(3, { timeout: 5_000 });
+    await expect(page.locator("button[title='Tắt']")).toBeVisible({ timeout: 5_000 });
+
+    // 2. Ẩn thông số: bấm nút 🔕 (title="Tắt")
+    await page.locator("button[title='Tắt']").first().click();
+
+    // Sau khi tắt: dòng hiển thị "· Tắt" và nút toggle đổi thành title="Bật"
+    await expect(page.locator("text=· Tắt")).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator("button[title='Bật']")).toBeVisible({ timeout: 5_000 });
   });
 });

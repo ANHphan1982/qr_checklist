@@ -44,3 +44,19 @@ export const BUILTIN_PARAM_CONFIGS = {
 export function mergeWithBuiltin(cached) {
   return { ...BUILTIN_PARAM_CONFIGS, ...(cached || {}) };
 }
+
+/**
+ * Lọc ra các trạm builtin CHƯA có bản ghi trong DB (admin chưa "đưa vào DB để
+ * quản lý"). Dùng ở trang Admin để hiển thị nút import — sau khi import, admin
+ * mới bật/tắt được từng thông số builtin.
+ *
+ * @param {object|null} builtinConfigs - map {station_name: {station_name, params}}
+ * @param {Array|null} dbParams - danh sách StationParam từ DB (mỗi phần tử có station_name)
+ * @returns {Array<{station_name, params}>} các config builtin chưa nằm trong DB
+ */
+export function builtinStationsNotInDb(builtinConfigs, dbParams) {
+  const dbStations = new Set((dbParams || []).map((p) => p.station_name));
+  return Object.values(builtinConfigs || {}).filter(
+    (cfg) => !dbStations.has(cfg.station_name)
+  );
+}

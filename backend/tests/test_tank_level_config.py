@@ -44,7 +44,7 @@ class TestGetStationParams:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.query.return_value.filter_by.return_value.all.return_value = []
+        mock_session.query.return_value.all.return_value = []
 
         with patch("services.stations_db.SessionLocal", return_value=mock_session):
             from services.stations_db import get_station_params
@@ -71,7 +71,7 @@ class TestGetStationParams:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.query.return_value.filter_by.return_value.all.return_value = [mock_row]
+        mock_session.query.return_value.all.return_value = [mock_row]
 
         with patch("services.stations_db.SessionLocal", return_value=mock_session):
             from services.stations_db import get_station_params
@@ -103,7 +103,7 @@ class TestGetStationParams:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.query.return_value.filter_by.return_value.all.return_value = rows
+        mock_session.query.return_value.all.return_value = rows
 
         with patch("services.stations_db.SessionLocal", return_value=mock_session):
             from services.stations_db import get_station_params
@@ -131,7 +131,7 @@ class TestGetStationParams:
         mock_session = MagicMock()
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.query.return_value.filter_by.return_value.all.return_value = [mock_row]
+        mock_session.query.return_value.all.return_value = [mock_row]
 
         with patch("services.stations_db.SessionLocal", return_value=mock_session):
             from services.stations_db import get_station_params
@@ -152,6 +152,62 @@ class TestGetStationParams:
             result = get_station_params()
 
         assert "TK-5211A" in result
+
+    def test_all_params_inactive_hides_station(self):
+        """Admin tắt HẾT thông số của một trạm → trạm trả params rỗng (override
+        cả static lẫn builtin), nghĩa là không hiện modal khi scan."""
+        mock_row = MagicMock()
+        mock_row.station_name = "TK-5211A"
+        mock_row.tag = None
+        mock_row.param_label = "Tank level"
+        mock_row.param_unit = "mm"
+        mock_row.param_low = None
+        mock_row.param_high = None
+        mock_row.sort_order = 0
+        mock_row.active = False  # admin đã tắt
+        mock_row.id = 5
+
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.query.return_value.all.return_value = [mock_row]
+
+        with patch("services.stations_db.SessionLocal", return_value=mock_session):
+            from services.stations_db import get_station_params
+            result = get_station_params()
+
+        # Trạm vẫn có mặt (đã được DB quản lý) nhưng KHÔNG còn thông số nào
+        assert "TK-5211A" in result
+        assert result["TK-5211A"]["params"] == []
+
+    def test_inactive_param_excluded_active_kept(self):
+        """Trạm có 2 thông số: 1 bật, 1 tắt → chỉ thông số bật còn lại."""
+        def _row(tag, active, rid):
+            r = MagicMock()
+            r.station_name = "PUMP_STATION_6"
+            r.tag = tag
+            r.param_label = "Pressure"
+            r.param_unit = "kg/cm2g"
+            r.param_low = None
+            r.param_high = None
+            r.sort_order = 0
+            r.active = active
+            r.id = rid
+            return r
+
+        rows = [_row("052-PG-038", True, 1), _row("052-PG-890", False, 2)]
+        mock_session = MagicMock()
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        mock_session.query.return_value.all.return_value = rows
+
+        with patch("services.stations_db.SessionLocal", return_value=mock_session):
+            from services.stations_db import get_station_params
+            result = get_station_params()
+
+        params = result["PUMP_STATION_6"]["params"]
+        assert len(params) == 1
+        assert params[0]["tag"] == "052-PG-038"
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +249,26 @@ class TestPublicStationParamsEndpoint:
         tk = next(c for c in configs if c["station_name"] == "TK-5211A")
         assert tk["params"][0]["param_label"] == "Tank level"
         assert tk["params"][0]["param_unit"] == "mm"
+
+    def test_emits_hidden_station_with_empty_params(self, flask_app):
+        """Trạm bị admin ẩn (params rỗng) PHẢI vẫn được emit để frontend override
+        builtin offline — nếu bị bỏ qua, builtin sẽ tái hiện thông số đã ẩn."""
+        grouped = {
+            "TK-5203A": {"station_name": "TK-5203A", "params": []},
+            "TK-5211A": {
+                "station_name": "TK-5211A",
+                "params": [{"id": None, "tag": None, "param_label": "Tank level",
+                            "param_unit": "mm", "param_low": None, "param_high": None, "sort_order": 0}],
+            },
+        }
+        with patch("routes.scan.get_station_params", return_value=grouped):
+            client = flask_app.test_client()
+            resp = client.get("/api/station-params")
+
+        configs = resp.get_json()["configs"]
+        by_name = {c["station_name"]: c for c in configs}
+        assert "TK-5203A" in by_name, "Trạm đã ẩn phải được emit với params rỗng"
+        assert by_name["TK-5203A"]["params"] == []
 
 
 # ---------------------------------------------------------------------------

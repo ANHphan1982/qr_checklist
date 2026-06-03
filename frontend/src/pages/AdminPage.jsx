@@ -8,6 +8,7 @@ import {
   deleteAdminStationParam,
 } from "../lib/api";
 import { PARAM_UNIT_OPTIONS } from "../lib/paramUnits";
+import { BUILTIN_PARAM_CONFIGS, builtinStationsNotInDb } from "../lib/builtinConfigs";
 
 const BASE = import.meta.env.VITE_API_URL || "";
 const SESSION_KEY = "admin_authed";
@@ -381,6 +382,11 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
   const [form,    setForm]    = useState(empty);
   const [editing, setEditing] = useState(null); // id đang sửa
   const [saving,  setSaving]  = useState(false);
+  const [importing, setImporting] = useState(null); // station_name đang import builtin
+
+  // Trạm có cấu hình builtin sẵn trong app nhưng CHƯA có bản ghi DB → chưa
+  // bật/tắt được. Admin import xuống DB trước, rồi mới dùng nút 🔕 để ẩn.
+  const builtinPending = builtinStationsNotInDb(BUILTIN_PARAM_CONFIGS, stationParams);
 
   const stationOptions = stations.length > 0
     ? stations.map(s => s.name)
@@ -450,6 +456,32 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
     }
   };
 
+  // Import toàn bộ thông số builtin của một trạm xuống DB (đang bật). Sau đó admin
+  // có thể bật/tắt từng dòng như thông số DB bình thường.
+  const handleImportBuiltin = async (cfg) => {
+    setImporting(cfg.station_name);
+    try {
+      let order = 0;
+      for (const p of cfg.params) {
+        await createAdminStationParam(adminKey, {
+          station_name: cfg.station_name,
+          tag:          p.tag || "",
+          param_label:  p.param_label,
+          param_unit:   p.param_unit,
+          param_low:    p.param_low ?? null,
+          param_high:   p.param_high ?? null,
+          sort_order:   order++,
+        });
+      }
+      flash(true, `Đã đưa ${cfg.station_name} vào DB — giờ có thể bật/tắt từng thông số`);
+      onRefresh();
+    } catch (e) {
+      flash(false, e?.response?.data?.error || e.message);
+    } finally {
+      setImporting(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <form onSubmit={handleSave} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
@@ -459,6 +491,8 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
         <p className="text-xs text-slate-500 dark:text-slate-400">
           Sau khi scan QR tại trạm được cấu hình, hệ thống sẽ hiện popup yêu cầu nhập thông số vận hành.
           Một trạm có thể có <strong>nhiều thông số</strong> — thêm từng dòng, cùng chọn một trạm.
+          Bấm <strong>🔕</strong> để <strong>ẩn</strong> một thông số (không cần ghi / thiết bị lỗi) —
+          khi ẩn hết, trạm sẽ không hiện popup lúc scan.
         </p>
 
         <div>
@@ -579,8 +613,37 @@ function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flas
         </div>
       </form>
 
+      {/* Trạm builtin (cấu hình sẵn trong app) chưa có bản ghi DB → cần import mới ẩn được */}
+      {builtinPending.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800 p-4 space-y-2">
+          <p className="text-xs text-amber-800 dark:text-amber-300">
+            ⚠️ Các trạm dưới đây đang dùng <strong>cấu hình mặc định (builtin)</strong> nên chưa bật/tắt được.
+            Bấm <strong>“Đưa vào DB”</strong> để quản lý — sau đó dùng 🔕 để ẩn thông số không cần ghi.
+          </p>
+          {builtinPending.map(cfg => (
+            <div key={cfg.station_name} className="bg-white dark:bg-slate-800 rounded-xl border border-amber-200 dark:border-amber-800 px-4 py-3 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-800 dark:text-slate-100">
+                  {cfg.station_name}
+                  <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">· mặc định</span>
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {cfg.params.map(p => p.param_label).join(", ")}
+                </p>
+              </div>
+              <button
+                onClick={() => handleImportBuiltin(cfg)}
+                disabled={importing === cfg.station_name}
+                className="flex-shrink-0 text-sm px-3 py-1.5 rounded-lg bg-amber-600 text-white font-medium disabled:opacity-50">
+                {importing === cfg.station_name ? "Đang đưa…" : "📥 Đưa vào DB"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-2">
-        {stationParams.length === 0 && (
+        {stationParams.length === 0 && builtinPending.length === 0 && (
           <p className="text-center text-slate-400 py-4 text-sm">Chưa có cấu hình thông số nào</p>
         )}
         {[...stationParams]

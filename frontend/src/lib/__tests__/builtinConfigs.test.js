@@ -3,7 +3,7 @@
  * stationParamConfigs chưa được fetch từ API (thiết bị không có mạng).
  */
 import { describe, it, expect } from "vitest";
-import { BUILTIN_PARAM_CONFIGS, mergeWithBuiltin } from "../builtinConfigs.js";
+import { BUILTIN_PARAM_CONFIGS, mergeWithBuiltin, builtinStationsNotInDb } from "../builtinConfigs.js";
 
 describe("BUILTIN_PARAM_CONFIGS — nội dung cấu hình (shape grouped multi-param)", () => {
   it("chứa TK-5211A với đúng thông số (params[0])", () => {
@@ -94,5 +94,34 @@ describe("mergeWithBuiltin — ưu tiên cache/API, builtin là fallback", () =>
     const paramConfig = stationParamConfigs["PUMP_STATION_7"];
     expect(paramConfig).toBeDefined();
     expect(paramConfig.params[0].param_label).toBe("P-5225A_Discharge_Pressure");
+  });
+
+  it("admin ẩn thông số (API trả params rỗng) → override builtin, không còn thông số", () => {
+    // API/cache nói rõ trạm này không còn thông số nào → phải thắng builtin
+    const cached = { "TK-5203A": { station_name: "TK-5203A", params: [] } };
+    const result = mergeWithBuiltin(cached);
+    expect(result["TK-5203A"].params).toEqual([]);
+  });
+});
+
+describe("builtinStationsNotInDb — trạm builtin chưa có bản ghi DB", () => {
+  it("trả về các trạm builtin chưa nằm trong dbParams", () => {
+    const dbParams = [{ station_name: "TK-5211A" }];
+    const result = builtinStationsNotInDb(BUILTIN_PARAM_CONFIGS, dbParams);
+    const names = result.map((c) => c.station_name);
+    expect(names).not.toContain("TK-5211A"); // đã có trong DB → loại
+    expect(names).toContain("TK-5203A");
+    expect(names).toContain("PUMP_STATION_7");
+  });
+
+  it("dbParams rỗng → trả về toàn bộ builtin", () => {
+    const result = builtinStationsNotInDb(BUILTIN_PARAM_CONFIGS, []);
+    expect(result.length).toBe(Object.keys(BUILTIN_PARAM_CONFIGS).length);
+  });
+
+  it("không crash khi tham số null/undefined", () => {
+    expect(() => builtinStationsNotInDb(null, null)).not.toThrow();
+    expect(builtinStationsNotInDb(BUILTIN_PARAM_CONFIGS, null).length)
+      .toBe(Object.keys(BUILTIN_PARAM_CONFIGS).length);
   });
 });
