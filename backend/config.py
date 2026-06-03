@@ -18,6 +18,11 @@ CORS_ORIGIN = os.getenv("CORS_ORIGIN", "http://localhost:5173")
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
+# Số giờ giữ lại scan_logs trước khi auto-purge (mặc định 720h = 30 ngày).
+# Storage 30 ngày ~vài MB, dư sức trong 500MB free tier; đủ cho trang Lịch sử
+# xem cả tháng. Hạ xuống nếu muốn tiết kiệm thêm (vd 24).
+PURGE_RETENTION_HOURS = int(os.getenv("PURGE_RETENTION_HOURS", "720"))
+
 Base = declarative_base()
 
 engine = create_engine(DATABASE_URL, pool_pre_ping=True) if DATABASE_URL else None

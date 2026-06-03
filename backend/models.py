@@ -1,9 +1,20 @@
-from sqlalchemy import Column, BigInteger, String, Boolean, DateTime, Float, Integer, JSON, func
+from sqlalchemy import (
+    Column, BigInteger, String, Boolean, DateTime, Float, Integer, JSON, func,
+    Index, text,
+)
 from config import Base
 
 
 class ScanLog(Base):
     __tablename__ = "scan_logs"
+
+    # Index tối ưu cho free tier:
+    #  - idx_scan_logs_scanned_at: tăng tốc reports/summary/purge (lọc + sắp theo thời gian)
+    #  - idx_scan_logs_device_loc_time: tăng tốc rate-limit (device + trạm + thời gian)
+    __table_args__ = (
+        Index("idx_scan_logs_scanned_at", "scanned_at"),
+        Index("idx_scan_logs_device_loc_time", "device_id", "location", "scanned_at"),
+    )
 
     id           = Column(BigInteger, primary_key=True, index=True)
     location     = Column(String(200), nullable=False)
@@ -113,3 +124,32 @@ class QrAlias(Base):
             "station_name": self.station_name,
             "note": self.note or "",
         }
+
+
+# ---------------------------------------------------------------------------
+# Index bootstrap cho bảng prod đang tồn tại.
+#
+# Production chạy qua Gunicorn nên Base.metadata.create_all (chỉ chạy ở __main__)
+# KHÔNG được gọi → index khai báo trong __table_args__ không tự áp lên bảng cũ.
+# Hàm này phát CREATE INDEX IF NOT EXISTS lúc khởi động: idempotent, an toàn chạy
+# lại mỗi lần boot, không sập app nếu lỗi (vd thiếu quyền / DB tạm gián đoạn).
+# ---------------------------------------------------------------------------
+
+_SCAN_LOG_INDEX_DDL = (
+    "CREATE INDEX IF NOT EXISTS idx_scan_logs_scanned_at "
+    "ON scan_logs (scanned_at)",
+    "CREATE INDEX IF NOT EXISTS idx_scan_logs_device_loc_time "
+    "ON scan_logs (device_id, location, scanned_at)",
+)
+
+
+def ensure_scan_log_indexes(engine) -> None:
+    """Đảm bảo index của scan_logs tồn tại trên DB (idempotent, nuốt lỗi)."""
+    if engine is None:
+        return
+    try:
+        with engine.begin() as conn:
+            for ddl in _SCAN_LOG_INDEX_DDL:
+                conn.execute(text(ddl))
+    except Exception as e:  # pragma: no cover - chỉ log, không sập app
+        print(f"[models] ensure_scan_log_indexes lỗi (bỏ qua): {e}")

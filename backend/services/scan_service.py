@@ -1,8 +1,20 @@
 from datetime import datetime, timezone, timedelta
-from config import SessionLocal
+from config import SessionLocal, PURGE_RETENTION_HOURS
 from models import ScanLog
 from services.email_service import send_scan_email
 from services.anti_fraud_service import check_rate_limit
+
+
+def purge_cutoff(now: datetime | None = None, retention_hours: int | None = None) -> datetime:
+    """Mốc thời gian auto-purge: bản ghi scan cũ hơn mốc này sẽ bị xóa.
+
+    Mặc định dùng PURGE_RETENTION_HOURS (env, 720h = 30 ngày). Cho phép truyền
+    retention_hours để test hoặc tinh chỉnh.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    hours = PURGE_RETENTION_HOURS if retention_hours is None else retention_hours
+    return now - timedelta(hours=hours)
 
 
 def process_scan(
@@ -51,8 +63,9 @@ def process_scan(
         if rate_err:
             return rate_err
 
-        # Auto-purge TRƯỚC khi insert — tránh xóa nhầm offline scan cũ vừa được đồng bộ
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        # Auto-purge TRƯỚC khi insert — tránh xóa nhầm offline scan cũ vừa được đồng bộ.
+        # Cửa sổ giữ data lấy từ PURGE_RETENTION_HOURS (mặc định 30 ngày).
+        cutoff = purge_cutoff()
         session.query(ScanLog).filter(ScanLog.scanned_at < cutoff).delete(synchronize_session=False)
 
         log = ScanLog(
