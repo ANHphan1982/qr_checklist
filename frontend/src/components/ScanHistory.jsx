@@ -55,6 +55,16 @@ export default function ScanHistory({ logs, loading, error }) {
                   🚨 Ngoài phạm vi ({log.geo_distance}m)
                 </p>
               )}
+              {log.geo_status === "cached" && (
+                <p className="text-sm text-amber-600 dark:text-amber-400 mt-0.5">
+                  📍 Vị trí lưu tạm{log.geo_distance != null ? ` (${log.geo_distance}m)` : ""}
+                </p>
+              )}
+              {log.geo_status === "unverified" && (
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                  📍 GPS có nhưng trạm chưa cấu hình tọa độ — chưa xác thực vị trí
+                </p>
+              )}
               {log.geo_status === "no_gps" && (
                 <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5">⚠️ Không có GPS</p>
               )}

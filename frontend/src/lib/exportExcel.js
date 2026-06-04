@@ -5,6 +5,8 @@ const VN_TZ = "Asia/Ho_Chi_Minh";
 const GEO_LABEL = {
   ok:           "Đúng trạm",
   out_of_range: "Ngoài phạm vi",
+  unverified:   "Chưa xác thực vị trí",
+  cached:       "Vị trí lưu tạm",
   no_gps:       "Không có GPS",
 };
 

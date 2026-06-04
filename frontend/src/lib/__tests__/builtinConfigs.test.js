@@ -38,6 +38,24 @@ describe("BUILTIN_PARAM_CONFIGS — nội dung cấu hình (shape grouped multi-
     expect(cfg.params[0].param_unit).toBe("mm");
   });
 
+  it("chứa PUMP_STATION_6 với đủ 8 thông số (multi-param)", () => {
+    const cfg = BUILTIN_PARAM_CONFIGS["PUMP_STATION_6"];
+    expect(cfg).toBeDefined();
+    expect(cfg.station_name).toBe("PUMP_STATION_6");
+    expect(cfg.params).toHaveLength(8);
+    // thông số đầu tiên
+    expect(cfg.params[0].tag).toBe("052-PG-038");
+    expect(cfg.params[0].param_label).toBe("Discharge pressure");
+    expect(cfg.params[0].param_unit).toBe("kg/cm2g");
+    expect(cfg.params[0].param_low).toBe(5);
+    expect(cfg.params[0].param_high).toBe(14);
+    // có thông số ngưỡng nhiệt độ
+    const tempParam = cfg.params.find((p) => p.tag === "P-5223A-DT");
+    expect(tempParam).toBeDefined();
+    expect(tempParam.param_unit).toBe("°C");
+    expect(tempParam.param_high).toBe(80);
+  });
+
   it("mọi entry đều có mảng params không rỗng", () => {
     Object.values(BUILTIN_PARAM_CONFIGS).forEach((cfg) => {
       expect(Array.isArray(cfg.params)).toBe(true);

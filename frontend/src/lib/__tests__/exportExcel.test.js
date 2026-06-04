@@ -140,6 +140,16 @@ describe("buildHistoryRows", () => {
     expect(rows[2]["GPS"]).toBe("Không có GPS");
   });
 
+  it("maps unverified/cached geo_status to Vietnamese labels (không để trống)", () => {
+    const extraLogs = [
+      { id: 10, location: "PUMP_STATION_6", scanned_at: "2026-04-18T01:30:00.000Z", geo_status: "unverified", geo_distance: null, email_sent: true },
+      { id: 11, location: "PUMP_STATION_6", scanned_at: "2026-04-18T01:35:00.000Z", geo_status: "cached", geo_distance: 12, email_sent: true },
+    ];
+    const rows = buildHistoryRows(extraLogs);
+    expect(rows[0]["GPS"]).toBe("Chưa xác thực vị trí");
+    expect(rows[1]["GPS"]).toBe("Vị trí lưu tạm");
+  });
+
   it("maps email_sent to Vietnamese label", () => {
     const rows = buildHistoryRows(logs);
     expect(rows[0]["Email"]).toBe("Đã gửi");

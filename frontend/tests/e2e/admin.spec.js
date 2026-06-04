@@ -225,8 +225,8 @@ test.describe("Admin page — ẩn/hiện thông số trạm", () => {
 
   test("trạm builtin chưa có trong DB hiển thị nút 'Đưa vào DB'", async ({ page }) => {
     await expect(page.locator("text=cấu hình mặc định")).toBeVisible();
-    // TK-5211A, TK-5203A, TK-5205A, PUMP_STATION_7 đều builtin → 4 nút import
-    await expect(page.getByRole("button", { name: /Đưa vào DB/ })).toHaveCount(4);
+    // PUMP_STATION_6, PUMP_STATION_7, TK-5203A, TK-5205A, TK-5211A đều builtin → 5 nút import
+    await expect(page.getByRole("button", { name: /Đưa vào DB/ })).toHaveCount(5);
   });
 
   test("import builtin xuống DB rồi ẩn thông số (tắt) hoạt động end-to-end", async ({ page }) => {
@@ -237,8 +237,8 @@ test.describe("Admin page — ẩn/hiện thông số trạm", () => {
       .last();
     await tkRow.getByRole("button", { name: /Đưa vào DB/ }).click();
 
-    // Sau import: còn 3 trạm builtin chưa quản lý, và TK-5211A có nút toggle (title="Tắt")
-    await expect(page.getByRole("button", { name: /Đưa vào DB/ })).toHaveCount(3, { timeout: 5_000 });
+    // Sau import: còn 4 trạm builtin chưa quản lý, và TK-5211A có nút toggle (title="Tắt")
+    await expect(page.getByRole("button", { name: /Đưa vào DB/ })).toHaveCount(4, { timeout: 5_000 });
     await expect(page.locator("button[title='Tắt']")).toBeVisible({ timeout: 5_000 });
 
     // 2. Ẩn thông số: bấm nút 🔕 (title="Tắt")

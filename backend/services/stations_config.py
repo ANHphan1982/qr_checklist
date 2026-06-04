@@ -34,6 +34,7 @@ QR_ALIAS_MAP: dict[str, str] = {
     "052-LI-745": "A-5205",
     "052-PG-703": "A-5250",
     "052-PG-071": "PUMP_STATION_7",
+    "052-PG-038": "PUMP_STATION_6",
 }
 
 STATION_PARAMS: dict[str, dict] = {
@@ -92,6 +93,14 @@ STATIONS: dict[str, dict] = {
     "A-5250": {
         "lat": 15.409714,
         "lng": 108.811921,
+        "radius": 50,
+    },
+    # Trạm bơm LPG — tọa độ admin đã cấu hình (QR dán tại trạm: 052-PG-038).
+    # Để cả trong static config để geofence vẫn nhận diện khi DB (Supabase) ngủ
+    # hoặc Render cold-start, tránh rơi vào trạng thái 'unverified'.
+    "PUMP_STATION_6": {
+        "lat": 15.409996,
+        "lng": 108.814195,
         "radius": 50,
     },
 }
