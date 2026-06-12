@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.exc import IntegrityError
 
-from config import SessionLocal, PURGE_RETENTION_HOURS
+from config import SessionLocal, PURGE_RETENTION_HOURS, EMAIL_ALERTS_ONLY
 from models import ScanLog
 from services.email_service import send_scan_email
 from services.anti_fraud_service import check_rate_limit
@@ -172,23 +172,32 @@ def process_scan(
     # --- Email: NGOÀI session/transaction, mặc định chạy background thread ---
     # Request trả về ngay sau khi commit; email_sent cập nhật async vào DB
     # (trang Lịch sử / báo cáo đọc từ DB nên vẫn thấy trạng thái thật).
-    _dispatch_email(scan_id, {
-        "location": location,
-        "scanned_at": dt,
-        "device_id": device_id,
-        "lat": lat,
-        "lng": lng,
-        "geo_distance": geo_distance,
-        "geo_status": geo_status,
-        "token_valid": token_valid,
-        "cache_age_ms": cache_age_ms,
-    })
+    #
+    # EMAIL_ALERTS_ONLY=true: chỉ gửi email tức thời cho scan bất thường
+    # (geo_status != "ok") — check-in bình thường đã nằm trong báo cáo tổng hợp
+    # sáng/tối, không cần email riêng → tiết kiệm quota Resend 100/ngày.
+    send_now = (not EMAIL_ALERTS_ONLY) or geo_status != "ok"
+    if send_now:
+        _dispatch_email(scan_id, {
+            "location": location,
+            "scanned_at": dt,
+            "device_id": device_id,
+            "lat": lat,
+            "lng": lng,
+            "geo_distance": geo_distance,
+            "geo_status": geo_status,
+            "token_valid": token_valid,
+            "cache_age_ms": cache_age_ms,
+        })
+        message = "Đã ghi nhận — email sẽ được gửi tự động"
+    else:
+        message = "Đã ghi nhận — sẽ có trong báo cáo tổng hợp"
 
     return {
         "status": "ok",
         "scan_id": scan_id,
-        "message": "Đã ghi nhận — email sẽ được gửi tự động",
-        # None = chưa biết (đang gửi nền). Frontend chỉ cảnh báo khi === false
-        # nên giá trị None không kích hoạt thông báo lỗi sai.
+        "message": message,
+        # None = chưa biết (đang gửi nền) hoặc bỏ qua theo thiết kế. Frontend
+        # chỉ cảnh báo khi === false nên None không kích hoạt thông báo lỗi sai.
         "email_sent": None,
     }

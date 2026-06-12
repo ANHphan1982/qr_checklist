@@ -191,6 +191,36 @@ class TestSendEmailAndMark:
                 _send_email_and_mark(42, {"location": "Kho 1"})  # không raise
 
 
+class TestEmailAlertsOnly:
+    """EMAIL_ALERTS_ONLY=true → chỉ email khi scan bất thường, tiết kiệm quota Resend."""
+
+    def _scan(self, geo_status, alerts_only):
+        from services.scan_service import process_scan
+        session = _make_session(scan_id=20)
+        with patch("services.scan_service.SessionLocal", return_value=session):
+            with patch("services.scan_service.EMAIL_ALERTS_ONLY", alerts_only):
+                with patch("services.scan_service._dispatch_email") as mock_dispatch:
+                    result = process_scan(location="Cổng A", geo_status=geo_status)
+        return result, mock_dispatch
+
+    def test_geo_ok_skips_email_when_alerts_only(self):
+        result, dispatch = self._scan("ok", alerts_only=True)
+        assert result["status"] == "ok"
+        dispatch.assert_not_called()
+        assert "báo cáo tổng hợp" in result["message"]
+
+    @pytest.mark.parametrize("geo_status", ["out_of_range", "no_gps", "cached", "unverified"])
+    def test_abnormal_geo_still_emails_when_alerts_only(self, geo_status):
+        result, dispatch = self._scan(geo_status, alerts_only=True)
+        assert result["status"] == "ok"
+        dispatch.assert_called_once()
+
+    def test_geo_ok_emails_when_alerts_only_off(self):
+        """Mặc định (false) giữ hành vi cũ — mọi scan đều gửi email."""
+        result, dispatch = self._scan("ok", alerts_only=False)
+        dispatch.assert_called_once()
+
+
 class TestDedupe:
     """Chống duplicate: retry từ offline queue (timeout 8s) không tạo bản ghi thứ 2."""
 

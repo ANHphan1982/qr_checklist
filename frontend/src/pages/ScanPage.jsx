@@ -43,6 +43,20 @@ function hasParams(cfg) {
   return !!(cfg && Array.isArray(cfg.params) && cfg.params.length > 0);
 }
 
+// Item đưa vào offline queue — giữ nguyên scanned_at để server dedupe khi retry.
+function buildQueueItem(location, gpsData, scannedAt) {
+  return {
+    location,
+    device_id: getDeviceId(),
+    scanned_at: scannedAt,
+    lat: gpsData?.lat ?? null,
+    lng: gpsData?.lng ?? null,
+    accuracy: gpsData?.accuracy ?? null,
+    geo_cached: gpsData?.cached || undefined,
+    cache_age_ms: gpsData?.cache_age_ms,
+  };
+}
+
 
 export default function ScanPage() {
   const [step, setStep] = useState("idle");
@@ -128,16 +142,22 @@ export default function ScanPage() {
     }
   }, []); // deps rỗng — dùng ref để guard, tránh re-run các effect
 
-  // Load + cache cấu hình thông số vận hành. Gọi mỗi khi có mạng để đảm bảo
-  // localStorage luôn được cập nhật kể cả khi app đang mở sẵn trước khi có WiFi.
-  const fetchAndCacheParamConfigs = useCallback(() => {
-    getStationParamConfigs().then((configs) => {
+  // Load + cache cấu hình thông số vận hành. Gọi khi mount / có mạng trở lại /
+  // race-condition guard lúc scan. Trả về map đã merge để caller lookup ngay,
+  // null nếu fetch fail (offline, server lỗi) — khi đó giữ nguyên config hiện tại.
+  const refreshParamConfigs = useCallback(async () => {
+    try {
+      const configs = await getStationParamConfigs();
       const map = {};
       // Endpoint đã lọc sẵn trạm có thông số active → map trực tiếp theo tên trạm.
       configs.forEach((c) => { map[c.station_name] = c; });
-      setStationParamConfigs(mergeWithBuiltin(map)); // builtin là fallback, API thắng
+      const merged = mergeWithBuiltin(map); // builtin là fallback, API thắng
+      setStationParamConfigs(merged);
       try { localStorage.setItem("qr_station_param_configs", JSON.stringify(map)); } catch (_) {}
-    }).catch(() => {});
+      return merged;
+    } catch (_) {
+      return null;
+    }
   }, []);
 
   // Theo dõi trạng thái mạng
@@ -145,7 +165,7 @@ export default function ScanPage() {
     const goOnline = () => {
       setIsOnline(true);
       syncQueue(true); // auto sync — im lặng khi lỗi
-      fetchAndCacheParamConfigs(); // refresh cache khi có mạng trở lại
+      refreshParamConfigs(); // refresh cache khi có mạng trở lại
     };
     const goOffline = () => setIsOnline(false);
 
@@ -155,7 +175,7 @@ export default function ScanPage() {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
     };
-  }, [syncQueue, fetchAndCacheParamConfigs]);
+  }, [syncQueue, refreshParamConfigs]);
 
   // Ping server + thử sync khi mount
   useEffect(() => {
@@ -166,8 +186,8 @@ export default function ScanPage() {
   // Load cấu hình thông số vận hành lúc mount (có mạng hay không đều thử,
   // nếu thất bại thì stationParamConfigs giữ nguyên giá trị từ localStorage)
   useEffect(() => {
-    fetchAndCacheParamConfigs();
-  }, [fetchAndCacheParamConfigs]);
+    refreshParamConfigs();
+  }, [refreshParamConfigs]);
 
   // Hướng B: restore modal thông số nếu user thoát app trước khi nhập.
   // Kiểm tra localStorage xem có pending params chưa hoàn thành không.
@@ -315,6 +335,31 @@ export default function ScanPage() {
     setStep("idle");
   };
 
+  // Lưu scan vào offline queue + mở modal thông số nếu trạm có cấu hình.
+  // Dùng chung cho 2 nhánh: !navigator.onLine và API fail (shouldQueue).
+  const queueOfflineScan = (location, stationName, gpsData, scannedAt, message) => {
+    const queuedAt = enqueue(buildQueueItem(location, gpsData, scannedAt));
+    setPendingCount(queueSize());
+    triggerVibration("offline");
+    setResult({
+      status: "offline",
+      message,
+      location: stationName, // tên trạm đã resolve alias để hiển thị đúng
+      scanned_at: scannedAt,
+    });
+    const paramConfig = stationParamConfigs[stationName]; // lookup bằng tên trạm, không phải alias
+    if (hasParams(paramConfig)) {
+      // Persist pending params → modal không bị mất nếu user thoát app
+      savePendingParams(stationName, paramConfig, queuedAt);
+      setPendingParamsScanId("offline");
+      setPendingParamConfig(paramConfig);
+      setPendingQueuedAt(queuedAt);
+      setStep("params");
+    } else {
+      setStep("done");
+    }
+  };
+
   const handleScan = async (qrText, opts = {}) => {
     const location = qrText.trim();
     if (!location) return;
@@ -359,36 +404,8 @@ export default function ScanPage() {
 
     // Nếu không có mạng → lưu offline ngay
     if (!navigator.onLine) {
-      const item = {
-        location,
-        device_id: getDeviceId(),
-        scanned_at: scannedAt,
-        lat: gpsData?.lat ?? null,
-        lng: gpsData?.lng ?? null,
-        accuracy: gpsData?.accuracy ?? null,
-        geo_cached: gpsData?.cached || undefined,
-        cache_age_ms: gpsData?.cache_age_ms,
-      };
-      const queuedAt = enqueue(item);
-      setPendingCount(queueSize());
-      triggerVibration("offline");
-      setResult({
-        status: "offline",
-        message: "Đã lưu offline — sẽ tự đồng bộ khi có mạng",
-        location: stationName, // tên trạm đã resolve để hiển thị đúng
-        scanned_at: scannedAt,
-      });
-      const paramConfig = stationParamConfigs[stationName]; // lookup bằng tên trạm, không phải alias
-      if (hasParams(paramConfig)) {
-        // Persist pending params → modal không bị mất nếu user thoát app
-        savePendingParams(stationName, paramConfig, queuedAt);
-        setPendingParamsScanId("offline");
-        setPendingParamConfig(paramConfig);
-        setPendingQueuedAt(queuedAt);
-        setStep("params");
-      } else {
-        setStep("done");
-      }
+      queueOfflineScan(location, stationName, gpsData, scannedAt,
+        "Đã lưu offline — sẽ tự đồng bộ khi có mạng");
       return;
     }
 
@@ -404,19 +421,12 @@ export default function ScanPage() {
       let paramConfig = stationParamConfigs[resolvedLocation];
 
       // Race condition guard: stationParamConfigs có thể rỗng nếu user scan
-      // ngay sau khi có mạng (fetchAndCacheParamConfigs chưa kịp resolve).
+      // ngay sau khi có mạng (refreshParamConfigs chưa kịp resolve).
       // Re-fetch tại chỗ để không bỏ lỡ modal thông số.
       if (!hasParams(paramConfig)) {
-        try {
-          const fresh = await getStationParamConfigs();
-          const freshMap = {};
-          fresh.forEach((c) => { freshMap[c.station_name] = c; });
-          setStationParamConfigs(mergeWithBuiltin(freshMap));
-          try { localStorage.setItem("qr_station_param_configs", JSON.stringify(freshMap)); } catch (_) {}
-          paramConfig = mergeWithBuiltin(freshMap)[resolvedLocation];
-        } catch (_) {
-          // fetch thất bại — tiếp tục không có modal
-        }
+        const merged = await refreshParamConfigs();
+        if (merged) paramConfig = merged[resolvedLocation];
+        // fetch thất bại (merged=null) — tiếp tục không có modal
       }
 
       if (hasParams(paramConfig) && data.scan_id) {
@@ -430,38 +440,9 @@ export default function ScanPage() {
       const classified = classifyApiError(err, navigator.onLine);
 
       if (classified.shouldQueue) {
-        const item = {
-          location,
-          device_id: getDeviceId(),
-          scanned_at: scannedAt,
-          lat: gpsData?.lat ?? null,
-          lng: gpsData?.lng ?? null,
-          accuracy: gpsData?.accuracy ?? null,
-          geo_cached: gpsData?.cached || undefined,
-          cache_age_ms: gpsData?.cache_age_ms,
-        };
-        const queuedAt = enqueue(item);
-        setPendingCount(queueSize());
-        triggerVibration("offline");
-        setResult({
-          status: "offline",
-          message: classified.message,
-          location: stationName, // tên trạm đã resolve
-          scanned_at: scannedAt,
-        });
         // navigator.onLine có thể là true khi WiFi nội bộ không có internet thực sự.
-        // Khi đó API fail → shouldQueue=true nhưng modal thông số sẽ bị bỏ qua nếu không
-        // kiểm tra paramConfig ở đây — giống hệt logic nhánh !navigator.onLine bên trên.
-        const paramConfigQueued = stationParamConfigs[stationName]; // resolve alias
-        if (hasParams(paramConfigQueued)) {
-          savePendingParams(stationName, paramConfigQueued, queuedAt);
-          setPendingParamsScanId("offline");
-          setPendingParamConfig(paramConfigQueued);
-          setPendingQueuedAt(queuedAt);
-          setStep("params");
-        } else {
-          setStep("done");
-        }
+        // Khi đó API fail → shouldQueue=true: xử lý y hệt nhánh !navigator.onLine.
+        queueOfflineScan(location, stationName, gpsData, scannedAt, classified.message);
       } else {
         const apiData = classified.data || {};
         const resolvedLocation = apiData.location || location;
@@ -478,16 +459,8 @@ export default function ScanPage() {
         // Race condition guard: giống nhánh success — re-fetch nếu cache rỗng
         // và scan đã được lưu DB (có scan_id).
         if (!hasParams(paramConfig) && apiData.code === "OUT_OF_RANGE" && apiData.scan_id) {
-          try {
-            const fresh = await getStationParamConfigs();
-            const freshMap = {};
-            fresh.forEach((c) => { freshMap[c.station_name] = c; });
-            setStationParamConfigs(mergeWithBuiltin(freshMap));
-            try { localStorage.setItem("qr_station_param_configs", JSON.stringify(freshMap)); } catch (_) {}
-            paramConfig = mergeWithBuiltin(freshMap)[resolvedLocation];
-          } catch (_) {
-            // fetch thất bại — tiếp tục không có modal
-          }
+          const merged = await refreshParamConfigs();
+          if (merged) paramConfig = merged[resolvedLocation];
         }
 
         if (apiData.code === "OUT_OF_RANGE" && hasParams(paramConfig) && apiData.scan_id) {

@@ -79,6 +79,13 @@ desktop.ini
 frontend/playwright-report/
 frontend/playwright-artifacts/
 frontend/test-results/
+/test-results/
+
+# ---------------------------------------------------------------------------
+# Ảnh QR chụp tại trạm để test thủ công — không commit vào repo
+# ---------------------------------------------------------------------------
+/*.jpg
+/*.jpeg
 
 # ---------------------------------------------------------------------------
 # Docker

@@ -1,14 +1,36 @@
-const CACHE = "qr-checklist-v8";
+const CACHE = "qr-checklist-v9";
 
-// Install: chỉ cache shell index.html để offline hoạt động
+// App shell phụ — cache lúc install để mở app offline có đủ icon/font ngay cả
+// khi runtime cache chưa kịp lưu (vd cài PWA xong tắt mạng luôn).
+// Best-effort: thiếu file nào thì bỏ qua file đó, KHÔNG được làm fail install
+// (cache.addAll fail 1 file là SW không bao giờ activate).
+const SHELL_OPTIONAL = [
+  "/manifest.json",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/fonts/inter-latin-wght-normal.woff2",
+  "/fonts/inter-latin-ext-wght-normal.woff2",
+  "/fonts/inter-vietnamese-wght-normal.woff2",
+];
+
+// true = đây là UPDATE (đã có SW cũ đang chạy), false = cài lần đầu.
+// Chỉ UPDATE mới cần force-reload tab; reload ở lần cài đầu vừa vô nghĩa
+// vừa phá flow đang chạy (user vừa mở app đã bị reload).
+let isUpdate = false;
+
+// Install: cache shell — index.html bắt buộc, phần còn lại best-effort
 self.addEventListener("install", (e) => {
+  isUpdate = !!self.registration.active;
   e.waitUntil(
-    caches.open(CACHE).then((c) => c.add("/index.html"))
+    caches.open(CACHE).then(async (c) => {
+      await c.add("/index.html"); // bắt buộc — fallback cho mọi navigation offline
+      await Promise.allSettled(SHELL_OPTIONAL.map((url) => c.add(url)));
+    })
   );
   self.skipWaiting(); // kích hoạt SW mới ngay lập tức
 });
 
-// Activate: xóa cache cũ → claim clients → tự reload tất cả tab
+// Activate: xóa cache cũ → claim clients → reload tab NẾU là update (deploy mới)
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
@@ -16,7 +38,7 @@ self.addEventListener("activate", (e) => {
         Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
-      .then(() => self.clients.matchAll({ type: "window" }))
+      .then(() => (isUpdate ? self.clients.matchAll({ type: "window" }) : []))
       .then((clients) => {
         clients.forEach((c) => c.navigate(c.url)); // tự reload — không cần cài lại
       })

@@ -18,6 +18,12 @@ CORS_ORIGIN = os.getenv("CORS_ORIGIN", "http://localhost:5173")
 ADMIN_SECRET = os.getenv("ADMIN_SECRET", "")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
+# True = chỉ gửi email tức thời khi scan có dấu hiệu bất thường (geo_status != "ok":
+# out_of_range / no_gps / cached / unverified). Check-in bình thường không gửi email
+# riêng — đã có trong báo cáo tổng hợp sáng/tối (trigger-summary).
+# Tiết kiệm quota Resend free tier (100 email/ngày). Mặc định false = giữ hành vi cũ.
+EMAIL_ALERTS_ONLY = os.getenv("EMAIL_ALERTS_ONLY", "false").lower() == "true"
+
 # Số giờ giữ lại scan_logs trước khi auto-purge (mặc định 720h = 30 ngày).
 # Storage 30 ngày ~vài MB, dư sức trong 500MB free tier; đủ cho trang Lịch sử
 # xem cả tháng. Hạ xuống nếu muốn tiết kiệm thêm (vd 24).
