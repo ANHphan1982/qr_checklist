@@ -117,16 +117,26 @@ class TestProcessScanWithOilLevel:
 # ---------------------------------------------------------------------------
 # PATCH /api/scan/<id>/params route
 # ---------------------------------------------------------------------------
+def _make_patch_session(mock_log):
+    mock_session = MagicMock()
+    mock_session.__enter__ = MagicMock(return_value=mock_session)
+    mock_session.__exit__ = MagicMock(return_value=False)
+    mock_session.get.return_value = mock_log
+    return mock_session
+
+
+def _make_recent_log(scan_id=5):
+    from datetime import datetime, timezone
+    mock_log = MagicMock()
+    mock_log.id = scan_id
+    mock_log.created_at = datetime.now(timezone.utc)  # trong cửa sổ sửa
+    return mock_log
+
+
 class TestPatchScanParamsRoute:
     def test_patch_params_returns_200(self, flask_app):
         """PATCH /api/scan/<id>/params với oil_level_mm hợp lệ → 200."""
-        mock_log = MagicMock()
-        mock_log.id = 5
-
-        mock_session = MagicMock()
-        mock_session.__enter__ = MagicMock(return_value=mock_session)
-        mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.get.return_value = mock_log
+        mock_session = _make_patch_session(_make_recent_log())
 
         with patch("routes.scan.SessionLocal", return_value=mock_session):
             client = flask_app.test_client()
@@ -141,10 +151,7 @@ class TestPatchScanParamsRoute:
 
     def test_patch_params_404_when_not_found(self, flask_app):
         """PATCH /api/scan/<id>/params trả 404 khi scan_id không tồn tại."""
-        mock_session = MagicMock()
-        mock_session.__enter__ = MagicMock(return_value=mock_session)
-        mock_session.__exit__ = MagicMock(return_value=False)
-        mock_session.get.return_value = None
+        mock_session = _make_patch_session(None)
 
         with patch("routes.scan.SessionLocal", return_value=mock_session):
             client = flask_app.test_client()
@@ -154,3 +161,113 @@ class TestPatchScanParamsRoute:
                 content_type="application/json",
             )
         assert resp.status_code == 404
+
+
+class TestPatchScanParamsHardening:
+    """Endpoint public → phải validate input và giới hạn cửa sổ sửa."""
+
+    def test_empty_body_returns_400(self, flask_app):
+        mock_session = _make_patch_session(_make_recent_log())
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params", json={}, content_type="application/json",
+            )
+        assert resp.status_code == 400
+
+    def test_non_numeric_oil_level_returns_400(self, flask_app):
+        mock_session = _make_patch_session(_make_recent_log())
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"oil_level_mm": "abc"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+
+    def test_param_values_must_be_list(self, flask_app):
+        mock_session = _make_patch_session(_make_recent_log())
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"param_values": {"value": 1}},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+
+    def test_param_values_item_value_must_be_numeric(self, flask_app):
+        mock_session = _make_patch_session(_make_recent_log())
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"param_values": [{"tag": "052-PG-038", "value": "<script>"}]},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+
+    def test_too_many_param_items_returns_400(self, flask_app):
+        mock_session = _make_patch_session(_make_recent_log())
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"param_values": [{"value": 1}] * 51},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+
+    def test_valid_param_values_returns_200(self, flask_app):
+        mock_log = _make_recent_log()
+        mock_session = _make_patch_session(mock_log)
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"param_values": [
+                    {"tag": "052-PG-038", "label": "Áp suất", "unit": "bar",
+                     "value": 4.2, "low": 2.0, "high": 6.0},
+                ]},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+        mock_session.commit.assert_called_once()
+
+    def test_old_scan_returns_403(self, flask_app):
+        """Scan tạo quá cửa sổ sửa (60 phút) → 403, không cho sửa."""
+        from datetime import datetime, timezone, timedelta
+        mock_log = MagicMock()
+        mock_log.id = 5
+        mock_log.created_at = datetime.now(timezone.utc) - timedelta(hours=2)
+        mock_session = _make_patch_session(mock_log)
+
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"oil_level_mm": 1250.5},
+                content_type="application/json",
+            )
+        assert resp.status_code == 403
+        mock_session.commit.assert_not_called()
+
+    def test_naive_created_at_treated_as_utc(self, flask_app):
+        """created_at không có tzinfo (sqlite/legacy) → coi như UTC, vẫn sửa được nếu mới."""
+        from datetime import datetime, timezone
+        mock_log = MagicMock()
+        mock_log.id = 5
+        # naive UTC, vừa tạo
+        mock_log.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        mock_session = _make_patch_session(mock_log)
+
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"oil_level_mm": 100.0},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+
+    def test_db_not_configured_returns_503(self, flask_app):
+        with patch("routes.scan.SessionLocal", None):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"oil_level_mm": 100.0},
+                content_type="application/json",
+            )
+        assert resp.status_code == 503

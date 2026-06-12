@@ -1,8 +1,18 @@
+import os
+import threading
 from datetime import datetime, timezone, timedelta
+
+from sqlalchemy.exc import IntegrityError
+
 from config import SessionLocal, PURGE_RETENTION_HOURS
 from models import ScanLog
 from services.email_service import send_scan_email
 from services.anti_fraud_service import check_rate_limit
+
+# False = gửi email đồng bộ (dùng cho test/debug). Mặc định gửi qua background
+# thread để request /api/scan trả về ngay — Resend chậm/cold start không còn
+# đẩy response vượt timeout 8s phía frontend (nguyên nhân ghi trùng scan cũ).
+EMAIL_ASYNC = os.getenv("EMAIL_ASYNC", "true").lower() == "true"
 
 
 def purge_cutoff(now: datetime | None = None, retention_hours: int | None = None) -> datetime:
@@ -15,6 +25,60 @@ def purge_cutoff(now: datetime | None = None, retention_hours: int | None = None
         now = datetime.now(timezone.utc)
     hours = PURGE_RETENTION_HOURS if retention_hours is None else retention_hours
     return now - timedelta(hours=hours)
+
+
+def _find_duplicate(session, device_id: str | None, location: str, dt: datetime):
+    """Tìm scan đã lưu với cùng (device_id, location, scanned_at).
+
+    Client giữ nguyên scanned_at khi retry (offline queue / timeout) nên bộ 3
+    này định danh duy nhất 1 lần scan. Không có device_id thì không dedupe được.
+    """
+    if not device_id:
+        return None
+    return (
+        session.query(ScanLog)
+        .filter(
+            ScanLog.device_id == device_id,
+            ScanLog.location == location,
+            ScanLog.scanned_at == dt,
+        )
+        .first()
+    )
+
+
+def _dedupe_response(existing: ScanLog) -> dict:
+    return {
+        "status": "ok",
+        "scan_id": existing.id,
+        "message": "Đã ghi nhận trước đó — bỏ qua bản trùng",
+        "email_sent": existing.email_sent,
+        "deduped": True,
+    }
+
+
+def _send_email_and_mark(scan_id, email_kwargs: dict) -> None:
+    """Gửi email rồi cập nhật email_sent bằng session riêng (chạy ngoài request)."""
+    ok, err = send_scan_email(**email_kwargs)
+    if not ok:
+        print(f"[scan] email lỗi cho scan {scan_id}: {err}")
+    try:
+        with SessionLocal() as session:
+            log = session.get(ScanLog, scan_id)
+            if log is not None:
+                log.email_sent = ok
+                session.commit()
+    except Exception as e:  # chỉ log — email là kênh phụ, không được làm hỏng scan
+        print(f"[scan] không cập nhật được email_sent cho scan {scan_id}: {e}")
+
+
+def _dispatch_email(scan_id, email_kwargs: dict) -> None:
+    """Đẩy việc gửi email ra background thread (hoặc đồng bộ nếu EMAIL_ASYNC=false)."""
+    if EMAIL_ASYNC:
+        threading.Thread(
+            target=_send_email_and_mark, args=(scan_id, email_kwargs), daemon=True,
+        ).start()
+    else:
+        _send_email_and_mark(scan_id, email_kwargs)
 
 
 def process_scan(
@@ -33,6 +97,7 @@ def process_scan(
 ) -> dict:
     if not location or not location.strip():
         return {"status": "error", "message": "Thiếu trường location"}
+    location = location.strip()
 
     if scanned_at:
         try:
@@ -58,8 +123,16 @@ def process_scan(
                 break
 
     with SessionLocal() as session:
+        # --- Dedupe (PHẢI trước rate limit) ---
+        # Retry từ offline queue gửi lại scan server đã lưu (frontend timeout 8s
+        # nhưng server vẫn xử lý xong). Nếu để rate limit chạy trước, retry hợp lệ
+        # có thể bị trả RATE_LIMITED dù bản ghi gốc đã nằm trong DB.
+        existing = _find_duplicate(session, device_id, location, dt)
+        if existing is not None:
+            return _dedupe_response(existing)
+
         # --- Rate limiting ---
-        rate_err = check_rate_limit(session, device_id, location.strip())
+        rate_err = check_rate_limit(session, device_id, location)
         if rate_err:
             return rate_err
 
@@ -69,7 +142,7 @@ def process_scan(
         session.query(ScanLog).filter(ScanLog.scanned_at < cutoff).delete(synchronize_session=False)
 
         log = ScanLog(
-            location=location.strip(),
+            location=location,
             device_id=device_id,
             lat=lat,
             lng=lng,
@@ -82,34 +155,40 @@ def process_scan(
             scanned_at=dt,
             email_sent=False,
         )
-        session.add(log)
-        session.flush()
-        scan_id = log.id
+        try:
+            session.add(log)
+            session.flush()
+            scan_id = log.id
+            session.commit()
+        except IntegrityError:
+            # Race: 2 request trùng nhau cùng lúc — unique index uq_scan_logs_dedupe
+            # chặn bản thứ hai. Trả về bản đã lưu như một dedupe bình thường.
+            session.rollback()
+            existing = _find_duplicate(session, device_id, location, dt)
+            if existing is not None:
+                return _dedupe_response(existing)
+            raise
 
-        # Gửi email cho tất cả trạng thái (kể cả out_of_range để quản lý biết gian dối)
-        email_ok, email_err = send_scan_email(
-            location=location.strip(),
-            scanned_at=dt,
-            device_id=device_id,
-            lat=lat,
-            lng=lng,
-            geo_distance=geo_distance,
-            geo_status=geo_status,
-            token_valid=token_valid,
-            cache_age_ms=cache_age_ms,
-        )
-        log.email_sent = email_ok
-
-        session.commit()
-
-    if email_ok:
-        msg = "Đã ghi nhận và gửi email"
-    else:
-        msg = f"Đã ghi nhận (email lỗi: {email_err})"
+    # --- Email: NGOÀI session/transaction, mặc định chạy background thread ---
+    # Request trả về ngay sau khi commit; email_sent cập nhật async vào DB
+    # (trang Lịch sử / báo cáo đọc từ DB nên vẫn thấy trạng thái thật).
+    _dispatch_email(scan_id, {
+        "location": location,
+        "scanned_at": dt,
+        "device_id": device_id,
+        "lat": lat,
+        "lng": lng,
+        "geo_distance": geo_distance,
+        "geo_status": geo_status,
+        "token_valid": token_valid,
+        "cache_age_ms": cache_age_ms,
+    })
 
     return {
         "status": "ok",
         "scan_id": scan_id,
-        "message": msg,
-        "email_sent": email_ok,
+        "message": "Đã ghi nhận — email sẽ được gửi tự động",
+        # None = chưa biết (đang gửi nền). Frontend chỉ cảnh báo khi === false
+        # nên giá trị None không kích hoạt thông báo lỗi sai.
+        "email_sent": None,
     }

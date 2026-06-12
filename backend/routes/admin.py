@@ -2,6 +2,7 @@
 Admin API — quản lý stations và QR aliases.
 Bảo vệ bằng header X-Admin-Key khớp với ADMIN_SECRET env var.
 """
+import hmac
 from flask import Blueprint, request, jsonify
 from config import SessionLocal, ADMIN_SECRET
 from models import Station, QrAlias, StationParam, ScanLog
@@ -16,7 +17,8 @@ def _auth():
     if not ADMIN_SECRET:
         return jsonify({"error": "ADMIN_SECRET chưa cấu hình trên server"}), 500
     key = request.headers.get("X-Admin-Key", "")
-    if key != ADMIN_SECRET:
+    # encode để compare_digest không TypeError khi header chứa ký tự non-ASCII
+    if not hmac.compare_digest(key.encode("utf-8"), ADMIN_SECRET.encode("utf-8")):
         return jsonify({"error": "Unauthorized"}), 401
     return None
 

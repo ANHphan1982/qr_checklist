@@ -2,6 +2,7 @@
 GET /api/reports/trigger-summary?period=morning|evening
 Auth: X-Admin-Key header hoặc ?key=<secret> (để tương thích cron-job.org)
 """
+import hmac
 from flask import Blueprint, request, jsonify
 from config import ADMIN_SECRET
 from services.summary_service import send_summary_report
@@ -13,7 +14,8 @@ def _auth():
     if not ADMIN_SECRET:
         return jsonify({"error": "ADMIN_SECRET chưa cấu hình"}), 500
     key = request.headers.get("X-Admin-Key", "") or request.args.get("key", "")
-    if key != ADMIN_SECRET:
+    # encode để compare_digest không TypeError khi key chứa ký tự non-ASCII
+    if not hmac.compare_digest(key.encode("utf-8"), ADMIN_SECRET.encode("utf-8")):
         return jsonify({"error": "Unauthorized"}), 401
     return None
 

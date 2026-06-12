@@ -11,9 +11,14 @@ class ScanLog(Base):
     # Index tối ưu cho free tier:
     #  - idx_scan_logs_scanned_at: tăng tốc reports/summary/purge (lọc + sắp theo thời gian)
     #  - idx_scan_logs_device_loc_time: tăng tốc rate-limit (device + trạm + thời gian)
+    #  - uq_scan_logs_dedupe: chặn duplicate khi client retry (timeout 8s phía frontend
+    #    → offline queue gửi lại scan đã lưu). Client giữ nguyên scanned_at khi retry
+    #    nên bộ 3 này định danh duy nhất 1 lần scan. NULL device_id không bị ràng buộc
+    #    (Postgres coi NULL là distinct) — chấp nhận được vì frontend luôn gửi device_id.
     __table_args__ = (
         Index("idx_scan_logs_scanned_at", "scanned_at"),
         Index("idx_scan_logs_device_loc_time", "device_id", "location", "scanned_at"),
+        Index("uq_scan_logs_dedupe", "device_id", "location", "scanned_at", unique=True),
     )
 
     id           = Column(BigInteger, primary_key=True, index=True)
@@ -140,16 +145,24 @@ _SCAN_LOG_INDEX_DDL = (
     "ON scan_logs (scanned_at)",
     "CREATE INDEX IF NOT EXISTS idx_scan_logs_device_loc_time "
     "ON scan_logs (device_id, location, scanned_at)",
+    # Có thể fail nếu DB đang chứa sẵn bản ghi trùng — khi đó dedupe tầng app
+    # trong scan_service vẫn hoạt động; dọn bản ghi trùng rồi index sẽ tạo được.
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_scan_logs_dedupe "
+    "ON scan_logs (device_id, location, scanned_at)",
 )
 
 
 def ensure_scan_log_indexes(engine) -> None:
-    """Đảm bảo index của scan_logs tồn tại trên DB (idempotent, nuốt lỗi)."""
+    """Đảm bảo index của scan_logs tồn tại trên DB (idempotent, nuốt lỗi).
+
+    Mỗi DDL chạy trong transaction riêng — một câu fail (vd unique index gặp
+    data trùng có sẵn) không chặn các index còn lại.
+    """
     if engine is None:
         return
-    try:
-        with engine.begin() as conn:
-            for ddl in _SCAN_LOG_INDEX_DDL:
+    for ddl in _SCAN_LOG_INDEX_DDL:
+        try:
+            with engine.begin() as conn:
                 conn.execute(text(ddl))
-    except Exception as e:  # pragma: no cover - chỉ log, không sập app
-        print(f"[models] ensure_scan_log_indexes lỗi (bỏ qua): {e}")
+        except Exception as e:  # pragma: no cover - chỉ log, không sập app
+            print(f"[models] ensure_scan_log_indexes lỗi (bỏ qua): {ddl.split(' ON ')[0]} → {e}")

@@ -1,18 +1,38 @@
 """
 Debug endpoint — kiểm tra email config, gửi test email, và chẩn đoán connectivity.
-Chỉ dùng để chẩn đoán, không cần xác thực vì không lộ data nhạy cảm.
+
+Auth:
+  - /debug/email-config, /debug/email-test: cần header X-Admin-Key (= ADMIN_SECRET).
+    email-test tốn quota Resend (100/ngày), email-config lộ một phần API key +
+    địa chỉ quản lý — không được để public.
+  - /debug/connectivity: public — frontend dùng cho nút "Test kết nối server".
 """
+import hmac
 from flask import Blueprint, request, jsonify
-from config import RESEND_API_KEY, EMAIL_FROM, EMAIL_TO, CORS_ORIGIN
+from config import RESEND_API_KEY, EMAIL_FROM, EMAIL_TO, CORS_ORIGIN, ADMIN_SECRET
 import resend
 import os
 
 debug_bp = Blueprint("debug", __name__)
 
 
+def _auth():
+    """Trả về None nếu OK, Response lỗi nếu không hợp lệ."""
+    if not ADMIN_SECRET:
+        return jsonify({"error": "ADMIN_SECRET chưa cấu hình trên server"}), 503
+    key = request.headers.get("X-Admin-Key", "")
+    # encode để compare_digest không TypeError khi header chứa ký tự non-ASCII
+    if not hmac.compare_digest(key.encode("utf-8"), ADMIN_SECRET.encode("utf-8")):
+        return jsonify({"error": "Unauthorized"}), 401
+    return None
+
+
 @debug_bp.route("/debug/email-config", methods=["GET"])
 def email_config():
-    """Kiểm tra cấu hình email mà không gửi."""
+    """Kiểm tra cấu hình email mà không gửi. Cần X-Admin-Key."""
+    err = _auth()
+    if err:
+        return err
     key = RESEND_API_KEY or ""
     return jsonify({
         "resend_api_key": f"{key[:8]}...{key[-4:]}" if len(key) > 12 else ("(trống)" if not key else "(quá ngắn)"),
@@ -24,7 +44,10 @@ def email_config():
 
 @debug_bp.route("/debug/email-test", methods=["POST"])
 def email_test():
-    """Gửi test email để xác nhận Resend hoạt động."""
+    """Gửi test email để xác nhận Resend hoạt động. Cần X-Admin-Key."""
+    err = _auth()
+    if err:
+        return err
     if not RESEND_API_KEY:
         return jsonify({"ok": False, "error": "RESEND_API_KEY chưa cấu hình"}), 500
 

@@ -51,6 +51,8 @@ def _make_session(scan_id: int = 999) -> MagicMock:
 
     # check_rate_limit gọi session.query().filter().scalar() → phải trả về int
     session.query.return_value.filter.return_value.scalar.return_value = 0
+    # dedupe gọi session.query().filter().first() → None = không có bản trùng
+    session.query.return_value.filter.return_value.first.return_value = None
 
     def flush_side_effect():
         if session.add.call_args:

@@ -18,6 +18,8 @@ def _make_session(scan_id: int = 42) -> MagicMock:
     session.__enter__ = MagicMock(return_value=session)
     session.__exit__ = MagicMock(return_value=False)
     session.query.return_value.filter.return_value.scalar.return_value = 0
+    # dedupe gọi session.query().filter().first() → None = không có bản trùng
+    session.query.return_value.filter.return_value.first.return_value = None
 
     def flush_side_effect():
         if session.add.call_args:
@@ -159,7 +161,11 @@ def test_scan_invalid_qr_returns_400(client):
 # ---------------------------------------------------------------------------
 
 def test_email_called_with_correct_station():
-    """send_scan_email duoc goi voi location='TK-5205A' (sau khi resolve alias)."""
+    """send_scan_email duoc goi voi location='TK-5205A' (sau khi resolve alias).
+
+    EMAIL_ASYNC=False de email gui dong bo trong test — production mac dinh
+    chay background thread, khong assert duoc theo kieu nay.
+    """
     session = _make_session(42)
     email_calls = []
 
@@ -167,7 +173,8 @@ def test_email_called_with_correct_station():
         email_calls.append(kwargs)
         return True, ""
 
-    with patch("services.scan_service.SessionLocal", return_value=session):
+    with patch("services.scan_service.SessionLocal", return_value=session), \
+         patch("services.scan_service.EMAIL_ASYNC", False):
         with patch("services.scan_service.send_scan_email", side_effect=capture_email):
             from app import app as flask_app
             flask_app.config["TESTING"] = True

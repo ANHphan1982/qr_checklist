@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify
+from datetime import datetime, timezone, timedelta
 from services.scan_service import process_scan
 from services.geo_service import validate_location
 from services.stations_db import get_stations, get_qr_aliases, get_station_params
@@ -13,6 +14,15 @@ scan_bp = Blueprint("scan", __name__)
 # True = yêu cầu Rotating QR (cần màn hình tại trạm)
 # False = chấp nhận QR tĩnh cũ (backward compatible)
 REQUIRE_ROTATING_QR = os.getenv("REQUIRE_ROTATING_QR", "false").lower() == "true"
+
+# PATCH /scan/<id>/params là endpoint public (flow nhập thông số ngay sau check-in,
+# không có login) → giới hạn cửa sổ sửa để người ngoài không sửa được scan cũ
+# bằng cách đoán id. 60 phút đủ rộng cho user nhập chậm/khóa màn hình giữa chừng.
+PARAMS_EDIT_WINDOW_MINUTES = int(os.getenv("PARAMS_EDIT_WINDOW_MINUTES", "60"))
+
+# Giới hạn kích thước param_values — chống nhét JSON rác/khổng lồ vào DB.
+MAX_PARAM_ITEMS = 50
+MAX_PARAM_STR_LEN = 100
 
 
 @scan_bp.route("/scan", methods=["POST"])
@@ -141,21 +151,80 @@ def _first_numeric_value(param_values):
     return None
 
 
+def _is_number(v):
+    """Số thực sự — loại trừ bool (bool là subclass của int trong Python)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _validate_param_values(param_values):
+    """Kiểm tra cấu trúc param_values từ client. Trả về message lỗi hoặc None nếu OK.
+
+    Shape hợp lệ: list các dict {tag, label, unit, value, low, high} — value/low/high
+    là số hoặc None, các trường chữ ≤ MAX_PARAM_STR_LEN ký tự.
+    """
+    if not isinstance(param_values, list):
+        return "param_values phải là danh sách"
+    if len(param_values) > MAX_PARAM_ITEMS:
+        return f"param_values tối đa {MAX_PARAM_ITEMS} thông số"
+    for pv in param_values:
+        if not isinstance(pv, dict):
+            return "mỗi thông số phải là object"
+        for key in ("value", "low", "high"):
+            v = pv.get(key)
+            if v is not None and not _is_number(v):
+                return f"'{key}' phải là số hoặc null"
+        for key in ("tag", "label", "unit"):
+            s = pv.get(key)
+            if s is not None and (not isinstance(s, str) or len(s) > MAX_PARAM_STR_LEN):
+                return f"'{key}' phải là chuỗi ≤ {MAX_PARAM_STR_LEN} ký tự"
+    return None
+
+
 @scan_bp.route("/scan/<int:scan_id>/params", methods=["PATCH"])
 def update_scan_params(scan_id):
     """Cập nhật thông số vận hành sau khi check-in.
 
     Nhận `param_values` (danh sách multi-param). Vẫn chấp nhận `oil_level_mm`
     đơn lẻ từ client cũ để tương thích ngược.
+
+    Endpoint public (modal nhập thông số ngay sau scan, app không có login) nên
+    được siết: validate cấu trúc dữ liệu + chỉ cho sửa scan vừa tạo trong
+    PARAMS_EDIT_WINDOW_MINUTES — chặn người ngoài đoán scan_id để sửa dữ liệu cũ.
     """
+    if SessionLocal is None:
+        return jsonify({"status": "error", "message": "Database chưa được cấu hình"}), 503
+
     data = request.get_json(silent=True) or {}
     param_values = data.get("param_values")
     oil_level_mm = data.get("oil_level_mm")
+
+    if param_values is None and oil_level_mm is None:
+        return jsonify({"status": "error", "message": "Thiếu param_values hoặc oil_level_mm"}), 400
+    if param_values is not None:
+        err = _validate_param_values(param_values)
+        if err:
+            return jsonify({"status": "error", "message": err}), 400
+    if oil_level_mm is not None and not _is_number(oil_level_mm):
+        return jsonify({"status": "error", "message": "oil_level_mm phải là số"}), 400
 
     with SessionLocal() as session:
         log = session.get(ScanLog, scan_id)
         if log is None:
             return jsonify({"status": "error", "message": "Không tìm thấy scan"}), 404
+
+        # Cửa sổ sửa: tính từ created_at (thời điểm bản ghi vào DB) chứ không phải
+        # scanned_at — scan offline sync muộn vẫn sửa được ngay sau khi đồng bộ.
+        created = log.created_at
+        if created is not None:
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=PARAMS_EDIT_WINDOW_MINUTES)
+            if created < cutoff:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Scan quá {PARAMS_EDIT_WINDOW_MINUTES} phút — không thể sửa thông số",
+                }), 403
+
         if param_values is not None:
             log.param_values = param_values or None
             if oil_level_mm is None:
