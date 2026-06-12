@@ -18,8 +18,8 @@ export class ScanPagePOM {
   get startButton()    { return this.page.locator("button:has-text('Bắt đầu Scan')"); }
   get stopButton()     { return this.page.locator("button:has-text('Dừng Camera')"); }
   get continueButton() { return this.page.locator("button:has-text('Quét tiếp')"); }
-  get syncButton()     { return this.page.locator("button:has-text('Đồng bộ ngay')"); }
-  get resultCard()     { return this.page.locator(".rounded-2xl.border.p-4").first(); }
+  get syncButton()     { return this.page.locator("button:has-text('Đồng bộ')"); }
+  get resultCard()     { return this.page.getByTestId("scan-result"); }
   get offlineBanner()  { return this.page.locator("text=Không có mạng"); }
   get pendingBadge()   { return this.page.locator("text=/\\d+ scan chờ đồng bộ/"); }
   get pendingOffline() { return this.page.locator("text=/\\d+ scan đang chờ/"); }
@@ -44,16 +44,43 @@ export class ScanPagePOM {
 
   /** Clear offline queue and device_id between tests for isolation. */
   async clearStorage() {
-    await this.page.evaluate(() => {
-      localStorage.removeItem("qr_offline_queue");
-    });
+    try {
+      await this.page.evaluate(() => {
+        localStorage.removeItem("qr_offline_queue");
+      });
+    } catch {
+      // Vite dev đôi khi full-reload trang 1 lần ngay sau load (giữa full suite)
+      // → execution context destroyed. Đợi trang ổn định rồi thử lại.
+      await this.page.waitForSelector("button:has-text('Bắt đầu Scan')");
+      await this.page.evaluate(() => {
+        localStorage.removeItem("qr_offline_queue");
+      });
+    }
   }
 }
 
 // ── API route helpers ──────────────────────────────────────────────────────
 
+/**
+ * Chặn các nguồn tự-reload trang trong test:
+ *
+ * 1. sw.js — handler activate gọi clients.navigate() (tự reload tab khi SW mới
+ *    kích hoạt) → reload bất ngờ giữa test.
+ * 2. /__vite_ping — khi test setOffline, websocket HMR đứt → vite client poll
+ *    __vite_ping bằng fetch. Offline emulation của Chromium KHÔNG chặn fetch
+ *    tới localhost → ping thành công → client reload → trang trắng (module
+ *    không load được khi offline) → reload loop đến hết timeout.
+ *
+ * Cả 2 chỉ tồn tại ở dev/test, không ảnh hưởng production.
+ */
+export async function blockServiceWorker(page) {
+  await page.route("**/sw.js", (r) => r.abort());
+  await page.route("**/__vite_ping", (r) => r.abort());
+}
+
 /** Mock /health and /api/scan with a successful 200 response. */
 export async function mockApiSuccess(page, overrides = {}) {
+  await blockServiceWorker(page);
   await page.route("**/health", (r) => r.fulfill({ status: 200, body: "ok" }));
   await page.route("**/api/scan", (r) =>
     r.fulfill({
@@ -73,6 +100,7 @@ export async function mockApiSuccess(page, overrides = {}) {
 
 /** Mock /api/scan with a 4xx or 5xx error response. */
 export async function mockApiError(page, status, body) {
+  await blockServiceWorker(page);
   await page.route("**/health", (r) => r.fulfill({ status: 200, body: "ok" }));
   await page.route("**/api/scan", (r) =>
     r.fulfill({

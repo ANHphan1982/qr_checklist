@@ -1,77 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
-import axios from "axios";
+import { Settings, MapPin, Link2, SlidersHorizontal, Download, CheckCircle2, XCircle } from "lucide-react";
 import { buildStationsRows, buildAliasesRows, exportToExcel } from "../lib/exportExcel";
-import {
-  getAdminStationParams,
-  createAdminStationParam,
-  updateAdminStationParam,
-  deleteAdminStationParam,
-} from "../lib/api";
-import { PARAM_UNIT_OPTIONS } from "../lib/paramUnits";
-import { BUILTIN_PARAM_CONFIGS, builtinStationsNotInDb } from "../lib/builtinConfigs";
+import { getAdminStationParams } from "../lib/api";
+import { api, SESSION_KEY } from "../components/admin/adminApi";
+import LoginGate from "../components/admin/LoginGate";
+import PurgeButton from "../components/admin/PurgeButton";
+import StationsPanel from "../components/admin/StationsPanel";
+import AliasesPanel from "../components/admin/AliasesPanel";
+import StationParamsPanel from "../components/admin/StationParamsPanel";
 
-const BASE = import.meta.env.VITE_API_URL || "";
-const SESSION_KEY = "admin_authed";
-
-function api(adminKey) {
-  return axios.create({
-    baseURL: BASE,
-    headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
-    timeout: 15000,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Login gate
-// ---------------------------------------------------------------------------
-function LoginGate({ onLogin }) {
-  const [key, setKey] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setErr("");
-    try {
-      await api(key).get("/api/admin/stations");
-      sessionStorage.setItem(SESSION_KEY, key);
-      onLogin(key);
-    } catch {
-      setErr("Sai mật khẩu admin hoặc server lỗi");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 px-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm bg-white dark:bg-slate-800 rounded-2xl shadow p-6 flex flex-col gap-4">
-        <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">🔐 Admin QR Checklist</h1>
-        <input
-          type="password"
-          placeholder="Nhập mật khẩu admin"
-          value={key}
-          onChange={e => setKey(e.target.value)}
-          className="border rounded-xl px-4 py-3 text-base w-full dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-          autoFocus
-        />
-        {err && <p className="text-red-600 text-sm">{err}</p>}
-        <button
-          type="submit"
-          disabled={loading || !key}
-          className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl disabled:opacity-50"
-        >
-          {loading ? "Đang kiểm tra..." : "Đăng nhập"}
-        </button>
-      </form>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main Admin UI
-// ---------------------------------------------------------------------------
+/**
+ * AdminPage — gate đăng nhập + dashboard 3 tab.
+ * Các panel được tách ra components/admin/ (file này từng dài 800+ dòng).
+ */
 export default function AdminPage() {
   const savedKey = sessionStorage.getItem(SESSION_KEY) || "";
   const [adminKey, setAdminKey] = useState(savedKey);
@@ -80,12 +21,16 @@ export default function AdminPage() {
   return <AdminDashboard adminKey={adminKey} onLogout={() => { sessionStorage.removeItem(SESSION_KEY); setAdminKey(""); }} />;
 }
 
+const TAB_BTN_BASE = "px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors min-h-[44px]";
+const TAB_BTN_ACTIVE = "bg-blue-600 text-white";
+const TAB_BTN_IDLE = "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700";
+
 function AdminDashboard({ adminKey, onLogout }) {
-  const [stations,     setStations]     = useState([]);
-  const [aliases,      setAliases]      = useState([]);
+  const [stations,      setStations]      = useState([]);
+  const [aliases,       setAliases]       = useState([]);
   const [stationParams, setStationParams] = useState([]);
-  const [tab,          setTab]          = useState("stations");
-  const [msg,          setMsg]          = useState(null); // { ok, text }
+  const [tab,           setTab]           = useState("stations");
+  const [msg,           setMsg]           = useState(null); // { ok, text }
 
   const client = api(adminKey);
 
@@ -107,7 +52,7 @@ function AdminDashboard({ adminKey, onLogout }) {
     } catch (e) {
       flash(false, `Lỗi tải dữ liệu: ${e?.response?.data?.error || e.message}`);
     }
-  }, [adminKey]);
+  }, [adminKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -115,7 +60,10 @@ function AdminDashboard({ adminKey, onLogout }) {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-12">
       {/* Header */}
       <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between gap-2">
-        <h1 className="font-bold text-lg text-slate-800 dark:text-slate-100">⚙️ Admin — Quản lý Checkpoint</h1>
+        <h1 className="font-bold text-lg text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <Settings className="w-5 h-5 flex-shrink-0" aria-hidden />
+          Admin — Quản lý Checkpoint
+        </h1>
         <div className="flex items-center gap-3">
           <PurgeButton adminKey={adminKey} flash={flash} />
           <button onClick={onLogout} className="text-sm text-slate-500 hover:text-red-600 dark:text-slate-400">
@@ -126,24 +74,27 @@ function AdminDashboard({ adminKey, onLogout }) {
 
       {/* Flash message */}
       {msg && (
-        <div className={`mx-4 mt-3 px-4 py-3 rounded-xl text-sm font-medium ${
+        <div className={`mx-4 mt-3 px-4 py-3 rounded-xl text-sm font-medium flex items-start gap-2 ${
           msg.ok ? "bg-green-50 text-green-800 border border-green-200" : "bg-red-50 text-red-800 border border-red-200"
         }`}>
-          {msg.ok ? "✅ " : "❌ "}{msg.text}
+          {msg.ok
+            ? <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
+            : <XCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />}
+          <span>{msg.text}</span>
         </div>
       )}
 
       {/* Tabs + Export */}
       <div className="flex items-center justify-between gap-2 mx-4 mt-4 flex-wrap">
         <div className="flex gap-1 flex-wrap">
-          <button onClick={() => setTab("stations")} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors min-h-[44px] ${tab === "stations" ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
-            📍 Trạm ({stations.length})
+          <button onClick={() => setTab("stations")} className={`${TAB_BTN_BASE} ${tab === "stations" ? TAB_BTN_ACTIVE : TAB_BTN_IDLE}`}>
+            <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4" aria-hidden />Trạm ({stations.length})</span>
           </button>
-          <button onClick={() => setTab("aliases")} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors min-h-[44px] ${tab === "aliases" ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
-            🔗 QR Alias ({aliases.length})
+          <button onClick={() => setTab("aliases")} className={`${TAB_BTN_BASE} ${tab === "aliases" ? TAB_BTN_ACTIVE : TAB_BTN_IDLE}`}>
+            <span className="flex items-center gap-1.5"><Link2 className="w-4 h-4" aria-hidden />QR Alias ({aliases.length})</span>
           </button>
-          <button onClick={() => setTab("params")} className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors min-h-[44px] ${tab === "params" ? "bg-blue-600 text-white" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
-            ⚙️ Thông số ({stationParams.length})
+          <button onClick={() => setTab("params")} className={`${TAB_BTN_BASE} ${tab === "params" ? TAB_BTN_ACTIVE : TAB_BTN_IDLE}`}>
+            <span className="flex items-center gap-1.5"><SlidersHorizontal className="w-4 h-4" aria-hidden />Thông số ({stationParams.length})</span>
           </button>
         </div>
         {tab !== "params" && (
@@ -154,7 +105,8 @@ function AdminDashboard({ adminKey, onLogout }) {
             }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold active:bg-green-700 transition-colors min-h-[44px]"
           >
-            📥 Xuất Excel
+            <Download className="w-4 h-4" aria-hidden />
+            Xuất Excel
           </button>
         )}
       </div>
@@ -164,644 +116,6 @@ function AdminDashboard({ adminKey, onLogout }) {
         {tab === "aliases"  && <AliasesPanel aliases={aliases} stations={stations} client={client} onRefresh={loadAll} flash={flash} />}
         {tab === "params"   && <StationParamsPanel stationParams={stationParams} stations={stations} adminKey={adminKey} onRefresh={loadAll} flash={flash} />}
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Stations Panel
-// ---------------------------------------------------------------------------
-function StationsPanel({ stations, client, onRefresh, flash }) {
-  const empty = { name: "", lat: "", lng: "", radius: "300", qr_content: "" };
-  const [form, setForm] = useState(empty);
-  const [editing, setEditing] = useState(null); // station name đang sửa
-  const [saving, setSaving] = useState(false);
-
-  const useGPS = () => {
-    if (!navigator.geolocation) return flash(false, "Thiết bị không hỗ trợ GPS");
-    navigator.geolocation.getCurrentPosition(
-      pos => setForm(f => ({ ...f, lat: pos.coords.latitude.toFixed(6), lng: pos.coords.longitude.toFixed(6) })),
-      () => flash(false, "Không lấy được vị trí GPS"),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      if (editing) {
-        await client.put(`/api/admin/stations/${editing}`, { lat: form.lat, lng: form.lng, radius: form.radius });
-        flash(true, `Đã cập nhật trạm ${editing}`);
-      } else {
-        await client.post("/api/admin/stations", form);
-        flash(true, `Đã thêm trạm ${form.name}`);
-      }
-      setForm(empty);
-      setEditing(null);
-      onRefresh();
-    } catch (e) {
-      flash(false, e?.response?.data?.error || e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleEdit = (st) => {
-    setEditing(st.name);
-    setForm({ name: st.name, lat: st.lat, lng: st.lng, radius: st.radius });
-  };
-
-  const handleDelete = async (name) => {
-    if (!confirm(`Vô hiệu hoá trạm "${name}"?`)) return;
-    try {
-      await client.delete(`/api/admin/stations/${name}`);
-      flash(true, `Đã vô hiệu hoá ${name}`);
-      onRefresh();
-    } catch (e) {
-      flash(false, e?.response?.data?.error || e.message);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Form */}
-      <form onSubmit={handleSave} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          {editing ? `✏️ Sửa trạm ${editing}` : "➕ Thêm trạm mới"}
-        </h2>
-
-        {!editing && (
-          <>
-            <div>
-              <label className="text-xs text-slate-500 dark:text-slate-400">Tên trạm *</label>
-              <input
-                value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value.toUpperCase() }))}
-                placeholder="VD: PUMP_STATION_7"
-                required
-                className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-slate-500 dark:text-slate-400">Nội dung QR code tại trạm (nếu khác tên trạm)</label>
-              <input
-                value={form.qr_content} onChange={e => setForm(f => ({ ...f, qr_content: e.target.value }))}
-                placeholder="VD: 052-PG-071"
-                className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-              />
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                Điền để hệ thống tự nhận diện QR → trạm. Bỏ trống nếu QR đã ghi đúng tên trạm.
-              </p>
-            </div>
-          </>
-        )}
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Latitude *</label>
-            <input
-              value={form.lat} onChange={e => setForm(f => ({ ...f, lat: e.target.value }))}
-              placeholder="15.408751" type="number" step="any" required
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Longitude *</label>
-            <input
-              value={form.lng} onChange={e => setForm(f => ({ ...f, lng: e.target.value }))}
-              placeholder="108.814616" type="number" step="any" required
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 items-end">
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Bán kính (mét)</label>
-            <input
-              value={form.radius} onChange={e => setForm(f => ({ ...f, radius: e.target.value }))}
-              type="number" min="10" max="5000"
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          </div>
-          <button type="button" onClick={useGPS}
-            className="py-2.5 px-3 rounded-xl border border-blue-300 text-blue-700 dark:text-blue-400 text-sm font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
-            📍 Lấy GPS hiện tại
-          </button>
-        </div>
-
-        <div className="flex gap-2">
-          <button type="submit" disabled={saving}
-            className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl disabled:opacity-50">
-            {saving ? "Đang lưu..." : editing ? "Cập nhật" : "Thêm trạm"}
-          </button>
-          {editing && (
-            <button type="button" onClick={() => { setEditing(null); setForm(empty); }}
-              className="px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-semibold">
-              Huỷ
-            </button>
-          )}
-        </div>
-      </form>
-
-      {/* List */}
-      <div className="space-y-2">
-        {stations.length === 0 && (
-          <p className="text-center text-slate-400 py-4 text-sm">Chưa có trạm nào trong DB — đang dùng file config mặc định</p>
-        )}
-        {stations.map(st => (
-          <div key={st.name} className={`bg-white dark:bg-slate-800 rounded-xl border px-4 py-3 flex items-center justify-between gap-2 ${
-            st.active ? "border-slate-200 dark:border-slate-700" : "border-slate-100 dark:border-slate-800 opacity-50"
-          }`}>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-slate-100">{st.name}</p>
-              <p className="text-xs text-slate-400">{st.lat}, {st.lng} · r={st.radius}m</p>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => handleEdit(st)} className="text-sm px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium">
-                ✏️
-              </button>
-              <button onClick={() => handleDelete(st.name)} className="text-sm px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium">
-                🗑️
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Purge Button — xóa scan_logs cũ để giải phóng dung lượng
-// ---------------------------------------------------------------------------
-function PurgeButton({ adminKey, flash }) {
-  const [loading, setLoading] = useState(false);
-
-  const handlePurge = async () => {
-    const input = window.prompt(
-      "Xóa scan logs cũ hơn bao nhiêu ngày?\n(Nhập số, tối thiểu 1 — mặc định 7)",
-      "7"
-    );
-    if (input === null) return; // user bấm Cancel
-    const days = parseInt(input, 10);
-    if (!days || days < 1) {
-      flash(false, "Số ngày không hợp lệ (phải >= 1)");
-      return;
-    }
-    if (!window.confirm(`Xóa tất cả scan logs cũ hơn ${days} ngày?\nHành động này không thể hoàn tác.`)) return;
-
-    setLoading(true);
-    try {
-      const { data } = await api(adminKey).post("/api/admin/purge", { older_than_days: days });
-      flash(true, `Đã xóa ${data.deleted} bản ghi cũ hơn ${days} ngày`);
-    } catch (e) {
-      flash(false, e?.response?.data?.error || e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <button
-      onClick={handlePurge}
-      disabled={loading}
-      title="Xóa scan logs cũ để giải phóng dung lượng"
-      className="text-sm px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium disabled:opacity-50 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
-    >
-      {loading ? "Đang xóa..." : "🗑️ Dọn dẹp DB"}
-    </button>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Station Params Panel — cấu hình thông số vận hành
-// ---------------------------------------------------------------------------
-function StationParamsPanel({ stationParams, stations, adminKey, onRefresh, flash }) {
-  const empty = { station_name: "", tag: "", param_label: "", param_unit: "mm", param_low: "", param_high: "", sort_order: "" };
-  const [form,    setForm]    = useState(empty);
-  const [editing, setEditing] = useState(null); // id đang sửa
-  const [saving,  setSaving]  = useState(false);
-  const [importing, setImporting] = useState(null); // station_name đang import builtin
-
-  // Trạm có cấu hình builtin sẵn trong app nhưng CHƯA có bản ghi DB → chưa
-  // bật/tắt được. Admin import xuống DB trước, rồi mới dùng nút 🔕 để ẩn.
-  const builtinPending = builtinStationsNotInDb(BUILTIN_PARAM_CONFIGS, stationParams);
-
-  const stationOptions = stations.length > 0
-    ? stations.map(s => s.name)
-    : [...new Set(stationParams.map(p => p.station_name))];
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const toFloatOrNull = v => v !== "" && v !== null ? parseFloat(v) : null;
-      const toIntOrZero = v => v !== "" && v !== null && !Number.isNaN(parseInt(v, 10)) ? parseInt(v, 10) : 0;
-      if (editing != null) {
-        await updateAdminStationParam(adminKey, editing, {
-          tag:         form.tag,
-          param_label: form.param_label,
-          param_unit:  form.param_unit,
-          param_low:   toFloatOrNull(form.param_low),
-          param_high:  toFloatOrNull(form.param_high),
-          sort_order:  toIntOrZero(form.sort_order),
-        });
-        flash(true, `Đã cập nhật thông số ${form.tag || form.param_label}`);
-      } else {
-        await createAdminStationParam(adminKey, { ...form, sort_order: toIntOrZero(form.sort_order) });
-        flash(true, `Đã thêm thông số cho ${form.station_name}`);
-      }
-      // Giữ lại station_name để nhập tiếp nhiều thông số cho cùng 1 trạm
-      setForm({ ...empty, station_name: editing != null ? "" : form.station_name });
-      setEditing(null);
-      onRefresh();
-    } catch (e) {
-      flash(false, e?.response?.data?.error || e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleEdit = (p) => {
-    setEditing(p.id);
-    setForm({
-      station_name: p.station_name,
-      tag:          p.tag ?? "",
-      param_label:  p.param_label,
-      param_unit:   p.param_unit,
-      param_low:    p.param_low  ?? "",
-      param_high:   p.param_high ?? "",
-      sort_order:   p.sort_order ?? "",
-    });
-  };
-
-  const handleDelete = async (p) => {
-    if (!confirm(`Xóa cấu hình thông số cho "${p.station_name}"?`)) return;
-    try {
-      await deleteAdminStationParam(adminKey, p.id);
-      flash(true, `Đã xóa cấu hình ${p.station_name}`);
-      onRefresh();
-    } catch (e) {
-      flash(false, e?.response?.data?.error || e.message);
-    }
-  };
-
-  const handleToggle = async (p) => {
-    try {
-      await updateAdminStationParam(adminKey, p.id, { active: !p.active });
-      onRefresh();
-    } catch (e) {
-      flash(false, e?.response?.data?.error || e.message);
-    }
-  };
-
-  // Import toàn bộ thông số builtin của một trạm xuống DB (đang bật). Sau đó admin
-  // có thể bật/tắt từng dòng như thông số DB bình thường.
-  const handleImportBuiltin = async (cfg) => {
-    setImporting(cfg.station_name);
-    try {
-      let order = 0;
-      for (const p of cfg.params) {
-        await createAdminStationParam(adminKey, {
-          station_name: cfg.station_name,
-          tag:          p.tag || "",
-          param_label:  p.param_label,
-          param_unit:   p.param_unit,
-          param_low:    p.param_low ?? null,
-          param_high:   p.param_high ?? null,
-          sort_order:   order++,
-        });
-      }
-      flash(true, `Đã đưa ${cfg.station_name} vào DB — giờ có thể bật/tắt từng thông số`);
-      onRefresh();
-    } catch (e) {
-      flash(false, e?.response?.data?.error || e.message);
-    } finally {
-      setImporting(null);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <form onSubmit={handleSave} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">
-          {editing != null ? "✏️ Sửa cấu hình thông số" : "➕ Thêm cấu hình thông số"}
-        </h2>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Sau khi scan QR tại trạm được cấu hình, hệ thống sẽ hiện popup yêu cầu nhập thông số vận hành.
-          Một trạm có thể có <strong>nhiều thông số</strong> — thêm từng dòng, cùng chọn một trạm.
-          Bấm <strong>🔕</strong> để <strong>ẩn</strong> một thông số (không cần ghi / thiết bị lỗi) —
-          khi ẩn hết, trạm sẽ không hiện popup lúc scan.
-        </p>
-
-        <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400">Trạm *</label>
-          {editing != null ? (
-            <p className="mt-1 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-base font-semibold">
-              {form.station_name}
-            </p>
-          ) : stationOptions.length > 0 ? (
-            <select
-              value={form.station_name}
-              onChange={e => setForm(f => ({ ...f, station_name: e.target.value }))}
-              required
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            >
-              <option value="">-- Chọn trạm --</option>
-              {stationOptions.map(n => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              value={form.station_name}
-              onChange={e => setForm(f => ({ ...f, station_name: e.target.value.toUpperCase() }))}
-              placeholder="VD: TK-5203A"
-              required
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Mã thiết bị (tag)</label>
-            <input
-              value={form.tag}
-              onChange={e => setForm(f => ({ ...f, tag: e.target.value }))}
-              placeholder="VD: 052-PG-038"
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base font-mono dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Thứ tự hiển thị</label>
-            <input
-              type="number"
-              step="1"
-              value={form.sort_order}
-              onChange={e => setForm(f => ({ ...f, sort_order: e.target.value }))}
-              placeholder="0"
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Tên thông số *</label>
-            <input
-              value={form.param_label}
-              onChange={e => setForm(f => ({ ...f, param_label: e.target.value }))}
-              placeholder="VD: Discharge pressure"
-              required
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Đơn vị *</label>
-            <select
-              value={form.param_unit}
-              onChange={e => setForm(f => ({ ...f, param_unit: e.target.value }))}
-              required
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            >
-              <option value="">-- Chọn đơn vị --</option>
-              {PARAM_UNIT_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Giới hạn dưới L</label>
-            <input
-              type="number"
-              step="any"
-              value={form.param_low}
-              onChange={e => setForm(f => ({ ...f, param_low: e.target.value }))}
-              placeholder="Không giới hạn"
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 dark:text-slate-400">Giới hạn trên H</label>
-            <input
-              type="number"
-              step="any"
-              value={form.param_high}
-              onChange={e => setForm(f => ({ ...f, param_high: e.target.value }))}
-              placeholder="Không giới hạn"
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button type="submit" disabled={saving}
-            className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl disabled:opacity-50">
-            {saving ? "Đang lưu..." : editing != null ? "Cập nhật" : "Thêm"}
-          </button>
-          {editing != null && (
-            <button type="button" onClick={() => { setEditing(null); setForm(empty); }}
-              className="px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-semibold">
-              Huỷ
-            </button>
-          )}
-        </div>
-      </form>
-
-      {/* Trạm builtin (cấu hình sẵn trong app) chưa có bản ghi DB → cần import mới ẩn được */}
-      {builtinPending.length > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 rounded-2xl border border-amber-200 dark:border-amber-800 p-4 space-y-2">
-          <p className="text-xs text-amber-800 dark:text-amber-300">
-            ⚠️ Các trạm dưới đây đang dùng <strong>cấu hình mặc định (builtin)</strong> nên chưa bật/tắt được.
-            Bấm <strong>“Đưa vào DB”</strong> để quản lý — sau đó dùng 🔕 để ẩn thông số không cần ghi.
-          </p>
-          {builtinPending.map(cfg => (
-            <div key={cfg.station_name} className="bg-white dark:bg-slate-800 rounded-xl border border-amber-200 dark:border-amber-800 px-4 py-3 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-semibold text-slate-800 dark:text-slate-100">
-                  {cfg.station_name}
-                  <span className="ml-2 text-xs text-amber-600 dark:text-amber-400">· mặc định</span>
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                  {cfg.params.map(p => p.param_label).join(", ")}
-                </p>
-              </div>
-              <button
-                onClick={() => handleImportBuiltin(cfg)}
-                disabled={importing === cfg.station_name}
-                className="flex-shrink-0 text-sm px-3 py-1.5 rounded-lg bg-amber-600 text-white font-medium disabled:opacity-50">
-                {importing === cfg.station_name ? "Đang đưa…" : "📥 Đưa vào DB"}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="space-y-2">
-        {stationParams.length === 0 && builtinPending.length === 0 && (
-          <p className="text-center text-slate-400 py-4 text-sm">Chưa có cấu hình thông số nào</p>
-        )}
-        {[...stationParams]
-          .sort((a, b) =>
-            a.station_name.localeCompare(b.station_name) ||
-            (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
-            (a.id ?? 0) - (b.id ?? 0)
-          )
-          .map(p => (
-          <div key={p.id} className={`bg-white dark:bg-slate-800 rounded-xl border px-4 py-3 flex items-center justify-between gap-2 ${
-            p.active ? "border-slate-200 dark:border-slate-700" : "border-slate-100 dark:border-slate-800 opacity-50"
-          }`}>
-            <div>
-              <p className="font-semibold text-slate-800 dark:text-slate-100">
-                {p.station_name}
-                {p.tag && <span className="ml-2 font-mono text-xs text-blue-600 dark:text-blue-400">{p.tag}</span>}
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {p.param_label} · <span className="font-mono">{p.param_unit}</span>
-                {(p.param_low != null || p.param_high != null) && (
-                  <span className="ml-2 font-mono">
-                    · L:{p.param_low ?? "—"} / H:{p.param_high ?? "—"}
-                  </span>
-                )}
-                {!p.active && <span className="ml-2 text-orange-500">· Tắt</span>}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => handleToggle(p)}
-                title={p.active ? "Tắt" : "Bật"}
-                className="text-sm px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium">
-                {p.active ? "🔕" : "🔔"}
-              </button>
-              <button onClick={() => handleEdit(p)}
-                className="text-sm px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium">
-                ✏️
-              </button>
-              <button onClick={() => handleDelete(p)}
-                className="text-sm px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium">
-                🗑️
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// QR Aliases Panel
-// ---------------------------------------------------------------------------
-function AliasesPanel({ aliases, stations, client, onRefresh, flash }) {
-  const empty = { qr_content: "", station_name: "", note: "" };
-  const [form, setForm] = useState(empty);
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await client.post("/api/admin/qr-aliases", form);
-      flash(true, `Đã thêm alias: ${form.qr_content} → ${form.station_name}`);
-      setForm(empty);
-      onRefresh();
-    } catch (e) {
-      flash(false, e?.response?.data?.error || e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (id, qr) => {
-    if (!confirm(`Xóa alias "${qr}"?`)) return;
-    try {
-      await client.delete(`/api/admin/qr-aliases/${id}`);
-      flash(true, `Đã xóa alias ${qr}`);
-      onRefresh();
-    } catch (e) {
-      flash(false, e?.response?.data?.error || e.message);
-    }
-  };
-
-  // Gợi ý danh sách trạm: DB + static fallback names từ danh sách alias hiện có
-  const stationOptions = stations.length > 0
-    ? stations.map(s => s.name)
-    : [...new Set(aliases.map(a => a.station_name))];
-
-  return (
-    <div className="space-y-4">
-      {/* Form */}
-      <form onSubmit={handleSave} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 space-y-3">
-        <h2 className="font-semibold text-slate-800 dark:text-slate-100">➕ Thêm QR Alias mới</h2>
-
-        <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400">Nội dung QR code *</label>
-          <input
-            value={form.qr_content} onChange={e => setForm(f => ({ ...f, qr_content: e.target.value }))}
-            placeholder="VD: 052-LI-066B"
-            required
-            className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-          />
-        </div>
-
-        <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400">Tên trạm (checkpoint) *</label>
-          {stationOptions.length > 0 ? (
-            <select
-              value={form.station_name} onChange={e => setForm(f => ({ ...f, station_name: e.target.value }))}
-              required
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            >
-              <option value="">-- Chọn trạm --</option>
-              {stationOptions.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-          ) : (
-            <input
-              value={form.station_name} onChange={e => setForm(f => ({ ...f, station_name: e.target.value.toUpperCase() }))}
-              placeholder="VD: TK-5205A"
-              required
-              className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-            />
-          )}
-        </div>
-
-        <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400">Ghi chú (tuỳ chọn)</label>
-          <input
-            value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
-            placeholder="VD: Level gauge at foot of Tank"
-            className="mt-1 w-full border rounded-xl px-3 py-2.5 text-base dark:bg-slate-700 dark:border-slate-600 dark:text-white"
-          />
-        </div>
-
-        <button type="submit" disabled={saving}
-          className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl disabled:opacity-50">
-          {saving ? "Đang lưu..." : "Thêm Alias"}
-        </button>
-      </form>
-
-      {/* List grouped by station */}
-      {aliases.length === 0 && (
-        <p className="text-center text-slate-400 py-4 text-sm">Chưa có alias nào trong DB — đang dùng file config mặc định</p>
-      )}
-      {aliases.map(a => (
-        <div key={a.id} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{a.qr_content}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">→ <span className="font-semibold text-blue-600 dark:text-blue-400">{a.station_name}</span>
-              {a.note && <span className="ml-1 text-slate-400">· {a.note}</span>}
-            </p>
-          </div>
-          <button onClick={() => handleDelete(a.id, a.qr_content)}
-            className="flex-shrink-0 text-sm px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 font-medium">
-            🗑️
-          </button>
-        </div>
-      ))}
     </div>
   );
 }

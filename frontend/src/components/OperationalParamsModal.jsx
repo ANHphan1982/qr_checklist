@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { resolveParamStatus } from "../lib/paramStatus";
+import Button from "./ui/Button";
 
 /**
  * Chuẩn hoá config về danh sách thông số (multi-param).
@@ -49,7 +51,7 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-800 shadow-xl flex flex-col max-h-[88vh]">
+      <div className="anim-card-in w-full max-w-sm rounded-2xl bg-white dark:bg-slate-800 shadow-xl flex flex-col max-h-[88vh]">
 
         <div className="p-6 pb-3">
           <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100">
@@ -123,13 +125,13 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
 
                   {paramStatus.status === "warning" && (
                     <p className="text-sm font-semibold text-orange-600 dark:text-orange-400 flex items-center gap-1">
-                      <span>⚠️</span>
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" aria-hidden />
                       <span>{paramStatus.message}</span>
                     </p>
                   )}
                   {paramStatus.status === "normal" && (
                     <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
-                      <span>✅</span>
+                      <CheckCircle2 className="w-4 h-4 flex-shrink-0" aria-hidden />
                       <span>Trong ngưỡng bình thường</span>
                     </p>
                   )}
@@ -139,19 +141,12 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
           </div>
 
           <div className="flex gap-3 p-6 pt-4">
-            <button
-              type="button"
-              onClick={onSkip}
-              className="flex-1 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-base active:bg-slate-100 dark:active:bg-slate-600 transition-colors min-h-[48px]"
-            >
+            <Button type="button" variant="outline" onClick={onSkip} className="flex-1">
               Bỏ qua
-            </button>
-            <button
-              type="submit"
-              className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold text-base active:bg-blue-700 transition-colors min-h-[48px]"
-            >
+            </Button>
+            <Button type="submit" className="flex-1 font-bold">
               Lưu
-            </button>
+            </Button>
           </div>
         </form>
       </div>

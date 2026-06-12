@@ -13,28 +13,12 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
+import QRCodeSVG from "../components/QRCodeSVG";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "",
   timeout: 10000,
 });
-
-// Vẽ QR bằng canvas thuần — không cần thư viện thêm
-// Dùng endpoint /api/qr-token/:station để lấy qr_content, rồi render bằng thẻ <img> từ API QR
-// Hoặc dùng Google Charts API (offline fallback)
-function QRImage({ content, size = 300 }) {
-  // Dùng QR Server API để render (miễn phí, không cần thêm package)
-  const url = `https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(content)}&size=${size}x${size}&ecc=H`;
-  return (
-    <img
-      src={url}
-      alt="QR Code"
-      width={size}
-      height={size}
-      className="rounded-lg shadow-lg"
-    />
-  );
-}
 
 function CountdownBar({ expiresIn, total }) {
   const pct = Math.max(0, Math.min(100, (expiresIn / total) * 100));
@@ -121,7 +105,7 @@ export default function StationDisplayPage({ stationName }) {
       {/* QR Code */}
       <div className="bg-white p-6 rounded-2xl shadow-2xl">
         {qrContent ? (
-          <QRImage content={qrContent} size={280} />
+          <QRCodeSVG content={qrContent} size={280} className="rounded-lg" />
         ) : (
           <div className="w-[280px] h-[280px] flex items-center justify-center bg-slate-100 rounded-lg">
             <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full" />

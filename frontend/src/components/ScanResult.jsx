@@ -1,4 +1,5 @@
 import { formatDateTime } from "../lib/utils";
+import { CheckCircle2, XCircle, CloudOff, MapPinOff, X, AlertTriangle } from "lucide-react";
 
 export default function ScanResult({ result, onDismiss }) {
   if (!result) return null;
@@ -15,18 +16,25 @@ export default function ScanResult({ result, onDismiss }) {
     ? "bg-orange-50 border-orange-200 text-orange-900 dark:bg-orange-900/20 dark:border-orange-700 dark:text-orange-300"
     : "bg-red-50 border-red-200 text-red-900 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300";
 
+  const StatusIcon = isOk ? CheckCircle2 : isOffline ? CloudOff : isOutOfRange ? MapPinOff : XCircle;
+
   return (
-    <div className={`rounded-2xl border p-4 flex flex-col gap-3 ${cardStyle}`}>
+    <div
+      data-testid="scan-result"
+      data-status={isOk ? "ok" : isOffline ? "offline" : isOutOfRange ? "out_of_range" : "error"}
+      className={`anim-card-in rounded-2xl border p-4 flex flex-col gap-3 ${cardStyle}`}
+    >
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 font-semibold text-lg">
-          {isOk ? "✅" : isOffline ? "💾" : isOutOfRange ? "📍" : "❌"} {result.message}
+        <div className="flex items-start gap-2.5 font-semibold text-lg">
+          <StatusIcon className={`anim-icon-pop mt-0.5 flex-shrink-0 ${isOk ? "w-8 h-8" : "w-6 h-6"}`} aria-hidden />
+          <span className={isOk ? "mt-0.5" : ""}>{result.message}</span>
         </div>
         <button
           onClick={onDismiss}
-          className="text-current opacity-40 hover:opacity-70 text-2xl leading-none flex-shrink-0 transition-opacity min-h-[44px] min-w-[44px] flex items-center justify-center"
+          className="text-current opacity-40 active:opacity-70 flex-shrink-0 transition-opacity min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label="Đóng"
         >
-          ×
+          <X className="w-6 h-6" aria-hidden />
         </button>
       </div>
 
@@ -44,8 +52,9 @@ export default function ScanResult({ result, onDismiss }) {
             </p>
           )}
           {isOk && result.email_sent === false && (
-            <p className="text-sm font-semibold text-orange-600 dark:text-orange-400 mt-1">
-              ⚠️ Email chưa gửi được — kiểm tra cấu hình Resend
+            <p className="text-sm font-semibold text-orange-600 dark:text-orange-400 mt-1 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" aria-hidden />
+              Email chưa gửi được — kiểm tra cấu hình Resend
             </p>
           )}
         </div>

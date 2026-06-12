@@ -85,6 +85,30 @@ describe("resolveButtonState — unknown step", () => {
   });
 });
 
+describe("resolveButtonState — icon field thay emoji trong label", () => {
+  it("idle và done dùng icon camera", () => {
+    expect(resolveButtonState("idle").icon).toBe("camera");
+    expect(resolveButtonState("done").icon).toBe("camera");
+  });
+
+  it("scanning dùng icon stop", () => {
+    expect(resolveButtonState("scanning").icon).toBe("stop");
+  });
+
+  it("các bước loading không có icon (spinner đã hiển thị)", () => {
+    expect(resolveButtonState("permission").icon).toBeNull();
+    expect(resolveButtonState("gps").icon).toBeNull();
+    expect(resolveButtonState("sending").icon).toBeNull();
+  });
+
+  const allSteps = ["idle", "permission", "scanning", "gps", "sending", "done"];
+  it.each(allSteps)("label của step '%s' không chứa emoji", (step) => {
+    const { label } = resolveButtonState(step);
+    // Emoji & symbols nằm ngoài BMP latin — regex bắt các block emoji phổ biến
+    expect(label).not.toMatch(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{23E9}-\u{23FA}]/u);
+  });
+});
+
 describe("resolveButtonState — loading states are exclusive to busy steps", () => {
   const nonLoadingSteps = ["idle", "scanning", "done"];
   const loadingSteps = ["permission", "gps", "sending"];

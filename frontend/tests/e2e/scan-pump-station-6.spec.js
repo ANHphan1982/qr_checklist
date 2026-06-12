@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ScanPagePOM } from "./helpers/scan-page.js";
+import { ScanPagePOM, blockServiceWorker } from "./helpers/scan-page.js";
 
 /**
  * E2E cho trạm PUMP_STATION_6 (bug: scan báo "không có GPS" / không xác thực vị trí).
@@ -13,6 +13,7 @@ import { ScanPagePOM } from "./helpers/scan-page.js";
 /** Mock backend: scan trả về location đã resolve = PUMP_STATION_6, station-params rỗng
  *  để CHỨNG MINH modal lấy từ builtin config (không phụ thuộc DB). */
 async function mockBackend(page) {
+  await blockServiceWorker(page);
   await page.route("**/health", (r) => r.fulfill({ status: 200, body: "ok" }));
   await page.route("**/api/scan", (r) =>
     r.fulfill({
@@ -57,13 +58,19 @@ test.describe("PUMP_STATION_6 scan flow", () => {
     await expect(modal.locator("text=Driven Bearing temperature")).toBeVisible();
   });
 
-  test("offline: builtin config vẫn mở modal thông số PUMP_STATION_6", async ({ page, context }) => {
+  test("offline: builtin config vẫn mở modal thông số PUMP_STATION_6", async ({ page }) => {
     const sp = new ScanPagePOM(page);
     await sp.goto();
     await sp.clearStorage();
 
-    // Ngắt mạng sau khi app đã load builtin config
-    await context.setOffline(true);
+    // Giả lập offline ở mức app (navigator.onLine + event) thay vì
+    // context.setOffline — setOffline giết cả WebSocket HMR của vite dev,
+    // client reconnect được qua loopback rồi tự reload trang → trang trắng.
+    // ScanPage chỉ kiểm tra navigator.onLine nên override này test đúng code path.
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "onLine", { get: () => false, configurable: true });
+      window.dispatchEvent(new Event("offline"));
+    });
 
     await sp.startAndScan("PUMP_STATION_6");
 

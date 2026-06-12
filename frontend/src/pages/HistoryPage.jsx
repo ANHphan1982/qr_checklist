@@ -1,7 +1,10 @@
 import { useEffect, useState, useRef } from "react";
+import { Download, ChevronLeft, ChevronRight } from "lucide-react";
 import ScanHistory from "../components/ScanHistory";
+import Button from "../components/ui/Button";
 import { getReports, getStationParamConfigs } from "../lib/api";
 import { exportHistoryToExcel } from "../lib/exportExcel";
+import { addDays, canGoNext } from "../lib/dateNav";
 
 function todayVN() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
@@ -49,6 +52,10 @@ export default function HistoryPage() {
 
   useEffect(() => { fetchLogs(date); }, [date]);
 
+  const today = todayVN();
+  const nextEnabled = canGoNext(date, today);
+  const isToday = date === today;
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-2">
@@ -62,35 +69,49 @@ export default function HistoryPage() {
             </span>
           )}
           {logs.length > 0 && (
-            <button
+            <Button
+              size="sm"
+              variant="success"
+              icon={Download}
               onClick={() => exportHistoryToExcel(logs, `checkin-${date}.xlsx`, paramConfigsRef.current)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold active:bg-green-700 transition-colors min-h-[44px]"
             >
-              📥 Excel
-            </button>
+              Excel
+            </Button>
           )}
         </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        <label className="text-base font-medium text-slate-600 dark:text-slate-300" htmlFor="date-picker">
-          Ngày:
-        </label>
+      {/* Điều hướng ngày: ◀ hôm trước | date picker | hôm sau ▶ */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setDate(addDays(date, -1))}
+          aria-label="Hôm trước"
+          className="w-11 h-11 flex-shrink-0 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center active:bg-slate-100 dark:active:bg-slate-700 transition-colors"
+        >
+          <ChevronLeft className="w-5 h-5" aria-hidden />
+        </button>
         <input
           id="date-picker"
           type="date"
+          aria-label="Chọn ngày"
           value={date}
-          max={todayVN()}
-          onChange={(e) => setDate(e.target.value)}
-          className="border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
+          max={today}
+          onChange={(e) => e.target.value && setDate(e.target.value)}
+          className="flex-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 text-base text-center focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[44px]"
         />
         <button
-          onClick={() => fetchLogs(date)}
-          className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-base font-semibold active:bg-blue-700 transition-colors min-h-[44px]"
+          onClick={() => nextEnabled && setDate(addDays(date, 1))}
+          disabled={!nextEnabled}
+          aria-label="Hôm sau"
+          className="w-11 h-11 flex-shrink-0 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center active:bg-slate-100 dark:active:bg-slate-700 transition-colors disabled:opacity-30"
         >
-          Tải
+          <ChevronRight className="w-5 h-5" aria-hidden />
         </button>
       </div>
+
+      {isToday && !loading && (
+        <p className="text-sm text-slate-400 dark:text-slate-500 text-center -mt-2">Hôm nay</p>
+      )}
 
       <ScanHistory logs={logs} loading={loading} error={error} />
     </div>

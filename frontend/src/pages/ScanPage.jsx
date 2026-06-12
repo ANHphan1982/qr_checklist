@@ -7,6 +7,7 @@ import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loa
 import { enqueue, flushQueue, queueSize, clearQueue, updateLastItem, hasQueueItem, updateItemByQueuedAt } from "../lib/offlineQueue";
 import { classifyApiError } from "../lib/apiError";
 import OperationalParamsModal from "../components/OperationalParamsModal";
+import ConfirmDialog from "../components/ConfirmDialog";
 import { patchScanParams, getStationParamConfigs } from "../lib/api";
 import { mergeWithBuiltin } from "../lib/builtinConfigs";
 import { resolveStationName } from "../lib/stationsConfig";
@@ -14,6 +15,10 @@ import { savePendingParams, loadPendingParams, clearPendingParams } from "../lib
 import { resolveStatusBanner } from "../lib/statusBanner";
 import { resolveButtonState } from "../lib/buttonState";
 import { resolveStepDisplay } from "../lib/stepDisplay";
+import { triggerVibration } from "../lib/haptics";
+import { Camera, Square, Clock, Trash2, PlugZap, Satellite, UploadCloud } from "lucide-react";
+import Button from "../components/ui/Button";
+import Banner from "../components/ui/Banner";
 /**
  * 6 bước của một lần check-in:
  *  idle       → màn hình chờ, hiện nút bắt đầu + GPS hint
@@ -65,6 +70,7 @@ export default function ScanPage() {
   const isSyncingRef              = useRef(false);   // ref để guard trong callback
   const [connTest, setConnTest]   = useState(null);  // { ok, detail } — kết quả test kết nối
   const [isTestingConn, setIsTestingConn] = useState(false);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   // GPS watch: chạy liên tục từ lúc mount để giữ chip GPS warm.
   // latestGpsRef = fix gần nhất {lat,lng,accuracy,ts} | null
@@ -96,14 +102,14 @@ export default function ScanPage() {
       if (success > 0) {
         setSyncMsg({
           ok: true,
-          text: `📤 Đã đồng bộ ${success} scan offline${failed > 0 ? ` — ${failed} lỗi, sẽ thử lại` : ""}`,
+          text: `Đã đồng bộ ${success} scan offline${failed > 0 ? ` — ${failed} lỗi, sẽ thử lại` : ""}`,
         });
         didSetMsg = true;
       } else if (failed > 0 && !isAuto) {
         // Chỉ hiện lỗi khi user bấm nút — auto sync im lặng để tránh nhiễu
         setSyncMsg({
           ok: false,
-          text: `⚠️ Không đồng bộ được (${failed} scan) — server chưa sẵn sàng, sẽ tự thử lại`,
+          text: `Không đồng bộ được (${failed} scan) — server chưa sẵn sàng, sẽ tự thử lại`,
         });
         didSetMsg = true;
       }
@@ -112,7 +118,7 @@ export default function ScanPage() {
         const detail = err?.response?.status
           ? `HTTP ${err.response.status}`
           : err?.code === "ECONNABORTED" ? "Timeout" : (err?.message || "không xác định");
-        setSyncMsg({ ok: false, text: `⚠️ Lỗi đồng bộ: ${detail} — nhấn "Test kết nối" để chẩn đoán` });
+        setSyncMsg({ ok: false, text: `Lỗi đồng bộ: ${detail} — nhấn "Test kết nối" để chẩn đoán` });
         didSetMsg = true;
       }
     } finally {
@@ -231,7 +237,7 @@ export default function ScanPage() {
   };
 
   const handleClearQueue = () => {
-    if (!window.confirm(`Xóa ${pendingCount} scan đang chờ? Dữ liệu sẽ mất vĩnh viễn.`)) return;
+    setConfirmClearOpen(false);
     clearQueue();
     setPendingCount(0);
     setSyncMsg(null);
@@ -365,6 +371,7 @@ export default function ScanPage() {
       };
       const queuedAt = enqueue(item);
       setPendingCount(queueSize());
+      triggerVibration("offline");
       setResult({
         status: "offline",
         message: "Đã lưu offline — sẽ tự đồng bộ khi có mạng",
@@ -391,6 +398,7 @@ export default function ScanPage() {
 
     try {
       const data = await postScan(location, getDeviceId(), gpsData, scannedAt);
+      triggerVibration("ok");
       setResult({ status: "ok", location, scanned_at: scannedAt, ...data });
       const resolvedLocation = data.location || location;
       let paramConfig = stationParamConfigs[resolvedLocation];
@@ -434,6 +442,7 @@ export default function ScanPage() {
         };
         const queuedAt = enqueue(item);
         setPendingCount(queueSize());
+        triggerVibration("offline");
         setResult({
           status: "offline",
           message: classified.message,
@@ -456,6 +465,7 @@ export default function ScanPage() {
       } else {
         const apiData = classified.data || {};
         const resolvedLocation = apiData.location || location;
+        triggerVibration("error");
         setResult({
           status: "error",
           message: classified.message,
@@ -492,11 +502,6 @@ export default function ScanPage() {
       clearTimeout(coldTimer);
       setColdStart(false);
     }
-  };
-
-  const handleScanError = (msg) => {
-    setResult({ status: "error", message: msg });
-    setStep("idle");
   };
 
   const handleReset = () => {
@@ -573,53 +578,50 @@ export default function ScanPage() {
       {pendingCount > 0 && (
         <div className="flex flex-col gap-2">
           <div className="rounded-xl border px-4 py-3 text-base flex items-center justify-between gap-2 bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300">
-            <span>🕐 {pendingCount} scan {isOnline ? "chờ đồng bộ" : "đang chờ — sẽ gửi khi có mạng"}</span>
+            <span className="flex items-center gap-2">
+              <Clock className="w-5 h-5 flex-shrink-0" aria-hidden />
+              {pendingCount} scan {isOnline ? "chờ đồng bộ" : "đang chờ — sẽ gửi khi có mạng"}
+            </span>
             {isOnline && (
               <div className="flex items-center gap-2 flex-shrink-0">
-                <button
+                <Button
+                  size="sm"
+                  icon={UploadCloud}
+                  loading={isSyncing}
                   onClick={() => syncQueue(false)}
-                  disabled={isSyncing}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 active:bg-blue-700 transition-colors min-h-[44px]"
                 >
-                  {isSyncing ? (
-                    <>
-                      <svg className="animate-spin h-4 w-4 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                      </svg>
-                      Đang gửi...
-                    </>
-                  ) : "Đồng bộ"}
-                </button>
-                <button
-                  onClick={handleClearQueue}
+                  {isSyncing ? "Đang gửi..." : "Đồng bộ"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  icon={Trash2}
                   disabled={isSyncing}
-                  className="px-3 py-2.5 rounded-xl bg-red-100 text-red-700 text-sm font-semibold disabled:opacity-60 active:bg-red-200 transition-colors dark:bg-red-900/30 dark:text-red-300 min-h-[44px]"
+                  onClick={() => setConfirmClearOpen(true)}
                   title="Xóa tất cả scan đang chờ"
                 >
                   Xóa
-                </button>
+                </Button>
               </div>
             )}
           </div>
 
           {/* Test kết nối — chỉ hiện khi có pending */}
           <div className="flex flex-col gap-2">
-            <button
+            <Button
+              size="sm"
+              variant="outline"
+              icon={PlugZap}
+              loading={isTestingConn}
               onClick={handleTestConn}
-              disabled={isTestingConn}
-              className="w-full py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold disabled:opacity-60 active:bg-slate-100 dark:active:bg-slate-700 transition-colors min-h-[44px]"
+              className="w-full"
             >
-              {isTestingConn ? "⏳ Đang kiểm tra..." : "🔌 Test kết nối server"}
-            </button>
+              {isTestingConn ? "Đang kiểm tra..." : "Test kết nối server"}
+            </Button>
             {connTest && (
-              <div className={`rounded-xl border px-4 py-3 text-sm font-mono break-all ${
-                connTest.ok
-                  ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300"
-                  : "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300"
-              }`}>
-                {connTest.ok ? "✅ " : "❌ "}{connTest.detail}
-              </div>
+              <Banner variant={connTest.ok ? "success" : "error"}>
+                <span className="text-sm font-mono break-all">{connTest.detail}</span>
+              </Banner>
             )}
           </div>
         </div>
@@ -627,28 +629,38 @@ export default function ScanPage() {
 
       {/* GPS watch banner — context-specific, chỉ khi camera mở */}
       {isScanning && gpsWatchState === "warming" && (
-        <div className="rounded-xl border px-4 py-3 text-base flex items-start gap-2 bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-700 dark:text-amber-300">
-          <span className="mt-0.5">📡</span>
+        <Banner variant="amber" icon={Satellite}>
           <span>
             GPS đang bắt tín hiệu vệ tinh, có thể mất <strong>30-90 giây</strong> nếu không có internet.
             Hãy đứng ngoài trời hoặc gần cửa sổ. Sau lần đầu, các lần scan tiếp sẽ nhanh hơn.
           </span>
-        </div>
+        </Banner>
       )}
       {isScanning && gpsWatchState === "failed" && (
-        <div className="rounded-xl border px-4 py-3 text-base flex items-start gap-2 bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300">
-          <span className="mt-0.5">⚠️</span>
+        <Banner variant="warning">
           <span>
             GPS chưa bắt được tín hiệu — check-in vẫn hoạt động nhưng không xác thực vị trí.
             Thử ra gần cửa sổ để chip GPS bắt vệ tinh.
           </span>
-        </div>
+        </Banner>
       )}
 
       {/* Camera */}
       {isScanning && (
-        <QRScanner onScan={handleScan} onError={handleScanError} />
+        <QRScanner onScan={handleScan} />
       )}
+
+      {/* Confirm xóa queue — thay window.confirm */}
+      <ConfirmDialog
+        open={confirmClearOpen}
+        title="Xóa scan đang chờ?"
+        message={`${pendingCount} scan chưa đồng bộ sẽ bị xóa vĩnh viễn, không thể khôi phục.`}
+        confirmLabel="Xóa vĩnh viễn"
+        cancelLabel="Giữ lại"
+        danger
+        onConfirm={handleClearQueue}
+        onCancel={() => setConfirmClearOpen(false)}
+      />
 
       {/* Kết quả scan */}
       <ScanResult result={result} onDismiss={handleReset} />
@@ -665,24 +677,17 @@ export default function ScanPage() {
 
       {/* Unified action button — loading state từ step hiện tại */}
       {btnState.show && (
-        <button
+        <Button
+          size="xl"
+          variant={btnState.variant === "secondary" ? "secondary" : "primary"}
+          loading={btnState.loading}
+          icon={btnState.icon === "camera" ? Camera : btnState.icon === "stop" ? Square : undefined}
           onClick={handleBtnClick}
-          disabled={btnState.loading}
           data-scan-btn
-          className={`w-full min-h-[68px] py-5 rounded-2xl font-bold text-xl transition-colors flex items-center justify-center gap-3 ${
-            btnState.variant === "secondary"
-              ? "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 active:bg-slate-200 dark:active:bg-slate-600 disabled:opacity-70"
-              : "bg-blue-600 text-white active:bg-blue-700 disabled:opacity-70"
-          }`}
+          className="w-full"
         >
-          {btnState.loading && (
-            <svg className="animate-spin h-5 w-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-          )}
           {btnState.label}
-        </button>
+        </Button>
       )}
 
       {/* Step progress bar — ẩn khi idle/done */}
@@ -699,24 +704,14 @@ export default function ScanPage() {
 // StatusBanner — render banner theo variant từ resolveStatusBanner
 // ---------------------------------------------------------------------------
 
-const BANNER_STYLES = {
-  warning:          "bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300",
-  warning_secondary:"bg-orange-50 border-orange-200 text-orange-800 dark:bg-orange-900/20 dark:border-orange-700 dark:text-orange-300",
-  error:            "bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300",
-  success:          "bg-green-50 border-green-200 text-green-800 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300",
-  info:             "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-700 dark:text-blue-300",
-  muted:            "bg-slate-50 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400",
-};
-
 function StatusBanner({ banner }) {
-  const style = BANNER_STYLES[banner.variant] || BANNER_STYLES.muted;
   return (
-    <div className={`rounded-xl border px-4 py-3 text-base flex flex-col gap-0.5 ${style}`}>
+    <Banner variant={banner.variant}>
       <span>{banner.text}</span>
       {banner.extra && (
-        <span className="text-sm font-semibold mt-0.5">⚠️ {banner.extra}</span>
+        <span className="text-sm font-semibold mt-0.5">{banner.extra}</span>
       )}
-    </div>
+    </Banner>
   );
 }
 

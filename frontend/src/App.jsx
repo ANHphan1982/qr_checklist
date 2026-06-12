@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, useParams } from "react-router-dom";
+import { Sun, Moon, QrCode, History, Smartphone, X } from "lucide-react";
 import ScanPage from "./pages/ScanPage";
 import HistoryPage from "./pages/HistoryPage";
 import StationDisplayPage from "./pages/StationDisplayPage";
@@ -44,62 +45,6 @@ function useDarkMode() {
 }
 
 // ---------------------------------------------------------------------------
-// Icons
-// ---------------------------------------------------------------------------
-function SunIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-      <circle cx="12" cy="12" r="5" />
-      <line x1="12" y1="1" x2="12" y2="3" />
-      <line x1="12" y1="21" x2="12" y2="23" />
-      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-      <line x1="1" y1="12" x2="3" y2="12" />
-      <line x1="21" y1="12" x2="23" y2="12" />
-      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-    </svg>
-  );
-}
-
-function MoonIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-      strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-    </svg>
-  );
-}
-
-function QRIcon({ className = "w-6 h-6" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2"/>
-      <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2"/>
-      <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2"/>
-      <rect x="6" y="6" width="1.5" height="1.5" fill="currentColor"/>
-      <rect x="17" y="6" width="1.5" height="1.5" fill="currentColor"/>
-      <rect x="6" y="17" width="1.5" height="1.5" fill="currentColor"/>
-      <rect x="14" y="14" width="3" height="3" fill="currentColor"/>
-      <rect x="19" y="14" width="2" height="2" fill="currentColor"/>
-      <rect x="14" y="19" width="2" height="2" fill="currentColor"/>
-      <rect x="18" y="18" width="3" height="3" fill="currentColor"/>
-    </svg>
-  );
-}
-
-function HistoryIcon({ className = "w-6 h-6" }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className={className}>
-      <path d="M3 12a9 9 0 1 0 3-6.7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <path d="M3 4v4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M12 8v4l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // PWA Install Prompt
 // ---------------------------------------------------------------------------
 function useInstallPrompt() {
@@ -130,7 +75,7 @@ function useInstallPrompt() {
 function InstallBanner({ onInstall, onDismiss }) {
   return (
     <div className="mx-3 mt-3 rounded-2xl bg-blue-600 text-white px-4 py-3 flex items-center gap-3">
-      <div className="text-2xl flex-shrink-0" aria-hidden>📲</div>
+      <Smartphone className="w-7 h-7 flex-shrink-0" aria-hidden />
       <div className="flex-1 min-w-0">
         <div className="text-[15px] font-bold leading-tight">Cài đặt app</div>
         <div className="text-[13px] text-blue-100 leading-tight mt-0.5">
@@ -148,9 +93,7 @@ function InstallBanner({ onInstall, onDismiss }) {
         aria-label="Bỏ qua"
         className="w-10 h-10 rounded-xl bg-blue-700/60 text-white flex items-center justify-center active:bg-blue-700/80 transition-colors flex-shrink-0"
       >
-        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5">
-          <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
+        <X className="w-5 h-5" aria-hidden />
       </button>
     </div>
   );
@@ -171,7 +114,7 @@ function NavBar({ dark, onToggleDark }) {
           aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
           className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 active:bg-slate-200 dark:active:bg-slate-600 flex items-center justify-center transition-colors"
         >
-          {dark ? <MoonIcon /> : <SunIcon />}
+          {dark ? <Moon className="w-5 h-5" aria-hidden /> : <Sun className="w-5 h-5" aria-hidden />}
         </button>
       </div>
     </header>
@@ -205,7 +148,7 @@ function BottomTabs() {
                 "tab-pill w-16 h-10 rounded-full flex items-center justify-center transition-colors",
                 isActive ? "bg-blue-100 dark:bg-blue-500/20" : "",
               ].join(" ")}>
-                <QRIcon className="tab-icon w-7 h-7" />
+                <QrCode className="tab-icon w-7 h-7" aria-hidden />
               </div>
               <span>Scan</span>
             </>
@@ -218,7 +161,7 @@ function BottomTabs() {
                 "w-16 h-10 rounded-full flex items-center justify-center transition-colors",
                 isActive ? "bg-blue-100 dark:bg-blue-500/20" : "",
               ].join(" ")}>
-                <HistoryIcon className="w-7 h-7" />
+                <History className="w-7 h-7" aria-hidden />
               </div>
               <span>Lịch sử</span>
             </>
@@ -346,7 +289,7 @@ export default function App() {
               {showBanner && (
                 <InstallBanner onInstall={handleInstall} onDismiss={handleDismiss} />
               )}
-              <main className="flex-1 w-full px-4 py-4 pb-24">
+              <main className="flex-1 w-full max-w-md mx-auto px-4 py-4 pb-24">
                 <Routes>
                   <Route path="/" element={<ScanPage />} />
                   <Route path="/history" element={<HistoryPage />} />

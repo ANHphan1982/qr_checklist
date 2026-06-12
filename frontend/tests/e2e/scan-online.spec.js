@@ -14,8 +14,8 @@ test.describe("Online scan flow", () => {
 
     await expect(sp.startButton).toBeVisible();
     await expect(page.locator("h1")).toContainText("Quét QR Check-in");
-    // Step indicator is visible (renders number circles; labels are not in DOM)
-    await expect(page.locator(".flex.items-center.justify-center.gap-1")).toBeVisible();
+    // Subtitle hướng dẫn hiển thị; step progress bar ẩn khi idle
+    await expect(page.locator("text=Hướng camera vào mã QR")).toBeVisible();
   });
 
   test("no offline banner when online", async ({ page }) => {
@@ -77,7 +77,7 @@ test.describe("Online scan flow", () => {
     await sp.startAndScan("Cổng A");
 
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
-    await expect(sp.resultCard).toContainText("✅");
+    await expect(sp.resultCard).toHaveAttribute("data-status", "ok");
     await expect(sp.resultCard).toContainText("Cổng A");
     // Scanner closed; continue button shown
     await expect(sp.continueButton).toBeVisible();
@@ -141,7 +141,7 @@ test.describe("Online scan flow", () => {
 
   // ── Error paths ────────────────────────────────────────────────────────
 
-  test("5xx server error falls back to offline queue with 💾 result", async ({ page }) => {
+  test("5xx server error falls back to offline queue with offline result", async ({ page }) => {
     await mockApiError(page, 503, { status: "error", message: "Service Unavailable" });
 
     const sp = new ScanPagePOM(page);
@@ -151,7 +151,7 @@ test.describe("Online scan flow", () => {
     await sp.startAndScan("Cổng A");
 
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
-    await expect(sp.resultCard).toContainText("💾");
+    await expect(sp.resultCard).toHaveAttribute("data-status", "offline");
     // 5xx từ server → lưu offline, thông điệp chính là "Đã lưu offline"
     await expect(sp.resultCard).toContainText("Đã lưu offline");
     // Item should be queued — pending badge appears
@@ -172,7 +172,7 @@ test.describe("Online scan flow", () => {
     await sp.startAndScan("Cổng A");
 
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
-    await expect(sp.resultCard).toContainText("📍");
+    await expect(sp.resultCard).toHaveAttribute("data-status", "out_of_range");
     await expect(sp.resultCard).toContainText("250m");
   });
 
@@ -190,7 +190,7 @@ test.describe("Online scan flow", () => {
     await sp.startAndScan("Cổng A");
 
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
-    await expect(sp.resultCard).toContainText("❌");
+    await expect(sp.resultCard).toHaveAttribute("data-status", "error");
     await expect(sp.resultCard).toContainText("quá nhiều lần");
     // Rate limit is NOT queued for retry
     await expect(sp.pendingBadge).toHaveCount(0);

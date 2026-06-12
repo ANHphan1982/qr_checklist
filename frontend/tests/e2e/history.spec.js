@@ -62,7 +62,7 @@ test.describe("Trang Lịch sử — xem dữ liệu ngày quá khứ (retention
     await expect(page.getByText(/Chưa có lượt check-in/)).toBeVisible({ timeout: 5_000 });
   });
 
-  test("chọn ngày 10 ngày trước + Tải → hiển thị log của ngày cũ", async ({ page }) => {
+  test("chọn ngày 10 ngày trước → tự fetch và hiển thị log của ngày cũ", async ({ page }) => {
     const past = new Date();
     past.setDate(past.getDate() - 10);
     const pastStr = ymd(past);
@@ -72,9 +72,8 @@ test.describe("Trang Lịch sử — xem dữ liệu ngày quá khứ (retention
     // Hôm nay rỗng
     await expect(page.getByText(/Chưa có lượt check-in/)).toBeVisible({ timeout: 5_000 });
 
-    // Đổi sang ngày quá khứ rồi Tải
+    // Đổi ngày là tự fetch — nút "Tải" đã bỏ
     await page.fill("#date-picker", pastStr);
-    await page.getByRole("button", { name: "Tải" }).click();
 
     // Log của ngày cũ phải hiển thị — bằng chứng dữ liệu KHÔNG bị purge sau 24h
     await expect(page.getByText("TRAM-LICH-SU-CU")).toBeVisible({ timeout: 5_000 });
@@ -93,8 +92,7 @@ test.describe("Trang Lịch sử — xem dữ liệu ngày quá khứ (retention
     const reqPromise = page.waitForRequest(
       (req) => req.url().includes("/api/reports") && req.url().includes(`date=${pastStr}`)
     );
-    await page.fill("#date-picker", pastStr);
-    await page.getByRole("button", { name: "Tải" }).click();
+    await page.fill("#date-picker", pastStr); // đổi ngày là tự fetch
     await reqPromise; // sẽ timeout nếu date không được truyền đúng
   });
 });

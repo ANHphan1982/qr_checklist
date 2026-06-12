@@ -12,6 +12,8 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="manifest" href="/manifest.json" />
+    <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-vietnamese-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
   <!--
     PWA standalone detection — chạy TRƯỚC React để không bị flash.
     Inline style có độ ưu tiên cao hơn mọi CSS class/media-query.
@@ -19,14 +21,22 @@
   -->
   <script>
     (function () {
+      var html = document.documentElement;
       var standalone =
         window.matchMedia("(display-mode: standalone)").matches ||
         window.navigator.standalone === true;
       if (standalone) {
-        var html = document.documentElement;
         html.classList.add("pwa-mode");
         html.style.fontSize = "20px";
       }
+      // Dark mode: gán class TRƯỚC React để không bị flash trắng khi mở app.
+      // Cùng logic với useDarkMode() trong App.jsx (saved theme > system preference).
+      try {
+        var saved = localStorage.getItem("theme");
+        var dark = saved ? saved === "dark"
+          : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (dark) html.classList.add("dark");
+      } catch (e) {}
     })();
   </script>
   </head>

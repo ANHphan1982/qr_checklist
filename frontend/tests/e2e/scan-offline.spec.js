@@ -60,7 +60,7 @@ test.describe("Offline scan flow", () => {
 
   // ── Scan while offline ─────────────────────────────────────────────────
 
-  test("scan while offline saves to queue and shows 💾 result", async ({ page, context }) => {
+  test("scan while offline saves to queue and shows offline result", async ({ page, context }) => {
     const sp = new ScanPagePOM(page);
     await mockApiSuccess(page);
     await sp.goto();
@@ -73,7 +73,7 @@ test.describe("Offline scan flow", () => {
     await sp.triggerScan("Cổng A");
 
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
-    await expect(sp.resultCard).toContainText("💾");
+    await expect(sp.resultCard).toHaveAttribute("data-status", "offline");
     await expect(sp.resultCard).toContainText("Đã lưu offline");
     await expect(sp.resultCard).toContainText("Cổng A");
   });
@@ -342,7 +342,7 @@ test.describe("Offline scan flow", () => {
     await sp.startAndScan("Cổng A");
 
     await expect(sp.resultCard).toBeVisible({ timeout: 15_000 });
-    await expect(sp.resultCard).toContainText("💾");
+    await expect(sp.resultCard).toHaveAttribute("data-status", "offline");
     // Phone is online (navigator.onLine=true) but request failed → "server không phản hồi"
     // Playwright abort() with online=true → classifyApiError → server_unreachable
     await expect(sp.resultCard).toContainText("kết nối");
@@ -362,7 +362,7 @@ test.describe("Offline scan flow", () => {
     await sp.triggerScan("Cổng A");
 
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
-    await expect(sp.resultCard).toContainText("💾");
+    await expect(sp.resultCard).toHaveAttribute("data-status", "offline");
     // navigator.onLine=false → skip API call entirely → "Đã lưu offline"
     await expect(sp.resultCard).toContainText("Đã lưu offline");
   });

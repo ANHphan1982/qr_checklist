@@ -1,18 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Html5QrcodeScanner } from "html5-qrcode";
+import { Html5Qrcode } from "html5-qrcode";
+import { Flashlight, FlashlightOff, Minus, Plus, VideoOff } from "lucide-react";
 import { hasTorchSupport, setTorch } from "../lib/torch";
+import { qrBoxSizeFor, resolveCameraView } from "../lib/scannerView";
 
 const SCANNER_ID = "qr-reader";
 
-/** qrbox chiếm 85% chiều rộng viewport, tối đa 360px */
-function getQrBoxSize() {
-  const size = Math.min(Math.round(window.innerWidth * 0.85), 360);
-  return { width: size, height: size };
-}
-
+// Export cho test config (QRScanner.config.test.js) — giá trị thực truyền vào
+// scanner.start() bên dưới lấy từ object này.
 export const SCANNER_CONFIG = {
   fps: 10,
-  qrbox: getQrBoxSize(),
+  qrbox: qrBoxSizeFor(typeof window !== "undefined" ? window.innerWidth : 360),
   videoConstraints: {
     facingMode: "environment",
     focusMode: "continuous", // autofocus — browser bỏ qua nếu không hỗ trợ
@@ -20,23 +18,106 @@ export const SCANNER_CONFIG = {
 };
 
 /**
- * QR Scanner dùng Html5QrcodeScanner (SKILL.md pattern).
- * - div#qr-reader phải tồn tại trong DOM trước khi init
+ * QR Scanner dùng class Html5Qrcode (low-level, không UI mặc định).
+ * Trước đây dùng Html5QrcodeScanner — render nút/dropdown tiếng Anh không style
+ * được. Class low-level cho phép tự vẽ khung ngắm + scan line + error state.
+ *
+ * - div#qr-reader phải tồn tại trong DOM trước khi init (SKILL.md pattern)
  * - iOS Safari yêu cầu user gesture → nút "Bắt đầu" ở ScanPage
- * - Zoom: dùng hardware zoom (MediaTrackConstraints) nếu device hỗ trợ
+ * - Camera fail (denied/không có) → hiện lỗi TRONG component, không bounce về idle;
+ *   user thoát bằng nút "Dừng Camera" — đồng thời giữ __triggerQRScan cho E2E.
+ * - Zoom/đèn pin: hardware constraints nếu device hỗ trợ
  */
-export function QRScanner({ onScan, onError }) {
+export function QRScanner({ onScan }) {
   const scannerRef = useRef(null);
   const trackRef   = useRef(null);
   const pollRef    = useRef(null);
 
+  // starting | active | failed
+  const [cameraState, setCameraState] = useState("starting");
   const [zoom, setZoom]           = useState(1);
   const [zoomRange, setZoomRange] = useState(null); // { min, max, step }
   const [torchAvailable, setTorchAvailable] = useState(false);
   const [torchOn, setTorchOn]               = useState(false);
 
-  // Sau khi scanner render, poll cho đến khi video element + srcObject sẵn sàng
+  // Khởi động camera + decode loop
   useEffect(() => {
+    const scanner = new Html5Qrcode(SCANNER_ID, /* verbose= */ false);
+    scannerRef.current = scanner;
+
+    let alreadyScanned = false;
+    let cancelled = false; // StrictMode double-mount / unmount giữa chừng
+
+    scanner
+      .start(
+        { facingMode: SCANNER_CONFIG.videoConstraints.facingMode },
+        { fps: SCANNER_CONFIG.fps, qrbox: qrBoxSizeFor(window.innerWidth) },
+        (decodedText) => {
+          // Chỉ trigger 1 lần — decode loop vẫn chạy sau callback
+          if (alreadyScanned) return;
+          alreadyScanned = true;
+          // Pause dừng decode nhưng giữ video alive → ScanPage chụp được frame
+          try {
+            scanner.pause(true);
+          } catch {
+            // pause() throw nếu scanner không ở trạng thái scanning — bỏ qua
+          }
+          const video = document.querySelector(`#${SCANNER_ID} video`);
+          onScan(decodedText, { video });
+        },
+        () => {
+          // per-frame decode miss (không có QR trong khung) — expected, bỏ qua
+        }
+      )
+      .then(() => {
+        // Unmount trước khi camera mở xong → tắt ngay, tránh camera chạy mồ côi.
+        // stop() THROW ĐỒNG BỘ (không phải reject) nếu scanner không ở trạng thái
+        // scanning → phải try/catch, .catch() không bắt được.
+        if (cancelled) {
+          try { scanner.stop().catch(() => {}); } catch { /* chưa scanning — bỏ qua */ }
+          return;
+        }
+        setCameraState("active");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn("[Camera]", err?.message || err);
+        setCameraState("failed");
+      });
+
+    // E2E test hook — only available in dev builds
+    if (import.meta.env.DEV) {
+      window.__triggerQRScan = (text) => onScan(text);
+    }
+
+    return () => {
+      cancelled = true;
+      clearInterval(pollRef.current);
+      if (import.meta.env.DEV) window.__triggerQRScan = undefined;
+      // Tắt đèn trước khi đóng camera, tránh torch còn bật sau khi dừng scan
+      if (trackRef.current) {
+        setTorch(trackRef.current, false).catch(() => {});
+      }
+      // stop() THROW ĐỒNG BỘ nếu camera chưa từng start (StrictMode double-mount
+      // gọi cleanup khi start() còn pending) — try/catch bắt buộc, .catch() không đủ.
+      try {
+        scanner
+          .stop()
+          .catch(() => {})
+          .then(() => {
+            try { scanner.clear(); } catch { /* element đã bị React gỡ */ }
+          });
+      } catch {
+        try { scanner.clear(); } catch { /* element đã bị React gỡ */ }
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sau khi camera active, poll cho đến khi video element + srcObject sẵn sàng
+  // để lấy track cho zoom/torch/autofocus
+  useEffect(() => {
+    if (cameraState !== "active") return;
+
     pollRef.current = setInterval(() => {
       const video = document.querySelector(`#${SCANNER_ID} video`);
       if (!video?.srcObject) return;
@@ -69,7 +150,7 @@ export function QRScanner({ onScan, onError }) {
     }, 500);
 
     return () => clearInterval(pollRef.current);
-  }, []);
+  }, [cameraState]);
 
   const applyZoom = useCallback((newZoom) => {
     setZoom(newZoom);
@@ -93,64 +174,66 @@ export function QRScanner({ onScan, onError }) {
     }
   }, [torchOn]);
 
-  useEffect(() => {
-    scannerRef.current = new Html5QrcodeScanner(
-      SCANNER_ID,
-      { ...SCANNER_CONFIG, qrbox: getQrBoxSize() },
-      /* verbose= */ false
-    );
+  const view = resolveCameraView(cameraState);
+  const box  = qrBoxSizeFor(typeof window !== "undefined" ? window.innerWidth : 360);
 
-    let alreadyScanned = false;
-    scannerRef.current.render(
-      (decodedText) => {
-        // Chỉ trigger 1 lần — html5-qrcode tiếp tục quét sau callback
-        if (alreadyScanned) return;
-        alreadyScanned = true;
-        // Pause để dừng decode loop nhưng giữ video element còn alive
-        // → screen detection ở ScanPage có thể chụp frame từ video
-        // Cleanup thực sự (clear) chạy khi component unmount.
-        try {
-          scannerRef.current?.pause?.(true);
-        } catch {
-          // pause() không phải lúc nào cũng có sẵn — bỏ qua
-        }
-        const video = document.querySelector(`#${SCANNER_ID} video`);
-        onScan(decodedText, { video });
-      },
-      (errorMessage) => {
-        // Per-frame errors (expected) — chỉ forward lỗi nghiêm trọng
-        if (errorMessage?.includes("Camera")) {
-          onError?.(errorMessage);
-        }
-      }
-    );
-
-    // E2E test hook — only available in dev builds
-    if (import.meta.env.DEV) {
-      window.__triggerQRScan = (text) => onScan(text);
-    }
-
-    return () => {
-      clearInterval(pollRef.current);
-      if (import.meta.env.DEV) window.__triggerQRScan = undefined;
-      // Tắt đèn trước khi đóng camera, tránh torch còn bật sau khi dừng scan
-      if (trackRef.current) {
-        setTorch(trackRef.current, false).catch(() => {});
-      }
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error);
-      }
-    };
-  }, []);
-
-  const step      = zoomRange?.step ?? 0.5;
+  const stepZ      = zoomRange?.step ?? 0.5;
   const canZoomIn  = zoomRange && zoom < zoomRange.max;
   const canZoomOut = zoomRange && zoom > zoomRange.min;
 
   return (
     <div className="flex flex-col gap-3">
-      {/* QUAN TRỌNG: div này phải render trước useEffect */}
-      <div id={SCANNER_ID} className="w-full" />
+      {/* Camera viewport — bo góc, nền tối khi camera chưa lên */}
+      <div className="relative w-full overflow-hidden rounded-2xl bg-slate-950">
+        {/* QUAN TRỌNG: div này phải render trước useEffect.
+            min-h để div "visible" ngay cả khi video chưa gắn (spinner overlay + Playwright). */}
+        <div id={SCANNER_ID} className="w-full min-h-[200px]" />
+
+        {/* Spinner khi đang mở camera */}
+        {view.showSpinner && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-300">
+            <svg className="animate-spin h-8 w-8" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+            <span className="text-sm">Đang mở camera...</span>
+          </div>
+        )}
+
+        {/* Lỗi camera — ở lại trong component, user thoát bằng "Dừng Camera" */}
+        {view.showError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 py-10 text-center text-slate-200">
+            <VideoOff className="w-10 h-10 text-red-400" aria-hidden />
+            <p className="font-semibold">Không mở được camera</p>
+            <p className="text-sm text-slate-400">
+              Kiểm tra quyền camera trong cài đặt trình duyệt, hoặc đóng app khác
+              đang dùng camera rồi bấm Dừng Camera và thử lại.
+            </p>
+          </div>
+        )}
+
+        {/* Khung ngắm: 4 góc bracket + scan line — chỉ khi camera active */}
+        {view.showScanLine && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="relative" style={{ width: box.width, height: box.height }}>
+              {/* 4 góc bracket */}
+              <div className="absolute top-0 left-0 w-9 h-9 border-t-4 border-l-4 border-blue-400 rounded-tl-xl" />
+              <div className="absolute top-0 right-0 w-9 h-9 border-t-4 border-r-4 border-blue-400 rounded-tr-xl" />
+              <div className="absolute bottom-0 left-0 w-9 h-9 border-b-4 border-l-4 border-blue-400 rounded-bl-xl" />
+              <div className="absolute bottom-0 right-0 w-9 h-9 border-b-4 border-r-4 border-blue-400 rounded-br-xl" />
+              {/* Scan line */}
+              <div className="qr-scan-line absolute left-3 right-3 h-0.5 rounded-full bg-blue-400/90 shadow-[0_0_12px_2px_rgba(96,165,250,0.7)]" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Hint dưới camera */}
+      {view.showScanLine && (
+        <p className="text-center text-sm text-slate-500 dark:text-slate-400 -mt-1">
+          Đưa mã QR vào giữa khung
+        </p>
+      )}
 
       {/* Đèn pin cho scan ban đêm / thiếu sáng — chỉ hiện nếu device hỗ trợ */}
       {torchAvailable && (
@@ -165,7 +248,9 @@ export function QRScanner({ onScan, onError }) {
               : "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 active:bg-slate-300 dark:active:bg-slate-600"
           }`}
         >
-          <span>{torchOn ? "🔦" : "💡"}</span>
+          {torchOn
+            ? <FlashlightOff className="w-5 h-5 flex-shrink-0" aria-hidden />
+            : <Flashlight className="w-5 h-5 flex-shrink-0" aria-hidden />}
           <span>{torchOn ? "Tắt đèn" : "Bật đèn (thiếu sáng)"}</span>
         </button>
       )}
@@ -175,20 +260,22 @@ export function QRScanner({ onScan, onError }) {
         <div className="flex items-center justify-center gap-5">
           <button
             disabled={!canZoomOut}
-            onClick={() => applyZoom(Math.max(zoomRange.min, +(zoom - step).toFixed(1)))}
-            className="w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-3xl font-bold disabled:opacity-30 active:bg-slate-300 dark:active:bg-slate-600 transition-colors"
+            onClick={() => applyZoom(Math.max(zoomRange.min, +(zoom - stepZ).toFixed(1)))}
+            aria-label="Thu nhỏ"
+            className="w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-30 active:bg-slate-300 dark:active:bg-slate-600 transition-colors flex items-center justify-center"
           >
-            −
+            <Minus className="w-7 h-7" aria-hidden />
           </button>
           <span className="text-lg text-slate-600 dark:text-slate-300 w-16 text-center font-medium">
             {zoom.toFixed(1)}×
           </span>
           <button
             disabled={!canZoomIn}
-            onClick={() => applyZoom(Math.min(zoomRange.max, +(zoom + step).toFixed(1)))}
-            className="w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-3xl font-bold disabled:opacity-30 active:bg-slate-300 dark:active:bg-slate-600 transition-colors"
+            onClick={() => applyZoom(Math.min(zoomRange.max, +(zoom + stepZ).toFixed(1)))}
+            aria-label="Phóng to"
+            className="w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 disabled:opacity-30 active:bg-slate-300 dark:active:bg-slate-600 transition-colors flex items-center justify-center"
           >
-            +
+            <Plus className="w-7 h-7" aria-hidden />
           </button>
         </div>
       )}
