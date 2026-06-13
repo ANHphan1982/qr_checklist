@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, useParams } from "react-router-dom";
-import { Sun, Moon, QrCode, History, BarChart3, Smartphone, X } from "lucide-react";
+import { Sun, Moon, QrCode, History, Smartphone, X } from "lucide-react";
 import ScanPage from "./pages/ScanPage";
 import HistoryPage from "./pages/HistoryPage";
 import StationDisplayPage from "./pages/StationDisplayPage";
 import AdminPage from "./pages/AdminPage";
 import MdmCheckPage from "./pages/MdmCheckPage";
-import DashboardPage from "./pages/DashboardPage";
 
 // ---------------------------------------------------------------------------
 // PWA display mode hook — thêm class pwa-mode lên <html> khi chạy standalone
@@ -168,19 +167,6 @@ function BottomTabs() {
             </>
           )}
         </NavLink>
-        <NavLink to="/dashboard" className={tabClass}>
-          {({ isActive }) => (
-            <>
-              <div className={[
-                "w-16 h-10 rounded-full flex items-center justify-center transition-colors",
-                isActive ? "bg-blue-100 dark:bg-blue-500/20" : "",
-              ].join(" ")}>
-                <BarChart3 className="w-7 h-7" aria-hidden />
-              </div>
-              <span>Thống kê</span>
-            </>
-          )}
-        </NavLink>
       </div>
     </nav>
   );
@@ -307,7 +293,6 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<ScanPage />} />
                   <Route path="/history" element={<HistoryPage />} />
-                  <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/admin" element={<AdminPage />} />
                   <Route path="/mdm-check" element={<MdmCheckPage />} />
                 </Routes>

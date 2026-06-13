@@ -5,19 +5,17 @@ test.describe("Bottom navigation", () => {
     await page.goto("/");
   });
 
-  test("hiển thị bottom tab bar với 3 tab Scan, Lịch sử, Thống kê", async ({ page }) => {
+  test("hiển thị bottom tab bar với 2 tab Scan và Lịch sử", async ({ page }) => {
     const nav = page.getByRole("navigation", { name: /tab/i });
     await expect(nav).toBeVisible();
 
     await expect(page.getByRole("link", { name: /scan/i }).last()).toBeVisible();
     await expect(page.getByRole("link", { name: /lịch sử/i }).last()).toBeVisible();
-    await expect(page.getByRole("link", { name: /thống kê/i }).last()).toBeVisible();
   });
 
-  test("click tab Thống kê → navigate đến /dashboard", async ({ page }) => {
-    await page.getByRole("link", { name: /thống kê/i }).last().click();
-    await expect(page).toHaveURL(/\/dashboard/);
-    await expect(page.getByRole("heading", { name: /thống kê/i })).toBeVisible();
+  test("bottom tab bar KHÔNG có tab Thống kê (chỉ trong admin)", async ({ page }) => {
+    const nav = page.getByRole("navigation", { name: /tab/i });
+    await expect(nav.getByRole("link", { name: /thống kê/i })).toHaveCount(0);
   });
 
   test("tab Scan active khi ở trang chủ", async ({ page }) => {

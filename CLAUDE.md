@@ -67,9 +67,10 @@ qr-checklist/
 ├── frontend/
 │   ├── public/                    ← sw.js (PWA), manifest.json, icons, fonts Inter
 │   ├── src/
-│   │   ├── App.jsx                ← routes: / /history /dashboard /admin /mdm-check /station/:name
-│   │   ├── pages/                 ← ScanPage (flow chính), HistoryPage, DashboardPage,
-│   │   │                            AdminPage, StationDisplayPage (rotating QR), MdmCheckPage
+│   │   ├── App.jsx                ← routes: / /history /admin /mdm-check /station/:name
+│   │   ├── pages/                 ← ScanPage (flow chính), HistoryPage, AdminPage,
+│   │   │                            DashboardPage (nhúng trong AdminPage — tab Thống kê),
+│   │   │                            StationDisplayPage (rotating QR), MdmCheckPage
 │   │   ├── components/            ← QRScanner, ScanResult, OperationalParamsModal,
 │   │   │                            ConfirmDialog, admin/* (LoginGate, panels), ui/*
 │   │   └── lib/                   ← api.js, offlineQueue, pendingParams, geolocation,
@@ -138,7 +139,7 @@ BẤT KỲ bản ghi DB nào thì DB nắm toàn quyền trạm đó (kể cả 
 | `GET /api/station-params` | Config thông số mọi trạm (kể cả trạm bị ẩn → `params: []` để override builtin offline) |
 | `PATCH /api/scan/<id>/params` | Cập nhật `param_values` sau check-in. Validate cấu trúc, chỉ cho sửa trong `PARAMS_EDIT_WINDOW_MINUTES` (60p) kể từ `created_at`. Param vượt ngưỡng → gửi email cảnh báo + `threshold_breaches` trong response |
 | `GET /api/reports?date=YYYY-MM-DD` | Logs theo ngày (giờ VN) + route assessment theo device |
-| `GET /api/dashboard?days=7` | Analytics tổng hợp N ngày gần nhất (mặc định 7, clamp 1..90): `heatmap` (24 giờ VN), `geo` (phân bố geo_status + out_of_range_rate), `stations` (sort theo total), `param_trends` (xu hướng từng thông số + breaches) |
+| `GET /api/dashboard?days=7` | Analytics tổng hợp N ngày gần nhất (mặc định 7, clamp 1..90): `heatmap` (24 giờ VN), `geo` (phân bố geo_status + out_of_range_rate), `stations` (sort theo total), `param_trends` (xu hướng từng thông số + breaches). UI chỉ hiện trong AdminPage (tab Thống kê), không phải tab app thường |
 | `GET /api/qr-token/<station>` | Token rotating QR hiện tại (màn hình trạm poll) |
 | `GET /api/debug/connectivity` | Chẩn đoán CORS/mạng — frontend dùng nút "Test kết nối" |
 
