@@ -2,9 +2,15 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Flashlight, FlashlightOff, Minus, Plus, VideoOff } from "lucide-react";
 import { hasTorchSupport, setTorch } from "../lib/torch";
+import { estimateLuminance } from "../lib/luminance";
+import { createAutoTorchController } from "../lib/autoTorch";
 import { qrBoxSizeFor, resolveCameraView } from "../lib/scannerView";
 
 const SCANNER_ID = "qr-reader";
+
+// Chu kỳ lấy mẫu độ sáng để tự bật/tắt đèn (ms). Đủ thưa để không tốn CPU,
+// đủ dày để phản ứng kịp khi user bước vào chỗ tối.
+const LUMINANCE_SAMPLE_MS = 1500;
 
 // Export cho test config (QRScanner.config.test.js) — giá trị thực truyền vào
 // scanner.start() bên dưới lấy từ object này.
@@ -32,6 +38,9 @@ export function QRScanner({ onScan }) {
   const scannerRef = useRef(null);
   const trackRef   = useRef(null);
   const pollRef    = useRef(null);
+  const autoTorchRef = useRef(null);      // máy trạng thái hysteresis
+  const lumCanvasRef = useRef(null);      // canvas ẩn để đo độ sáng frame
+  const lumPollRef   = useRef(null);      // interval lấy mẫu độ sáng
 
   // starting | active | failed
   const [cameraState, setCameraState] = useState("starting");
@@ -163,16 +172,47 @@ export function QRScanner({ onScan }) {
     }
   }, []);
 
-  const toggleTorch = useCallback(async () => {
-    const next = !torchOn;
-    const ok = await setTorch(trackRef.current, next);
+  // Áp trạng thái đèn lên phần cứng + đồng bộ UI. Dùng chung cho auto lẫn thủ công.
+  const applyTorch = useCallback(async (on) => {
+    const ok = await setTorch(trackRef.current, on);
     if (ok) {
-      setTorchOn(next);
-    } else {
-      // Device từ chối → ẩn nút để khỏi gây nhầm lẫn
+      setTorchOn(on);
+    } else if (on) {
+      // Bật thất bại (device từ chối) → ẩn nút để khỏi gây nhầm lẫn
       setTorchAvailable(false);
     }
-  }, [torchOn]);
+    return ok;
+  }, []);
+
+  const toggleTorch = useCallback(async () => {
+    const next = !torchOn;
+    const ok = await applyTorch(next);
+    // Đồng bộ với auto: tắt tay lúc tối → khóa auto-bật; bật tay → mở khóa
+    if (ok) autoTorchRef.current?.setManual(next);
+  }, [torchOn, applyTorch]);
+
+  // Tự bật/tắt đèn theo độ sáng frame — chỉ chạy khi device hỗ trợ torch.
+  // AmbientLightSensor gần như không khả dụng nên đo trực tiếp frame camera.
+  useEffect(() => {
+    if (!torchAvailable) return;
+
+    autoTorchRef.current = createAutoTorchController();
+    if (!lumCanvasRef.current) {
+      lumCanvasRef.current = document.createElement("canvas");
+    }
+
+    lumPollRef.current = setInterval(async () => {
+      const video = document.querySelector(`#${SCANNER_ID} video`);
+      if (!video || !trackRef.current) return;
+
+      const lum = estimateLuminance(video, lumCanvasRef.current);
+      const action = autoTorchRef.current?.update(lum);
+      if (action === "on") await applyTorch(true);
+      else if (action === "off") await applyTorch(false);
+    }, LUMINANCE_SAMPLE_MS);
+
+    return () => clearInterval(lumPollRef.current);
+  }, [torchAvailable, applyTorch]);
 
   const view = resolveCameraView(cameraState);
   const box  = qrBoxSizeFor(typeof window !== "undefined" ? window.innerWidth : 360);
@@ -251,7 +291,7 @@ export function QRScanner({ onScan }) {
           {torchOn
             ? <FlashlightOff className="w-5 h-5 flex-shrink-0" aria-hidden />
             : <Flashlight className="w-5 h-5 flex-shrink-0" aria-hidden />}
-          <span>{torchOn ? "Tắt đèn" : "Bật đèn (thiếu sáng)"}</span>
+          <span>{torchOn ? "Tắt đèn" : "Bật đèn (tự động khi tối)"}</span>
         </button>
       )}
 
