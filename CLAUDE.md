@@ -46,6 +46,7 @@ qr-checklist/
 │   ├── routes/
 │   │   ├── scan.py                ← POST /scan (dedupe, geofence, token), /station-params, PATCH params
 │   │   ├── reports.py             ← GET /reports (+ route assessment theo device)
+│   │   ├── dashboard.py           ← GET /dashboard (analytics N ngày: heatmap, geo, trạm, trend)
 │   │   ├── qr_token.py            ← GET /qr-token/<station> (rotating QR display)
 │   │   ├── debug.py               ← connectivity (public), email-config/test (admin key)
 │   │   ├── admin.py               ← CRUD stations/aliases/params + purge (X-Admin-Key)
@@ -56,6 +57,7 @@ qr-checklist/
 │   │   ├── summary_service.py     ← báo cáo tổng hợp sáng/tối (kèm Google Static Map)
 │   │   ├── geo_service.py         ← haversine + validate_location
 │   │   ├── threshold_service.py   ← check_thresholds: phát hiện param vượt low/high
+│   │   ├── dashboard_service.py   ← tổng hợp analytics thuần (heatmap/geo/station/trend)
 │   │   ├── anti_fraud_service.py  ← rate limit, GPS enforcement
 │   │   ├── qr_token_service.py    ← HMAC rotating token + parse_qr_content (alias)
 │   │   ├── stations_db.py         ← merge static config + DB (DB thắng)
@@ -65,9 +67,9 @@ qr-checklist/
 ├── frontend/
 │   ├── public/                    ← sw.js (PWA), manifest.json, icons, fonts Inter
 │   ├── src/
-│   │   ├── App.jsx                ← routes: / /history /admin /mdm-check /station/:name
-│   │   ├── pages/                 ← ScanPage (flow chính), HistoryPage, AdminPage,
-│   │   │                            StationDisplayPage (rotating QR), MdmCheckPage
+│   │   ├── App.jsx                ← routes: / /history /dashboard /admin /mdm-check /station/:name
+│   │   ├── pages/                 ← ScanPage (flow chính), HistoryPage, DashboardPage,
+│   │   │                            AdminPage, StationDisplayPage (rotating QR), MdmCheckPage
 │   │   ├── components/            ← QRScanner, ScanResult, OperationalParamsModal,
 │   │   │                            ConfirmDialog, admin/* (LoginGate, panels), ui/*
 │   │   └── lib/                   ← api.js, offlineQueue, pendingParams, geolocation,
@@ -136,6 +138,7 @@ BẤT KỲ bản ghi DB nào thì DB nắm toàn quyền trạm đó (kể cả 
 | `GET /api/station-params` | Config thông số mọi trạm (kể cả trạm bị ẩn → `params: []` để override builtin offline) |
 | `PATCH /api/scan/<id>/params` | Cập nhật `param_values` sau check-in. Validate cấu trúc, chỉ cho sửa trong `PARAMS_EDIT_WINDOW_MINUTES` (60p) kể từ `created_at`. Param vượt ngưỡng → gửi email cảnh báo + `threshold_breaches` trong response |
 | `GET /api/reports?date=YYYY-MM-DD` | Logs theo ngày (giờ VN) + route assessment theo device |
+| `GET /api/dashboard?days=7` | Analytics tổng hợp N ngày gần nhất (mặc định 7, clamp 1..90): `heatmap` (24 giờ VN), `geo` (phân bố geo_status + out_of_range_rate), `stations` (sort theo total), `param_trends` (xu hướng từng thông số + breaches) |
 | `GET /api/qr-token/<station>` | Token rotating QR hiện tại (màn hình trạm poll) |
 | `GET /api/debug/connectivity` | Chẩn đoán CORS/mạng — frontend dùng nút "Test kết nối" |
 

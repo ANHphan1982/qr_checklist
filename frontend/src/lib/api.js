@@ -158,6 +158,16 @@ export async function getReports(date) {
 }
 
 /**
+ * Lấy analytics tổng hợp cho dashboard quản lý (N ngày gần nhất).
+ * @param {number} days - cửa sổ ngày (mặc định server = 7, clamp 1..90)
+ */
+export async function getDashboard(days) {
+  const params = days ? { days } : {};
+  const { data } = await api.get("/api/dashboard", { params });
+  return data;
+}
+
+/**
  * Kiểm tra kết nối đến backend — dùng để chẩn đoán lỗi mạng.
  *
  * Short-circuit khi thiết bị đang offline (airplane mode) để không đổ oan cho
