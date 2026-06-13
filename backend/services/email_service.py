@@ -41,8 +41,55 @@ EMAIL_TEMPLATE = """
 """
 
 
+THRESHOLD_ALERT_TEMPLATE = """
+<div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto;">
+  <h2 style="color: #dc2626; margin-bottom: 6px;">🚨 Cảnh Báo Thông Số Vượt Ngưỡng</h2>
+  <p style="font-size: 14px; color: #374151; margin: 0 0 16px;">
+    Trạm <strong>{location}</strong> — {scanned_at} — thiết bị {device_id}
+  </p>
+  <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+    <tr style="background: #fee2e2; color: #991b1b;">
+      <th style="padding: 8px 12px; text-align: left;">Thông số</th>
+      <th style="padding: 8px 12px; text-align: right;">Giá trị đo</th>
+      <th style="padding: 8px 12px; text-align: left;">Ngưỡng</th>
+    </tr>
+    {rows}
+  </table>
+  <p style="color: #6b7280; font-size: 11px; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 12px;">
+    Gửi tự động bởi hệ thống QR Checklist — cần kiểm tra hiện trường ngay.
+  </p>
+</div>
+"""
+
+
 def _format_dt(dt: datetime) -> str:
     return dt.astimezone(VN_TZ).strftime("%d/%m/%Y %H:%M:%S")
+
+
+def _recipients() -> list[str]:
+    """Danh sách email nhận, hỗ trợ nhiều địa chỉ phân cách bằng dấu phẩy."""
+    return [e.strip() for e in EMAIL_TO.split(",") if e.strip()] if EMAIL_TO else []
+
+
+def _send_via_resend(params: "resend.Emails.SendParams") -> tuple[bool, str]:
+    """Gửi 1 email qua Resend. Trả (ok, error_message). Dùng chung cho mọi loại email."""
+    try:
+        print(f"[email] Gửi đến {params.get('to')} from={params.get('from')} subject={params.get('subject')!r}")
+        # Hỗ trợ cả resend >=2.7 (global API) lẫn resend 2.0.x (client API)
+        if hasattr(resend, "Resend"):
+            client = resend.Resend(api_key=RESEND_API_KEY)
+            resp = client.emails.send(params)
+        else:
+            resend.api_key = RESEND_API_KEY
+            resp = resend.Emails.send(params)
+        print(f"[email] OK — id={getattr(resp, 'id', resp)}")
+        return True, ""
+    except Exception as exc:
+        import traceback
+        err_msg = f"{type(exc).__name__}: {exc}"
+        print(f"[email] FAIL: {err_msg}")
+        traceback.print_exc()
+        return False, err_msg
 
 
 def send_scan_email(
@@ -62,8 +109,7 @@ def send_scan_email(
         print(f"[email] {msg}")
         return False, msg
 
-    # Hỗ trợ nhiều địa chỉ email phân cách bằng dấu phẩy
-    to_list = [e.strip() for e in EMAIL_TO.split(",") if e.strip()] if EMAIL_TO else []
+    to_list = _recipients()
     if not to_list:
         msg = "EMAIL_TO chưa cấu hình"
         print(f"[email] {msg}")
@@ -132,22 +178,85 @@ def send_scan_email(
         ),
     }
 
-    try:
-        print(f"[email] Gửi đến {to_list} from={EMAIL_FROM} subject={params['subject']!r}")
-        # Hỗ trợ cả resend >=2.7 (global API) lẫn resend 2.0.x (client API)
-        if hasattr(resend, "Resend"):
-            # resend 2.0.x client-based API
-            client = resend.Resend(api_key=RESEND_API_KEY)
-            resp = client.emails.send(params)
-        else:
-            # resend >=2.7 global API (giống v1)
-            resend.api_key = RESEND_API_KEY
-            resp = resend.Emails.send(params)
-        print(f"[email] OK — id={getattr(resp, 'id', resp)}")
-        return True, ""
-    except Exception as exc:
-        import traceback
-        err_msg = f"{type(exc).__name__}: {exc}"
-        print(f"[email] FAIL: {err_msg}")
-        traceback.print_exc()
-        return False, err_msg
+    return _send_via_resend(params)
+
+
+def _format_breach_row(b: dict) -> str:
+    """Một dòng <tr> mô tả thông số vượt ngưỡng (giá trị đỏ + mũi tên hướng vượt)."""
+    label = b.get("label") or b.get("tag") or "Thông số"
+    tag = b.get("tag")
+    unit = b.get("unit") or ""
+    value = b.get("value")
+    low = b.get("low")
+    high = b.get("high")
+    arrow = "🔻 thấp" if b.get("kind") == "low" else "🔺 cao"
+
+    if low is not None and high is not None:
+        threshold = f"{low}–{high} {unit}".strip()
+    elif low is not None:
+        threshold = f"≥ {low} {unit}".strip()
+    elif high is not None:
+        threshold = f"≤ {high} {unit}".strip()
+    else:
+        threshold = "—"
+
+    name = f"{label}"
+    if tag:
+        name = f'<span style="font-family:monospace;color:#2563eb;">{tag}</span> {label}'
+
+    return (
+        '<tr>'
+        f'<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;">{name}</td>'
+        f'<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;text-align:right;'
+        f'color:#dc2626;font-weight:bold;">{value} {unit} <span style="font-size:12px;">{arrow}</span></td>'
+        f'<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#6b7280;">{threshold}</td>'
+        '</tr>'
+    )
+
+
+def send_threshold_alert_email(
+    location: str,
+    scanned_at: datetime,
+    device_id: str | None,
+    breaches: list[dict],
+) -> tuple[bool, str]:
+    """Gửi email khẩn liệt kê các thông số vượt ngưỡng.
+
+    Luôn gửi (không phụ thuộc EMAIL_ALERTS_ONLY) vì bản chất là cảnh báo. Trả về
+    (ok, error_message); error_message = "" nếu thành công.
+    """
+    if not breaches:
+        return False, "Không có thông số vượt ngưỡng"
+    if not RESEND_API_KEY:
+        msg = "RESEND_API_KEY chưa cấu hình"
+        print(f"[email] {msg}")
+        return False, msg
+
+    to_list = _recipients()
+    if not to_list:
+        msg = "EMAIL_TO chưa cấu hình"
+        print(f"[email] {msg}")
+        return False, msg
+
+    device_label = (
+        (device_id[:30] + "...") if device_id and len(device_id) > 30
+        else (device_id or "Không rõ")
+    )
+
+    rows = "".join(_format_breach_row(b) for b in breaches)
+    subject_time = scanned_at.astimezone(VN_TZ).strftime("%d/%m/%Y %H:%M")
+    count = len(breaches)
+
+    params: resend.Emails.SendParams = {
+        "from": EMAIL_FROM,
+        "to": to_list,
+        "subject": f"🚨 [CẢNH BÁO NGƯỠNG] {location} — {count} thông số bất thường — {subject_time}",
+        "html": THRESHOLD_ALERT_TEMPLATE.format(
+            location=location,
+            scanned_at=_format_dt(scanned_at),
+            device_id=device_label,
+            rows=rows,
+        ),
+    }
+
+    return _send_via_resend(params)

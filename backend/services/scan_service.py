@@ -6,8 +6,9 @@ from sqlalchemy.exc import IntegrityError
 
 from config import SessionLocal, PURGE_RETENTION_HOURS, EMAIL_ALERTS_ONLY
 from models import ScanLog
-from services.email_service import send_scan_email
+from services.email_service import send_scan_email, send_threshold_alert_email
 from services.anti_fraud_service import check_rate_limit
+from services.threshold_service import check_thresholds
 
 # False = gửi email đồng bộ (dùng cho test/debug). Mặc định gửi qua background
 # thread để request /api/scan trả về ngay — Resend chậm/cold start không còn
@@ -79,6 +80,37 @@ def _dispatch_email(scan_id, email_kwargs: dict) -> None:
         ).start()
     else:
         _send_email_and_mark(scan_id, email_kwargs)
+
+
+def _dispatch_threshold_alert(alert_kwargs: dict) -> None:
+    """Gửi email cảnh báo vượt ngưỡng (nền). Không track trạng thái gửi vào DB —
+    đây là kênh cảnh báo phụ, lỗi chỉ log."""
+    def _run():
+        ok, err = send_threshold_alert_email(**alert_kwargs)
+        if not ok and err:
+            print(f"[scan] threshold alert email lỗi: {err}")
+
+    if EMAIL_ASYNC:
+        threading.Thread(target=_run, daemon=True).start()
+    else:
+        _run()
+
+
+def maybe_alert_thresholds(location, scanned_at, device_id, param_values) -> list:
+    """Kiểm tra param_values; nếu có thông số vượt ngưỡng → dispatch email cảnh báo.
+
+    Trả về danh sách breach (rỗng nếu không có). Dùng chung cho process_scan
+    (param_values inline) và route PATCH (nhập qua modal sau check-in).
+    """
+    breaches = check_thresholds(param_values)
+    if breaches:
+        _dispatch_threshold_alert({
+            "location": location,
+            "scanned_at": scanned_at,
+            "device_id": device_id,
+            "breaches": breaches,
+        })
+    return breaches
 
 
 def process_scan(
@@ -193,6 +225,10 @@ def process_scan(
     else:
         message = "Đã ghi nhận — sẽ có trong báo cáo tổng hợp"
 
+    # Cảnh báo vượt ngưỡng — độc lập với email check-in ở trên, LUÔN gửi nếu có
+    # breach (kể cả khi EMAIL_ALERTS_ONLY bỏ qua email check-in thường).
+    breaches = maybe_alert_thresholds(location, dt, device_id, param_values)
+
     return {
         "status": "ok",
         "scan_id": scan_id,
@@ -200,4 +236,5 @@ def process_scan(
         # None = chưa biết (đang gửi nền) hoặc bỏ qua theo thiết kế. Frontend
         # chỉ cảnh báo khi === false nên None không kích hoạt thông báo lỗi sai.
         "email_sent": None,
+        "threshold_breaches": len(breaches),
     }

@@ -104,6 +104,42 @@ describe("resolveParamStatus — no range provided", () => {
   });
 });
 
+describe("resolveParamStatus — single bound (chỉ low hoặc chỉ high)", () => {
+  it("chỉ low: value dưới low → warning", () => {
+    expect(resolveParamStatus("3", 5, null).status).toBe("warning");
+  });
+
+  it("chỉ low: value bằng low → normal (đúng ngưỡng không cảnh báo)", () => {
+    expect(resolveParamStatus("5", 5, null).status).toBe("normal");
+  });
+
+  it("chỉ low: value trên low → normal", () => {
+    expect(resolveParamStatus("100", 5, null).status).toBe("normal");
+  });
+
+  it("chỉ low: message nhắc tới ngưỡng low", () => {
+    const { message } = resolveParamStatus("3", 5, null);
+    expect(message).toMatch(/5/);
+  });
+
+  it("chỉ high: value trên high → warning", () => {
+    expect(resolveParamStatus("100", null, 80).status).toBe("warning");
+  });
+
+  it("chỉ high: value bằng high → normal", () => {
+    expect(resolveParamStatus("80", null, 80).status).toBe("normal");
+  });
+
+  it("chỉ high: value dưới high → normal", () => {
+    expect(resolveParamStatus("1", null, 80).status).toBe("normal");
+  });
+
+  it("chỉ high: message nhắc tới ngưỡng high", () => {
+    const { message } = resolveParamStatus("100", null, 80);
+    expect(message).toMatch(/80/);
+  });
+});
+
 describe("resolveParamStatus — numeric string vs number input", () => {
   it("handles numeric string '65' correctly", () => {
     expect(resolveParamStatus("65", 50, 80).status).toBe("normal");

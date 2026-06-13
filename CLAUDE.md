@@ -55,6 +55,7 @@ qr-checklist/
 │   │   ├── email_service.py       ← email từng scan qua Resend
 │   │   ├── summary_service.py     ← báo cáo tổng hợp sáng/tối (kèm Google Static Map)
 │   │   ├── geo_service.py         ← haversine + validate_location
+│   │   ├── threshold_service.py   ← check_thresholds: phát hiện param vượt low/high
 │   │   ├── anti_fraud_service.py  ← rate limit, GPS enforcement
 │   │   ├── qr_token_service.py    ← HMAC rotating token + parse_qr_content (alias)
 │   │   ├── stations_db.py         ← merge static config + DB (DB thắng)
@@ -133,7 +134,7 @@ BẤT KỲ bản ghi DB nào thì DB nắm toàn quyền trạm đó (kể cả 
 |---|---|
 | `POST /api/scan` | Ghi scan. Body: `location` (QR content), `device_id`, `scanned_at`, `lat/lng/accuracy`, `geo_cached`, `cache_age_ms`, `param_values`, `oil_level_mm`. Dedupe theo (device_id, location, scanned_at) — retry trả 200 + `deduped:true`. `OUT_OF_RANGE` → 403 nhưng VẪN lưu DB (kèm `scan_id`). Rate limit → 400 `RATE_LIMITED`. |
 | `GET /api/station-params` | Config thông số mọi trạm (kể cả trạm bị ẩn → `params: []` để override builtin offline) |
-| `PATCH /api/scan/<id>/params` | Cập nhật `param_values` sau check-in. Validate cấu trúc, chỉ cho sửa trong `PARAMS_EDIT_WINDOW_MINUTES` (60p) kể từ `created_at` |
+| `PATCH /api/scan/<id>/params` | Cập nhật `param_values` sau check-in. Validate cấu trúc, chỉ cho sửa trong `PARAMS_EDIT_WINDOW_MINUTES` (60p) kể từ `created_at`. Param vượt ngưỡng → gửi email cảnh báo + `threshold_breaches` trong response |
 | `GET /api/reports?date=YYYY-MM-DD` | Logs theo ngày (giờ VN) + route assessment theo device |
 | `GET /api/qr-token/<station>` | Token rotating QR hiện tại (màn hình trạm poll) |
 | `GET /api/debug/connectivity` | Chẩn đoán CORS/mạng — frontend dùng nút "Test kết nối" |
@@ -198,6 +199,11 @@ VITE_API_URL=https://qr-checklist-api.onrender.com
    cập nhật async. `EMAIL_ALERTS_ONLY=true` để chỉ email cảnh báo (check-in thường nằm
    trong summary sáng/tối do cron-job.org trigger)
 8. **Auto-purge** — mỗi scan xóa bản ghi cũ hơn PURGE_RETENTION_HOURS (giữ free tier nhỏ)
+9. **Threshold alert** — `threshold_service.check_thresholds` so `value` với `low`/`high`
+   (mỗi ngưỡng độc lập, config 1 ngưỡng vẫn cảnh báo; `== ngưỡng` = OK). Có breach →
+   `send_threshold_alert_email` gửi email khẩn NGAY, LUÔN gửi kể cả `EMAIL_ALERTS_ONLY=true`
+   (cảnh báo ≠ check-in thường). Chạy ở cả `process_scan` (param inline) lẫn route PATCH
+   (nhập qua modal sau scan). Frontend `lib/paramStatus.js` dùng cùng logic → viền đỏ khớp email
 
 ---
 

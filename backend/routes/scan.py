@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timezone, timedelta
-from services.scan_service import process_scan
+from services.scan_service import process_scan, maybe_alert_thresholds
 from services.geo_service import validate_location
 from services.stations_db import get_stations, get_qr_aliases, get_station_params
 from services.qr_token_service import parse_qr_content, validate_token
@@ -232,4 +232,10 @@ def update_scan_params(scan_id):
         log.oil_level_mm = oil_level_mm
         session.commit()
 
-    return jsonify({"status": "ok"}), 200
+        # Đọc bối cảnh cảnh báo khi log còn gắn session (sau commit object detach)
+        alert_ctx = (log.location, log.scanned_at, log.device_id)
+
+    # Cảnh báo vượt ngưỡng SAU commit — không giữ transaction khi gọi Resend.
+    breaches = maybe_alert_thresholds(*alert_ctx, param_values) if param_values is not None else []
+
+    return jsonify({"status": "ok", "threshold_breaches": len(breaches)}), 200
