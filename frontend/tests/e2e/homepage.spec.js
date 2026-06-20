@@ -63,6 +63,14 @@ test.describe("HomePage — chọn checklist", () => {
     await expect(page.locator("button:has-text('Bắt đầu Scan')")).toBeVisible();
   });
 
+  test("card pump/tank/routine hiển thị hình minh họa (img)", async ({ page }) => {
+    for (const title of ["Pump Check List", "Tank Check List", "Routine Check List"]) {
+      const card = page.getByRole("button", { name: new RegExp(title, "i") }).last();
+      const img = card.locator("img");
+      await expect(img.first()).toBeVisible();
+    }
+  });
+
   test("card có touch target đủ lớn (min 44px)", async ({ page }) => {
     const card = page.getByRole("button", { name: /Routine Check List/i }).last();
     const box = await card.boundingBox();
