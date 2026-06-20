@@ -67,12 +67,13 @@ qr-checklist/
 ├── frontend/
 │   ├── public/                    ← sw.js (PWA), manifest.json, icons, fonts Inter
 │   ├── src/
-│   │   ├── App.jsx                ← routes: / /history /admin /mdm-check /station/:name
-│   │   ├── pages/                 ← ScanPage (flow chính), HistoryPage, AdminPage,
+│   │   ├── App.jsx                ← routes: / /scan/:type /history /admin /mdm-check /station/:name
+│   │   ├── pages/                 ← HomePage (/ — chọn checklist), ScanPage (flow chính, mount tại
+│   │   │                            /scan/:type; routine route về đây), HistoryPage, AdminPage,
 │   │   │                            DashboardPage (nhúng trong AdminPage — tab Thống kê),
 │   │   │                            StationDisplayPage (rotating QR), MdmCheckPage
-│   │   ├── components/            ← QRScanner, ScanResult, OperationalParamsModal,
-│   │   │                            ConfirmDialog, admin/* (LoginGate, panels), ui/*
+│   │   ├── components/            ← QRScanner, ScanResult, OperationalParamsModal, ChecklistArt
+│   │   │                            (icon checklist cho HomePage), ConfirmDialog, admin/*, ui/*
 │   │   └── lib/                   ← api.js, offlineQueue, pendingParams, geolocation,
 │   │                                builtinConfigs, stationsConfig (alias offline),
 │   │                                exportExcel, statusBanner/buttonState/stepDisplay...

@@ -9,7 +9,9 @@ export class ScanPagePOM {
 
   // ── Navigation ──────────────────────────────────────────────────────────
   async goto() {
-    await this.page.goto("/");
+    // ScanPage được mount tại /scan/:type (HomePage giờ ở `/`). Routine route
+    // tới đúng trang scan hiện tại — dùng nó làm điểm vào mặc định cho test.
+    await this.page.goto("/scan/routine");
     // Wait for React to hydrate and initial GPS permission check to finish
     await this.page.waitForSelector("button:has-text('Bắt đầu Scan')");
   }

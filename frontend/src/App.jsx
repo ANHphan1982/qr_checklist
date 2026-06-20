@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, useParams } from "react-router-dom";
-import { Sun, Moon, QrCode, History, Smartphone, X } from "lucide-react";
+import { Sun, Moon, Home, History, Smartphone, X } from "lucide-react";
+import HomePage from "./pages/HomePage";
 import ScanPage from "./pages/ScanPage";
 import HistoryPage from "./pages/HistoryPage";
 import StationDisplayPage from "./pages/StationDisplayPage";
@@ -148,9 +149,9 @@ function BottomTabs() {
                 "tab-pill w-16 h-10 rounded-full flex items-center justify-center transition-colors",
                 isActive ? "bg-blue-100 dark:bg-blue-500/20" : "",
               ].join(" ")}>
-                <QrCode className="tab-icon w-7 h-7" aria-hidden />
+                <Home className="tab-icon w-7 h-7" aria-hidden />
               </div>
-              <span>Scan</span>
+              <span>Trang chủ</span>
             </>
           )}
         </NavLink>
@@ -291,7 +292,8 @@ export default function App() {
               )}
               <main className="flex-1 w-full max-w-md mx-auto px-4 py-4 pb-24">
                 <Routes>
-                  <Route path="/" element={<ScanPage />} />
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/scan/:type" element={<ScanPage />} />
                   <Route path="/history" element={<HistoryPage />} />
                   <Route path="/admin" element={<AdminPage />} />
                   <Route path="/mdm-check" element={<MdmCheckPage />} />

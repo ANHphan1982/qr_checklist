@@ -5,11 +5,11 @@ test.describe("Bottom navigation", () => {
     await page.goto("/");
   });
 
-  test("hiển thị bottom tab bar với 2 tab Scan và Lịch sử", async ({ page }) => {
+  test("hiển thị bottom tab bar với 2 tab Trang chủ và Lịch sử", async ({ page }) => {
     const nav = page.getByRole("navigation", { name: /tab/i });
     await expect(nav).toBeVisible();
 
-    await expect(page.getByRole("link", { name: /scan/i }).last()).toBeVisible();
+    await expect(page.getByRole("link", { name: /trang chủ/i }).last()).toBeVisible();
     await expect(page.getByRole("link", { name: /lịch sử/i }).last()).toBeVisible();
   });
 
@@ -18,10 +18,10 @@ test.describe("Bottom navigation", () => {
     await expect(nav.getByRole("link", { name: /thống kê/i })).toHaveCount(0);
   });
 
-  test("tab Scan active khi ở trang chủ", async ({ page }) => {
-    // Tab Scan phải có class active (bg-blue-600 hoặc text-blue-600)
-    const scanLink = page.getByRole("link", { name: /scan/i }).last();
-    await expect(scanLink).toHaveAttribute("aria-current", "page");
+  test("tab Trang chủ active khi ở trang chủ", async ({ page }) => {
+    // Tab Trang chủ phải có class active (bg-blue-600 hoặc text-blue-600)
+    const homeLink = page.getByRole("link", { name: /trang chủ/i }).last();
+    await expect(homeLink).toHaveAttribute("aria-current", "page");
   });
 
   test("click tab Lịch sử → navigate đến /history", async ({ page }) => {
@@ -30,23 +30,23 @@ test.describe("Bottom navigation", () => {
     await expect(page.getByRole("heading", { name: /lịch sử/i })).toBeVisible();
   });
 
-  test("click tab Scan từ /history → quay về trang chủ", async ({ page }) => {
+  test("click tab Trang chủ từ /history → quay về trang chủ", async ({ page }) => {
     await page.goto("/history");
-    await page.getByRole("link", { name: /scan/i }).last().click();
+    await page.getByRole("link", { name: /trang chủ/i }).last().click();
     await expect(page).toHaveURL(/^http:\/\/localhost:5173\/$/);
   });
 
   test("touch target tab bar đủ lớn (min 44px)", async ({ page }) => {
-    const scanLink = page.getByRole("link", { name: /scan/i }).last();
-    const box = await scanLink.boundingBox();
+    const homeLink = page.getByRole("link", { name: /trang chủ/i }).last();
+    const box = await homeLink.boundingBox();
     expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.width).toBeGreaterThanOrEqual(44);
   });
 
-  test("NavBar không chứa NavLink Scan/Lịch sử (đã chuyển xuống bottom)", async ({ page }) => {
+  test("NavBar không chứa NavLink Trang chủ/Lịch sử (đã chuyển xuống bottom)", async ({ page }) => {
     const header = page.locator("header");
     // Header chỉ có logo và dark toggle, không có NavLink điều hướng
-    await expect(header.getByRole("link", { name: /^scan$/i })).toHaveCount(0);
+    await expect(header.getByRole("link", { name: /^trang chủ$/i })).toHaveCount(0);
     await expect(header.getByRole("link", { name: /^lịch sử$/i })).toHaveCount(0);
   });
 
