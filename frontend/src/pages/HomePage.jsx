@@ -5,10 +5,18 @@
 // Tối ưu Android: card bo lớn, ảnh/icon 64px, label rõ, progress bar,
 // search lọc nhanh, "Tiếp tục" để mở lại checklist hay dùng.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, ChevronRight, SearchX } from "lucide-react";
+import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import { CHECKLIST_ART, IMAGE_ART } from "../components/ChecklistArt";
+import { getReports } from "../lib/api";
+import { exportToExcel } from "../lib/exportExcel";
+import { getShiftAt } from "../lib/shifts";
+import { computeCoverage, buildChecklistShiftRows } from "../lib/checklistCoverage";
+import { loadAssignments, getStationsFor } from "../lib/checklistStations";
+
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+const toVnDate = (ms) => new Date(ms + VN_OFFSET_MS).toISOString().slice(0, 10);
 
 // ---------------------------------------------------------------------------
 // Định nghĩa các checklist — thay bằng nguồn dữ liệu thật của bạn.
@@ -103,6 +111,42 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 
+  // Ca hiện tại + scan trong ca → biết trạm nào chưa kiểm tra (≥1 lần/ca).
+  const [shift] = useState(() => getShiftAt(new Date()));
+  const [scans, setScans] = useState([]);
+  const assignments = useMemo(() => loadAssignments(), []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      // Ca đêm vắt qua nửa đêm → có thể cần cả ngày hôm trước. Lấy mọi ngày VN
+      // trong khoảng [đầu ca, hiện tại], gộp logs. Lỗi mạng → bỏ qua (offline-safe).
+      const dates = Array.from(new Set([toVnDate(shift.startMs), toVnDate(Date.now())]));
+      const results = await Promise.all(dates.map((d) => getReports(d).catch(() => null)));
+      if (!alive) return;
+      setScans(results.filter(Boolean).flatMap((r) => r.logs || []));
+    })();
+    return () => { alive = false; };
+  }, [shift]);
+
+  // Coverage theo từng checklist (chỉ tính checklist đã gán trạm).
+  const coverageMap = useMemo(() => {
+    const map = {};
+    for (const c of CHECKLISTS) {
+      const stationNames = getStationsFor(assignments, c.id);
+      if (stationNames.length > 0) map[c.id] = computeCoverage(stationNames, scans, shift);
+    }
+    return map;
+  }, [assignments, scans, shift]);
+
+  const missingTotal = Object.values(coverageMap).reduce((sum, c) => sum + c.missingCount, 0);
+
+  const exportChecklist = (item) => {
+    const stationNames = getStationsFor(assignments, item.id);
+    const rows = buildChecklistShiftRows(stationNames, scans, shift);
+    exportToExcel(rows, `${item.id}-${shift.id}.xlsx`, item.title.slice(0, 31));
+  };
+
   // TODO: tiến độ thật theo từng checklist (localStorage / API)
   const progressMap = { pump: 2, tank: 0, routine: 5, valve: 1, safety: 0, elec: 0 };
   // TODO: id checklist đã mở gần đây
@@ -134,6 +178,17 @@ export default function HomePage() {
           Chọn bộ kiểm tra rồi bắt đầu quét QR theo trạm
         </p>
       </div>
+
+      {/* Cảnh báo ca: còn trạm chưa kiểm tra trong ca hiện tại */}
+      {missingTotal > 0 && (
+        <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-4 py-3" role="alert">
+          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" aria-hidden />
+          <div className="text-[13px] text-amber-800 dark:text-amber-300">
+            <span className="font-bold">{shift.label}</span> — còn{" "}
+            <span className="font-bold">{missingTotal}</span> trạm chưa được kiểm tra. Hãy quét đủ mỗi trạm tối thiểu 1 lần/ca.
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -184,14 +239,40 @@ export default function HomePage() {
 
       {/* List */}
       <div className="flex flex-col gap-3">
-        {filtered.map((item) => (
-          <ChecklistCard
-            key={item.id}
-            item={item}
-            progress={progressMap[item.id] || 0}
-            onClick={() => go(item)}
-          />
-        ))}
+        {filtered.map((item) => {
+          const cov = coverageMap[item.id];
+          return (
+            <div key={item.id} className="flex flex-col gap-1.5">
+              <ChecklistCard
+                item={item}
+                progress={progressMap[item.id] || 0}
+                onClick={() => go(item)}
+              />
+              {cov && (
+                <div className="flex items-center justify-between gap-2 px-2.5">
+                  {cov.ok ? (
+                    <span className="text-[12px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1 min-w-0">
+                      <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
+                      <span className="truncate">Đã kiểm tra đủ {cov.total} trạm trong ca</span>
+                    </span>
+                  ) : (
+                    <span className="text-[12px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1 min-w-0">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
+                      <span className="truncate">Còn {cov.missingCount}/{cov.total} trạm chưa kiểm tra</span>
+                    </span>
+                  )}
+                  <button
+                    onClick={() => exportChecklist(item)}
+                    className="flex items-center gap-1 text-[12px] font-semibold text-blue-600 dark:text-blue-400 px-2 py-1 rounded-lg active:bg-blue-50 dark:active:bg-blue-500/10 flex-shrink-0"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" aria-hidden />
+                    Excel
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
         {filtered.length === 0 && (
           <div className="flex flex-col items-center text-center py-12 text-slate-400 dark:text-slate-500">
             <SearchX className="w-10 h-10 mb-3 opacity-70" aria-hidden />
