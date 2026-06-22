@@ -1,29 +1,31 @@
 // ChecklistStationsPanel — gán trạm đã cấu hình vào từng checklist (tick chọn).
-// Mapping lưu localStorage qua lib/checklistStations (không đụng backend / logic scan).
+// Hướng A: lưu Ở BACKEND qua cột stations.checklist_type (PUT /api/admin/stations/<name>)
+// → mọi điện thoại đọc chung. Mỗi trạm thuộc DUY NHẤT 1 checklist (tick trạm ở
+// checklist khác sẽ chuyển nó sang checklist đó).
 //
 // UX: chọn 1 checklist ở trên → tick các trạm thuộc checklist đó ở dưới.
-// Tối ưu mobile: hàng cao ≥44px, cả hàng là hit-target, có ô tìm trạm.
+// Tối ưu mobile: hàng cao ≥52px, cả hàng là hit-target, có ô tìm trạm.
 
 import { useMemo, useState } from "react";
 import { ListChecks, Search, Check } from "lucide-react";
 import { CHECKLISTS } from "../../pages/HomePage";
-import {
-  loadAssignments,
-  saveAssignments,
-  getStationsFor,
-  isAssigned,
-  toggleStation,
-} from "../../lib/checklistStations";
 
-export default function ChecklistStationsPanel({ stations, flash }) {
-  const [assignments, setAssignments] = useState(() => loadAssignments());
+export default function ChecklistStationsPanel({ stations, client, onRefresh, flash }) {
   const [selected, setSelected] = useState(CHECKLISTS[0]?.id || "");
   const [query, setQuery] = useState("");
+  const [saving, setSaving] = useState(null); // tên trạm đang lưu
 
   const activeStations = useMemo(
     () => (stations || []).filter((s) => s.active !== false),
     [stations]
   );
+
+  // Đếm số trạm mỗi checklist từ chính dữ liệu stations (nguồn sự thật = DB).
+  const countByChecklist = useMemo(() => {
+    const m = {};
+    for (const s of activeStations) if (s.checklist_type) m[s.checklist_type] = (m[s.checklist_type] || 0) + 1;
+    return m;
+  }, [activeStations]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toUpperCase();
@@ -31,13 +33,21 @@ export default function ChecklistStationsPanel({ stations, flash }) {
     return activeStations.filter((s) => s.name.toUpperCase().includes(q));
   }, [activeStations, query]);
 
-  const toggle = (stationName) => {
-    const next = toggleStation(assignments, selected, stationName);
-    setAssignments(next);
-    saveAssignments(next);
-    const on = isAssigned(next, selected, stationName);
+  const toggle = async (st) => {
+    const checked = st.checklist_type === selected;
     const title = CHECKLISTS.find((c) => c.id === selected)?.title || selected;
-    flash(true, on ? `Đã gán ${stationName} → ${title}` : `Đã gỡ ${stationName} khỏi ${title}`);
+    setSaving(st.name);
+    try {
+      await client.put(`/api/admin/stations/${st.name}`, {
+        checklist_type: checked ? "" : selected,
+      });
+      flash(true, checked ? `Đã gỡ ${st.name} khỏi ${title}` : `Đã gán ${st.name} → ${title}`);
+      onRefresh();
+    } catch (e) {
+      flash(false, e?.response?.data?.error || e.message);
+    } finally {
+      setSaving(null);
+    }
   };
 
   return (
@@ -50,7 +60,7 @@ export default function ChecklistStationsPanel({ stations, flash }) {
         </h2>
         <div className="flex gap-1.5 flex-wrap">
           {CHECKLISTS.map((c) => {
-            const count = getStationsFor(assignments, c.id).length;
+            const count = countByChecklist[c.id] || 0;
             const on = c.id === selected;
             return (
               <button
@@ -72,6 +82,9 @@ export default function ChecklistStationsPanel({ stations, flash }) {
             );
           })}
         </div>
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          Mỗi trạm thuộc 1 checklist. Lưu trên máy chủ → mọi điện thoại thấy giống nhau.
+        </p>
       </div>
 
       {/* Tìm trạm */}
@@ -98,18 +111,21 @@ export default function ChecklistStationsPanel({ stations, flash }) {
           <p className="text-center text-slate-400 py-6 text-sm">Không tìm thấy trạm khớp.</p>
         )}
         {filtered.map((st) => {
-          const checked = isAssigned(assignments, selected, st.name);
+          const checked = st.checklist_type === selected;
+          const otherTitle = !checked && st.checklist_type
+            ? CHECKLISTS.find((c) => c.id === st.checklist_type)?.title
+            : null;
           return (
             <label
               key={st.name}
               className={`flex items-center gap-3 bg-white dark:bg-slate-800 rounded-xl border px-4 py-3 min-h-[52px] cursor-pointer transition-colors ${
                 checked ? "border-blue-400 dark:border-blue-500 bg-blue-50/60 dark:bg-blue-500/10" : "border-slate-200 dark:border-slate-700"
-              }`}
+              } ${saving === st.name ? "opacity-50 pointer-events-none" : ""}`}
             >
               <input
                 type="checkbox"
                 checked={checked}
-                onChange={() => toggle(st.name)}
+                onChange={() => toggle(st)}
                 className="sr-only"
               />
               <span
@@ -122,8 +138,8 @@ export default function ChecklistStationsPanel({ stations, flash }) {
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block font-semibold text-slate-800 dark:text-slate-100 truncate">{st.name}</span>
-                {(st.lat != null && st.lng != null) && (
-                  <span className="block text-xs text-slate-400">{st.lat}, {st.lng}</span>
+                {otherTitle && (
+                  <span className="block text-xs text-amber-600 dark:text-amber-400">Đang thuộc: {otherTitle}</span>
                 )}
               </span>
             </label>

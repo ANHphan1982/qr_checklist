@@ -109,6 +109,15 @@ export async function getStationParamConfigs() {
   return data.configs || [];
 }
 
+/**
+ * Mapping checklist → [tên trạm] (public). Mọi thiết bị đọc chung từ DB.
+ * @returns {Promise<Object<string, string[]>>}
+ */
+export async function getChecklistStations() {
+  const { data } = await api.get("/api/checklist-stations");
+  return data.assignments || {};
+}
+
 // ---------------------------------------------------------------------------
 // Admin — station params
 // ---------------------------------------------------------------------------

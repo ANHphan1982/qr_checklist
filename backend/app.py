@@ -2,7 +2,7 @@ import os
 from flask import Flask
 from flask_cors import CORS
 from config import CORS_ORIGIN, FLASK_ENV, Base, engine
-from models import ensure_scan_log_indexes
+from models import ensure_scan_log_indexes, ensure_station_columns
 from routes.scan import scan_bp
 from routes.reports import reports_bp
 from routes.qr_token import qr_token_bp
@@ -33,8 +33,9 @@ app.register_blueprint(admin_bp, url_prefix="/api")
 app.register_blueprint(summary_bp, url_prefix="/api")
 app.register_blueprint(dashboard_bp, url_prefix="/api")
 
-# Áp index scan_logs lên DB prod đang tồn tại lúc khởi động (idempotent, an toàn).
+# Áp index scan_logs + cột mới của stations lên DB prod lúc khởi động (idempotent).
 ensure_scan_log_indexes(engine)
+ensure_station_columns(engine)
 
 
 @app.route("/")

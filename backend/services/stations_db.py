@@ -84,6 +84,28 @@ def get_station_params() -> dict:
     return merged
 
 
+def get_checklist_assignments() -> dict:
+    """Trả {checklist_type: [station_name, ...]} từ DB.
+
+    Chỉ gồm trạm đang active có gán checklist_type. Public endpoint dùng để mọi
+    thiết bị đọc chung mapping (thay cho localStorage riêng từng máy). Không có DB
+    → trả {} (offline-safe).
+    """
+    result: dict = {}
+    if SessionLocal is None:
+        return result
+    try:
+        with SessionLocal() as s:
+            rows = s.query(Station).filter(Station.active == True).all()
+        for r in rows:
+            ct = getattr(r, "checklist_type", None)
+            if ct:
+                result.setdefault(ct, []).append(r.name)
+    except Exception as e:
+        print(f"[stations_db] get_checklist_assignments DB error: {e}")
+    return result
+
+
 def get_qr_aliases() -> dict:
     """Trả về dict {qr_content: station_name} — merge DB + file (DB thắng)."""
     merged = dict(_STATIC_ALIASES)

@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime, timezone, timedelta
 from services.scan_service import process_scan, maybe_alert_thresholds
 from services.geo_service import validate_location
-from services.stations_db import get_stations, get_qr_aliases, get_station_params
+from services.stations_db import get_stations, get_qr_aliases, get_station_params, get_checklist_assignments
 from services.qr_token_service import parse_qr_content, validate_token
 from services.anti_fraud_service import check_gps_enforcement
 from config import SessionLocal
@@ -138,6 +138,16 @@ def station_params_endpoint():
         for name, data in sorted(params.items())
     ]
     return jsonify({"configs": configs}), 200
+
+
+@scan_bp.route("/checklist-stations", methods=["GET"])
+def checklist_stations_endpoint():
+    """Mapping checklist → trạm (public, không auth).
+
+    Trả {"assignments": {checklist_type: [station_name, ...]}}. Mọi thiết bị đọc
+    chung từ DB → cảnh báo "kiểm tra đủ 1 lần/ca" giống nhau trên mọi điện thoại.
+    """
+    return jsonify({"assignments": get_checklist_assignments()}), 200
 
 
 def _first_numeric_value(param_values):

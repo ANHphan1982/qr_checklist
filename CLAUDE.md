@@ -109,7 +109,9 @@ CREATE TABLE scan_logs (
 
 CREATE TABLE stations (        -- tọa độ geofence, admin quản lý
   id BIGSERIAL PK, name VARCHAR(100) UNIQUE, lat FLOAT, lng FLOAT,
-  radius INT DEFAULT 300, active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ
+  radius INT DEFAULT 300, active BOOLEAN DEFAULT TRUE,
+  checklist_type VARCHAR(50),  -- checklist trạm thuộc về (pump/routine/...); NULL=chưa gán
+  created_at TIMESTAMPTZ        -- bootstrap: ensure_station_columns ADD COLUMN IF NOT EXISTS
 );
 
 CREATE TABLE station_params (  -- N thông số vận hành / trạm
@@ -141,6 +143,7 @@ BẤT KỲ bản ghi DB nào thì DB nắm toàn quyền trạm đó (kể cả 
 | `PATCH /api/scan/<id>/params` | Cập nhật `param_values` sau check-in. Validate cấu trúc, chỉ cho sửa trong `PARAMS_EDIT_WINDOW_MINUTES` (60p) kể từ `created_at`. Param vượt ngưỡng → gửi email cảnh báo + `threshold_breaches` trong response |
 | `GET /api/reports?date=YYYY-MM-DD` | Logs theo ngày (giờ VN) + route assessment theo device |
 | `GET /api/dashboard?days=7` | Analytics tổng hợp N ngày gần nhất (mặc định 7, clamp 1..90): `heatmap` (24 giờ VN), `geo` (phân bố geo_status + out_of_range_rate), `stations` (sort theo total), `param_trends` (xu hướng từng thông số + breaches). UI chỉ hiện trong AdminPage (tab Thống kê), không phải tab app thường |
+| `GET /api/checklist-stations` | Mapping checklist → [tên trạm] từ `stations.checklist_type` (public). Mọi thiết bị đọc chung → cảnh báo "đủ 1 lần/ca" giống nhau. Gán/gỡ bằng PUT `/api/admin/stations/<name>` với field `checklist_type` |
 | `GET /api/qr-token/<station>` | Token rotating QR hiện tại (màn hình trạm poll) |
 | `GET /api/debug/connectivity` | Chẩn đoán CORS/mạng — frontend dùng nút "Test kết nối" |
 

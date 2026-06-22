@@ -123,7 +123,7 @@ function AdminDashboard({ adminKey, onLogout }) {
         {tab === "stations"  && <StationsPanel stations={stations} client={client} onRefresh={loadAll} flash={flash} />}
         {tab === "aliases"   && <AliasesPanel aliases={aliases} stations={stations} client={client} onRefresh={loadAll} flash={flash} />}
         {tab === "params"    && <StationParamsPanel stationParams={stationParams} stations={stations} adminKey={adminKey} onRefresh={loadAll} flash={flash} />}
-        {tab === "checklists" && <ChecklistStationsPanel stations={stations} flash={flash} />}
+        {tab === "checklists" && <ChecklistStationsPanel stations={stations} client={client} onRefresh={loadAll} flash={flash} />}
         {tab === "dashboard" && <DashboardPage />}
       </div>
     </div>

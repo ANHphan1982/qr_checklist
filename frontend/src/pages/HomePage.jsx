@@ -9,11 +9,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import { CHECKLIST_ART, IMAGE_ART } from "../components/ChecklistArt";
-import { getReports } from "../lib/api";
+import { getReports, getChecklistStations } from "../lib/api";
 import { exportToExcel } from "../lib/exportExcel";
 import { getShiftAt } from "../lib/shifts";
 import { computeCoverage, buildChecklistShiftRows } from "../lib/checklistCoverage";
-import { loadAssignments, getStationsFor } from "../lib/checklistStations";
+import { getStationsFor } from "../lib/checklistStations";
 
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 const toVnDate = (ms) => new Date(ms + VN_OFFSET_MS).toISOString().slice(0, 10);
@@ -114,7 +114,8 @@ export default function HomePage() {
   // Ca hiện tại + scan trong ca → biết trạm nào chưa kiểm tra (≥1 lần/ca).
   const [shift] = useState(() => getShiftAt(new Date()));
   const [scans, setScans] = useState([]);
-  const assignments = useMemo(() => loadAssignments(), []);
+  // Mapping checklist → trạm đọc từ backend (đồng bộ mọi thiết bị, Hướng A).
+  const [assignments, setAssignments] = useState({});
 
   useEffect(() => {
     let alive = true;
@@ -122,9 +123,13 @@ export default function HomePage() {
       // Ca đêm vắt qua nửa đêm → có thể cần cả ngày hôm trước. Lấy mọi ngày VN
       // trong khoảng [đầu ca, hiện tại], gộp logs. Lỗi mạng → bỏ qua (offline-safe).
       const dates = Array.from(new Set([toVnDate(shift.startMs), toVnDate(Date.now())]));
-      const results = await Promise.all(dates.map((d) => getReports(d).catch(() => null)));
+      const [reportResults, assignMap] = await Promise.all([
+        Promise.all(dates.map((d) => getReports(d).catch(() => null))),
+        getChecklistStations().catch(() => ({})),
+      ]);
       if (!alive) return;
-      setScans(results.filter(Boolean).flatMap((r) => r.logs || []));
+      setScans(reportResults.filter(Boolean).flatMap((r) => r.logs || []));
+      setAssignments(assignMap);
     })();
     return () => { alive = false; };
   }, [shift]);

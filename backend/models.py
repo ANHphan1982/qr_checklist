@@ -60,13 +60,16 @@ class ScanLog(Base):
 class Station(Base):
     __tablename__ = "stations"
 
-    id         = Column(BigInteger, primary_key=True, index=True)
-    name       = Column(String(100), nullable=False, unique=True)
-    lat        = Column(Float, nullable=False)
-    lng        = Column(Float, nullable=False)
-    radius     = Column(Integer, default=300)
-    active     = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id             = Column(BigInteger, primary_key=True, index=True)
+    name           = Column(String(100), nullable=False, unique=True)
+    lat            = Column(Float, nullable=False)
+    lng            = Column(Float, nullable=False)
+    radius         = Column(Integer, default=300)
+    active         = Column(Boolean, default=True)
+    # Loại checklist trạm thuộc về (pump/tank/routine/valve/safety/elec...).
+    # NULL = chưa gán. Lưu ở DB để mọi thiết bị đọc chung (qua /api/checklist-stations).
+    checklist_type = Column(String(50), nullable=True)
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
 
     def to_dict(self):
         return {
@@ -76,6 +79,7 @@ class Station(Base):
             "lng": self.lng,
             "radius": self.radius,
             "active": self.active,
+            "checklist_type": self.checklist_type,
         }
 
 
@@ -166,3 +170,23 @@ def ensure_scan_log_indexes(engine) -> None:
                 conn.execute(text(ddl))
         except Exception as e:  # pragma: no cover - chỉ log, không sập app
             print(f"[models] ensure_scan_log_indexes lỗi (bỏ qua): {ddl.split(' ON ')[0]} → {e}")
+
+
+# Cột thêm sau cho bảng stations đang tồn tại (giống ensure_scan_log_indexes):
+# Postgres không có "ADD COLUMN IF NOT EXISTS" cho mọi phiên bản cũ, nhưng
+# Supabase (PG ≥ 9.6) hỗ trợ — idempotent, an toàn chạy lại mỗi lần boot.
+_STATION_COLUMN_DDL = (
+    "ALTER TABLE stations ADD COLUMN IF NOT EXISTS checklist_type VARCHAR(50)",
+)
+
+
+def ensure_station_columns(engine) -> None:
+    """Thêm cột mới cho stations nếu chưa có (idempotent, nuốt lỗi)."""
+    if engine is None:
+        return
+    for ddl in _STATION_COLUMN_DDL:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(ddl))
+        except Exception as e:  # pragma: no cover - chỉ log, không sập app
+            print(f"[models] ensure_station_columns lỗi (bỏ qua): {ddl} → {e}")

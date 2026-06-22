@@ -101,6 +101,10 @@ def update_station(name):
             st.radius = int(data["radius"])
         if data.get("active") is not None:
             st.active = bool(data["active"])
+        if "checklist_type" in data:
+            # "" / None → gỡ gán; ngược lại chuẩn hoá về chữ thường.
+            ct = (data.get("checklist_type") or "").strip().lower()
+            st.checklist_type = ct or None
         s.commit()
         s.refresh(st)
         return jsonify(st.to_dict())

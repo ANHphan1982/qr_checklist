@@ -1,42 +1,16 @@
 /**
- * TDD — checklistStations: map "checklist ↔ trạm" lưu localStorage.
- * Logic thuần (load/save/toggle/isAssigned/getStationsFor) — UI panel dùng lại.
+ * TDD — checklistStations: helper thuần thao tác map "checklist → [trạm]".
+ * Hướng A: mapping LƯU Ở BACKEND (cột stations.checklist_type), frontend chỉ
+ * đọc qua API rồi dựng map. Không còn localStorage (đồng bộ mọi thiết bị).
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
-  loadAssignments,
-  saveAssignments,
   getStationsFor,
   isAssigned,
-  toggleStation,
-  STORAGE_KEY,
+  assignmentsFromStations,
 } from "../checklistStations";
 
-beforeEach(() => localStorage.clear());
-
-describe("checklistStations", () => {
-  it("loadAssignments trả {} khi chưa lưu gì", () => {
-    expect(loadAssignments()).toEqual({});
-  });
-
-  it("loadAssignments trả {} khi localStorage hỏng (JSON lỗi)", () => {
-    localStorage.setItem(STORAGE_KEY, "{not-json");
-    expect(loadAssignments()).toEqual({});
-  });
-
-  it("loadAssignments trả {} khi JSON hợp lệ nhưng không phải object", () => {
-    localStorage.setItem(STORAGE_KEY, "123");
-    expect(loadAssignments()).toEqual({});
-    localStorage.setItem(STORAGE_KEY, "null");
-    expect(loadAssignments()).toEqual({});
-  });
-
-  it("save → load round-trip", () => {
-    const map = { routine: ["LA-8111"], pump: ["PUMP_STATION_6"] };
-    saveAssignments(map);
-    expect(loadAssignments()).toEqual(map);
-  });
-
+describe("getStationsFor / isAssigned", () => {
   it("getStationsFor trả [] khi checklist chưa có trạm", () => {
     expect(getStationsFor({}, "routine")).toEqual([]);
     expect(getStationsFor({ pump: ["X"] }, "routine")).toEqual([]);
@@ -52,32 +26,32 @@ describe("checklistStations", () => {
     expect(isAssigned(map, "routine", "OTHER")).toBe(false);
     expect(isAssigned(map, "pump", "LA-8111")).toBe(false);
   });
+});
 
-  it("toggleStation thêm trạm vào checklist (immutable)", () => {
-    const before = {};
-    const after = toggleStation(before, "routine", "LA-8111");
-    expect(after).toEqual({ routine: ["LA-8111"] });
-    expect(before).toEqual({}); // không mutate input
+describe("assignmentsFromStations", () => {
+  const stations = [
+    { name: "LA-8111", checklist_type: "routine", active: true },
+    { name: "PUMP_STATION_6", checklist_type: "pump", active: true },
+    { name: "LA-9000", checklist_type: "routine", active: true },
+    { name: "NOTYPE", checklist_type: null, active: true },
+    { name: "OFF", checklist_type: "pump", active: false },
+  ];
+
+  it("gom trạm active theo checklist_type", () => {
+    expect(assignmentsFromStations(stations)).toEqual({
+      routine: ["LA-8111", "LA-9000"],
+      pump: ["PUMP_STATION_6"],
+    });
   });
 
-  it("toggleStation lần 2 gỡ trạm ra", () => {
-    const map = toggleStation({}, "pump", "PUMP_STATION_6");
-    const off = toggleStation(map, "pump", "PUMP_STATION_6");
-    expect(isAssigned(off, "pump", "PUMP_STATION_6")).toBe(false);
+  it("bỏ qua trạm không gán hoặc đã tắt", () => {
+    const map = assignmentsFromStations(stations);
+    expect(map.pump).not.toContain("OFF");
+    expect(Object.values(map).flat()).not.toContain("NOTYPE");
   });
 
-  it("toggleStation giữ các trạm khác trong cùng checklist", () => {
-    let map = toggleStation({}, "routine", "A");
-    map = toggleStation(map, "routine", "B");
-    expect(getStationsFor(map, "routine").sort()).toEqual(["A", "B"]);
-    map = toggleStation(map, "routine", "A");
-    expect(getStationsFor(map, "routine")).toEqual(["B"]);
-  });
-
-  it("một trạm có thể thuộc nhiều checklist độc lập", () => {
-    let map = toggleStation({}, "routine", "LA-8111");
-    map = toggleStation(map, "safety", "LA-8111");
-    expect(isAssigned(map, "routine", "LA-8111")).toBe(true);
-    expect(isAssigned(map, "safety", "LA-8111")).toBe(true);
+  it("đầu vào rỗng / undefined → {}", () => {
+    expect(assignmentsFromStations([])).toEqual({});
+    expect(assignmentsFromStations(undefined)).toEqual({});
   });
 });
