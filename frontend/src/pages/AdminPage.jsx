@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Settings, MapPin, Link2, SlidersHorizontal, BarChart3, Download, CheckCircle2, XCircle } from "lucide-react";
+import { Settings, MapPin, Link2, SlidersHorizontal, ListChecks, BarChart3, Download, CheckCircle2, XCircle } from "lucide-react";
 import { buildStationsRows, buildAliasesRows, exportToExcel } from "../lib/exportExcel";
 import { getAdminStationParams } from "../lib/api";
 import { api, SESSION_KEY } from "../components/admin/adminApi";
@@ -8,6 +8,7 @@ import PurgeButton from "../components/admin/PurgeButton";
 import StationsPanel from "../components/admin/StationsPanel";
 import AliasesPanel from "../components/admin/AliasesPanel";
 import StationParamsPanel from "../components/admin/StationParamsPanel";
+import ChecklistStationsPanel from "../components/admin/ChecklistStationsPanel";
 import DashboardPage from "./DashboardPage";
 
 /**
@@ -97,11 +98,14 @@ function AdminDashboard({ adminKey, onLogout }) {
           <button onClick={() => setTab("params")} className={`${TAB_BTN_BASE} ${tab === "params" ? TAB_BTN_ACTIVE : TAB_BTN_IDLE}`}>
             <span className="flex items-center gap-1.5"><SlidersHorizontal className="w-4 h-4" aria-hidden />Thông số ({stationParams.length})</span>
           </button>
+          <button onClick={() => setTab("checklists")} className={`${TAB_BTN_BASE} ${tab === "checklists" ? TAB_BTN_ACTIVE : TAB_BTN_IDLE}`}>
+            <span className="flex items-center gap-1.5"><ListChecks className="w-4 h-4" aria-hidden />Checklist ↔ Trạm</span>
+          </button>
           <button onClick={() => setTab("dashboard")} className={`${TAB_BTN_BASE} ${tab === "dashboard" ? TAB_BTN_ACTIVE : TAB_BTN_IDLE}`}>
             <span className="flex items-center gap-1.5"><BarChart3 className="w-4 h-4" aria-hidden />Thống kê</span>
           </button>
         </div>
-        {tab !== "params" && tab !== "dashboard" && (
+        {tab !== "params" && tab !== "dashboard" && tab !== "checklists" && (
           <button
             onClick={() => {
               if (tab === "stations") exportToExcel(buildStationsRows(stations), "tram-checkpoint.xlsx", "Trạm");
@@ -119,6 +123,7 @@ function AdminDashboard({ adminKey, onLogout }) {
         {tab === "stations"  && <StationsPanel stations={stations} client={client} onRefresh={loadAll} flash={flash} />}
         {tab === "aliases"   && <AliasesPanel aliases={aliases} stations={stations} client={client} onRefresh={loadAll} flash={flash} />}
         {tab === "params"    && <StationParamsPanel stationParams={stationParams} stations={stations} adminKey={adminKey} onRefresh={loadAll} flash={flash} />}
+        {tab === "checklists" && <ChecklistStationsPanel stations={stations} flash={flash} />}
         {tab === "dashboard" && <DashboardPage />}
       </div>
     </div>
