@@ -9,6 +9,8 @@ from models import ScanLog
 from services.email_service import send_scan_email, send_threshold_alert_email
 from services.anti_fraud_service import check_rate_limit
 from services.threshold_service import check_thresholds
+from services.stations_db import get_stations
+from services.route_assessment import compute_route_assessment
 
 # False = gửi email đồng bộ (dùng cho test/debug). Mặc định gửi qua background
 # thread để request /api/scan trả về ngay — Resend chậm/cold start không còn
@@ -45,6 +47,46 @@ def _find_duplicate(session, device_id: str | None, location: str, dt: datetime)
         )
         .first()
     )
+
+
+def _find_previous_scan(session, device_id: str | None, dt: datetime):
+    """Lần scan gần nhất TRƯỚC dt của cùng device — để đánh giá thời gian di chuyển
+    giữa 2 trạm. Không có device_id thì không xác định được tuyến → None.
+    """
+    if not device_id:
+        return None
+    return (
+        session.query(ScanLog)
+        .filter(
+            ScanLog.device_id == device_id,
+            ScanLog.scanned_at < dt,
+        )
+        .order_by(ScanLog.scanned_at.desc())
+        .first()
+    )
+
+
+def _is_route_too_fast(
+    prev_location: str | None,
+    prev_dt: datetime | None,
+    location: str,
+    dt: datetime,
+) -> bool:
+    """True nếu thời gian di chuyển từ trạm trước tới trạm hiện tại quá nhanh.
+
+    Dùng lại compute_route_assessment (logic đánh giá tuyến đã có) trên cặp
+    [trạm trước, trạm hiện tại]. Chỉ phân loại 'too_fast' (nghi gian lận, không
+    tới tận nơi) mới tính là bất thường cần email — 'too_slow' (dừng nghỉ lâu)
+    bỏ qua.
+    """
+    if prev_location is None or prev_dt is None:
+        return False
+    pair = [
+        {"id": "prev", "location": prev_location, "scanned_at": prev_dt.isoformat()},
+        {"id": "cur", "location": location, "scanned_at": dt.isoformat()},
+    ]
+    enriched = compute_route_assessment(pair, get_stations())
+    return enriched[-1].get("assessment") == "too_fast"
 
 
 def _dedupe_response(existing: ScanLog) -> dict:
@@ -168,6 +210,15 @@ def process_scan(
         if rate_err:
             return rate_err
 
+        # Lần scan trước của device (để đánh giá thời gian di chuyển giữa 2 trạm).
+        # Chỉ cần khi EMAIL_ALERTS_ONLY lọc email theo bất thường — phải truy vấn
+        # khi session còn mở. Truy vấn TRƯỚC auto-purge để không lấy nhầm bản sắp xóa.
+        prev_location = prev_dt = None
+        if EMAIL_ALERTS_ONLY and geo_status != "out_of_range":
+            prev = _find_previous_scan(session, device_id, dt)
+            if prev is not None:
+                prev_location, prev_dt = prev.location, prev.scanned_at
+
         # Auto-purge TRƯỚC khi insert — tránh xóa nhầm offline scan cũ vừa được đồng bộ.
         # Cửa sổ giữ data lấy từ PURGE_RETENTION_HOURS (mặc định 30 ngày).
         cutoff = purge_cutoff()
@@ -205,10 +256,17 @@ def process_scan(
     # Request trả về ngay sau khi commit; email_sent cập nhật async vào DB
     # (trang Lịch sử / báo cáo đọc từ DB nên vẫn thấy trạng thái thật).
     #
-    # EMAIL_ALERTS_ONLY=true: chỉ gửi email tức thời cho scan bất thường
-    # (geo_status != "ok") — check-in bình thường đã nằm trong báo cáo tổng hợp
-    # sáng/tối, không cần email riêng → tiết kiệm quota Resend 100/ngày.
-    send_now = (not EMAIL_ALERTS_ONLY) or geo_status != "ok"
+    # EMAIL_ALERTS_ONLY=true: chỉ gửi email check-in tức thời cho scan bất thường —
+    # check-in bình thường đã nằm trong báo cáo tổng hợp sáng/tối → tiết kiệm quota
+    # Resend 100/ngày. Bất thường = SAI TRẠM (out_of_range) HOẶC thời gian di chuyển
+    # giữa 2 trạm quá nhanh (route too_fast). Vượt ngưỡng thông số đi qua kênh
+    # threshold alert riêng bên dưới (luôn gửi).
+    send_now = not EMAIL_ALERTS_ONLY
+    if not send_now:
+        if geo_status == "out_of_range":
+            send_now = True
+        elif _is_route_too_fast(prev_location, prev_dt, location, dt):
+            send_now = True
     if send_now:
         _dispatch_email(scan_id, {
             "location": location,

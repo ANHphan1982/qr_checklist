@@ -21,6 +21,9 @@ def _make_session(scan_id=30):
     # MagicMock .first() mặc định truthy → process_scan tưởng là bản trùng (dedupe).
     # Set None tường minh để chạy nhánh insert bình thường (gotcha trong CLAUDE.md).
     session.query.return_value.filter.return_value.first.return_value = None
+    # Truy vấn lần scan trước (route timing): .filter().order_by().first() → None
+    # để không kích hoạt đánh giá tuyến trong các test threshold này.
+    session.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
 
     def flush_side_effect():
         session.add.call_args[0][0].id = scan_id

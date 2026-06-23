@@ -191,34 +191,97 @@ class TestSendEmailAndMark:
                 _send_email_and_mark(42, {"location": "Kho 1"})  # không raise
 
 
-class TestEmailAlertsOnly:
-    """EMAIL_ALERTS_ONLY=true → chỉ email khi scan bất thường, tiết kiệm quota Resend."""
+class TestEmailConditions:
+    """Điều kiện gửi email check-in (khi EMAIL_ALERTS_ONLY=true):
+    CHỈ gửi khi sai trạm (geo_status == 'out_of_range') HOẶC thời gian di chuyển
+    giữa 2 trạm quá nhanh (route 'too_fast'). Vượt ngưỡng thông số đi qua kênh
+    threshold alert riêng (luôn gửi, không phụ thuộc điều kiện này).
 
-    def _scan(self, geo_status, alerts_only):
+    EMAIL_ALERTS_ONLY=false giữ hành vi cũ — mọi check-in đều gửi email."""
+
+    def _scan(self, *, geo_status="ok", alerts_only=True, route_too_fast=False):
         from services.scan_service import process_scan
         session = _make_session(scan_id=20)
+        # Không có bản trùng (dedupe) — first() trả None để insert bình thường
+        session.query.return_value.filter.return_value.first.return_value = None
         with patch("services.scan_service.SessionLocal", return_value=session):
-            with patch("services.scan_service.EMAIL_ALERTS_ONLY", alerts_only):
-                with patch("services.scan_service._dispatch_email") as mock_dispatch:
-                    result = process_scan(location="Cổng A", geo_status=geo_status)
+            with patch("services.scan_service.check_rate_limit", return_value=None):
+                with patch("services.scan_service.EMAIL_ALERTS_ONLY", alerts_only):
+                    with patch("services.scan_service._find_previous_scan", return_value=None):
+                        with patch(
+                            "services.scan_service._is_route_too_fast",
+                            return_value=route_too_fast,
+                        ):
+                            with patch("services.scan_service._dispatch_email") as mock_dispatch:
+                                result = process_scan(
+                                    location="Cổng A",
+                                    geo_status=geo_status,
+                                    device_id="dev-1",
+                                )
         return result, mock_dispatch
 
     def test_geo_ok_skips_email_when_alerts_only(self):
-        result, dispatch = self._scan("ok", alerts_only=True)
+        result, dispatch = self._scan(geo_status="ok", alerts_only=True)
         assert result["status"] == "ok"
         dispatch.assert_not_called()
         assert "báo cáo tổng hợp" in result["message"]
 
-    @pytest.mark.parametrize("geo_status", ["out_of_range", "no_gps", "cached", "unverified"])
-    def test_abnormal_geo_still_emails_when_alerts_only(self, geo_status):
-        result, dispatch = self._scan(geo_status, alerts_only=True)
+    def test_out_of_range_emails_when_alerts_only(self):
+        """Sai trạm (ngoài geofence) → gửi email cảnh báo."""
+        result, dispatch = self._scan(geo_status="out_of_range", alerts_only=True)
+        assert result["status"] == "ok"
+        dispatch.assert_called_once()
+
+    @pytest.mark.parametrize("geo_status", ["no_gps", "cached", "unverified"])
+    def test_non_out_of_range_geo_skips_email_when_alerts_only(self, geo_status):
+        """no_gps / cached / unverified KHÔNG còn là 'sai trạm' → không gửi email
+        (trừ khi route quá nhanh)."""
+        result, dispatch = self._scan(geo_status=geo_status, alerts_only=True)
+        assert result["status"] == "ok"
+        dispatch.assert_not_called()
+
+    def test_route_too_fast_emails_even_when_geo_ok(self):
+        """Thời gian di chuyển giữa 2 trạm quá nhanh → gửi email dù geo_status ok."""
+        result, dispatch = self._scan(geo_status="ok", alerts_only=True, route_too_fast=True)
         assert result["status"] == "ok"
         dispatch.assert_called_once()
 
     def test_geo_ok_emails_when_alerts_only_off(self):
         """Mặc định (false) giữ hành vi cũ — mọi scan đều gửi email."""
-        result, dispatch = self._scan("ok", alerts_only=False)
+        result, dispatch = self._scan(geo_status="ok", alerts_only=False)
         dispatch.assert_called_once()
+
+
+class TestRouteTooFast:
+    """_is_route_too_fast — đánh giá thời gian di chuyển giữa trạm trước và trạm
+    hiện tại, dùng lại compute_route_assessment. Chỉ 'too_fast' tính là bất thường."""
+
+    STATIONS = {
+        "A": {"lat": 10.00, "lng": 106.00, "radius": 300},
+        "B": {"lat": 10.05, "lng": 106.05, "radius": 300},  # ~7.8km đường chim bay
+    }
+
+    def test_no_previous_scan_is_not_too_fast(self):
+        from services.scan_service import _is_route_too_fast
+        from datetime import datetime, timezone
+        now = datetime(2026, 6, 23, 8, 0, tzinfo=timezone.utc)
+        assert _is_route_too_fast(None, None, "B", now) is False
+
+    def test_normal_travel_time_not_too_fast(self):
+        from services.scan_service import _is_route_too_fast
+        from datetime import datetime, timezone, timedelta
+        prev_dt = datetime(2026, 6, 23, 8, 0, tzinfo=timezone.utc)
+        cur_dt = prev_dt + timedelta(minutes=40)  # đủ thời gian đi ~9km bằng xe đạp
+        with patch("services.scan_service.get_stations", return_value=self.STATIONS):
+            assert _is_route_too_fast("A", prev_dt, "B", cur_dt) is False
+
+    def test_impossibly_fast_travel_is_too_fast(self):
+        from services.scan_service import _is_route_too_fast
+        from datetime import datetime, timezone, timedelta
+        prev_dt = datetime(2026, 6, 23, 8, 0, tzinfo=timezone.utc)
+        cur_dt = prev_dt + timedelta(minutes=1)  # ~9km trong 1 phút → bất khả thi
+        with patch("services.scan_service.get_stations", return_value=self.STATIONS):
+            assert _is_route_too_fast("A", prev_dt, "B", cur_dt) is True
 
 
 class TestDedupe:
