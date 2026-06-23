@@ -48,6 +48,10 @@ dist/
 .vite/
 *.local
 
+# Test coverage artifacts (Vitest/Istanbul — tạo lại được)
+frontend/coverage/
+coverage/
+
 # ---------------------------------------------------------------------------
 # QR Generator output (PNG files — tạo lại được)
 # ---------------------------------------------------------------------------
@@ -82,10 +86,12 @@ frontend/test-results/
 /test-results/
 
 # ---------------------------------------------------------------------------
-# Ảnh QR chụp tại trạm để test thủ công — không commit vào repo
+# Ảnh QR chụp / ảnh checklist rời để test thủ công — không commit vào repo
+# (asset thật của app nằm trong frontend/src/assets/, không phải ở root)
 # ---------------------------------------------------------------------------
 /*.jpg
 /*.jpeg
+/*.png
 
 # ---------------------------------------------------------------------------
 # Docker
