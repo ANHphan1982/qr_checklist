@@ -194,12 +194,48 @@ class TestPatchScanParamsHardening:
             )
         assert resp.status_code == 400
 
-    def test_param_values_item_value_must_be_numeric(self, flask_app):
+    def test_param_values_text_value_allowed(self, flask_app):
+        """Thông số Yes/No nhập text (vd 'N') → value là chuỗi, được chấp nhận."""
         mock_session = _make_patch_session(_make_recent_log())
         with patch("routes.scan.SessionLocal", return_value=mock_session):
             resp = flask_app.test_client().patch(
                 "/api/scan/5/params",
-                json={"param_values": [{"tag": "052-PG-038", "value": "<script>"}]},
+                json={"param_values": [
+                    {"tag": "052-XV-001", "label": "Van mở", "unit": "Yes/No", "value": "N"},
+                ]},
+                content_type="application/json",
+            )
+        assert resp.status_code == 200
+
+    def test_param_values_value_too_long_returns_400(self, flask_app):
+        """Chuỗi value vẫn bị giới hạn độ dài (chống nhét rác)."""
+        mock_session = _make_patch_session(_make_recent_log())
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"param_values": [{"tag": "T", "value": "x" * 101}]},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+
+    def test_param_values_value_invalid_type_returns_400(self, flask_app):
+        """value không phải số/chuỗi/null (vd list) → 400."""
+        mock_session = _make_patch_session(_make_recent_log())
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"param_values": [{"tag": "T", "value": [1, 2]}]},
+                content_type="application/json",
+            )
+        assert resp.status_code == 400
+
+    def test_param_values_low_high_must_stay_numeric(self, flask_app):
+        """low/high vẫn phải là số hoặc null — chỉ value mới cho phép chuỗi."""
+        mock_session = _make_patch_session(_make_recent_log())
+        with patch("routes.scan.SessionLocal", return_value=mock_session):
+            resp = flask_app.test_client().patch(
+                "/api/scan/5/params",
+                json={"param_values": [{"tag": "T", "value": 1, "low": "abc"}]},
                 content_type="application/json",
             )
         assert resp.status_code == 400

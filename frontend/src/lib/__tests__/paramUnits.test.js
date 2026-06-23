@@ -3,7 +3,7 @@
  * Preset đơn vị cho dropdown "Đơn vị" trong StationParamsPanel
  */
 import { describe, it, expect } from "vitest";
-import { PARAM_UNIT_OPTIONS, isValidParamUnit } from "../paramUnits.js";
+import { PARAM_UNIT_OPTIONS, isValidParamUnit, isYesNoUnit } from "../paramUnits.js";
 
 // ---------------------------------------------------------------------------
 // PARAM_UNIT_OPTIONS — cấu trúc
@@ -123,5 +123,35 @@ describe("isValidParamUnit", () => {
 
   it("trả về false cho undefined", () => {
     expect(isValidParamUnit(undefined)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isYesNoUnit — thông số nhập text Y/N thay vì số
+// ---------------------------------------------------------------------------
+
+describe("isYesNoUnit", () => {
+  it("nhận diện 'Yes/No', 'Y/N' (không phân biệt hoa thường, có khoảng trắng)", () => {
+    expect(isYesNoUnit("Yes/No")).toBe(true);
+    expect(isYesNoUnit("yes/no")).toBe(true);
+    expect(isYesNoUnit("Y/N")).toBe(true);
+    expect(isYesNoUnit("  y/n  ")).toBe(true);
+  });
+
+  it("nhận diện 'Yes' và 'No' đơn lẻ (preset cũ)", () => {
+    expect(isYesNoUnit("Yes")).toBe(true);
+    expect(isYesNoUnit("No")).toBe(true);
+  });
+
+  it("trả về false cho đơn vị số thông thường", () => {
+    expect(isYesNoUnit("mm")).toBe(false);
+    expect(isYesNoUnit("%")).toBe(false);
+    expect(isYesNoUnit("bar")).toBe(false);
+  });
+
+  it("trả về false cho rỗng / null / undefined", () => {
+    expect(isYesNoUnit("")).toBe(false);
+    expect(isYesNoUnit(null)).toBe(false);
+    expect(isYesNoUnit(undefined)).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, Pencil, Trash2, Bell, BellOff, Download, AlertTriangle } from "lucide-react";
 import {
   createAdminStationParam,
@@ -23,6 +23,22 @@ export default function StationParamsPanel({ stationParams, stations, adminKey, 
   const stationOptions = stations.length > 0
     ? stations.map(s => s.name)
     : [...new Set(stationParams.map(p => p.station_name))];
+
+  // Gợi ý đơn vị (tìm kiếm thông minh): preset + "Yes/No" + các đơn vị ĐÃ DÙNG
+  // trong DB. Đơn vị mới gõ vào sẽ được lưu cùng thông số → lần sau tự xuất hiện.
+  const unitSuggestions = useMemo(() => {
+    const all = ["Yes/No", ...PARAM_UNIT_OPTIONS.map(o => o.value), ...stationParams.map(p => p.param_unit)];
+    const seen = new Set();
+    const out = [];
+    for (const u of all) {
+      const v = (u ?? "").trim();
+      if (v && !seen.has(v.toLowerCase())) {
+        seen.add(v.toLowerCase());
+        out.push(v);
+      }
+    }
+    return out;
+  }, [stationParams]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -194,17 +210,20 @@ export default function StationParamsPanel({ stationParams, stations, adminKey, 
           </div>
           <div>
             <label className="text-xs text-slate-500 dark:text-slate-400">Đơn vị *</label>
-            <select
+            <input
+              list="param-unit-suggestions"
               value={form.param_unit}
               onChange={e => setForm(f => ({ ...f, param_unit: e.target.value }))}
+              placeholder="VD: mm, %, Yes/No…"
               required
               className={INPUT_CLS}
-            >
-              <option value="">-- Chọn đơn vị --</option>
-              {PARAM_UNIT_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            />
+            <datalist id="param-unit-suggestions">
+              {unitSuggestions.map(u => <option key={u} value={u} />)}
+            </datalist>
+            <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+              Gõ tự do hoặc chọn gợi ý. Đơn vị <strong>Yes/No</strong> → ô nhập là text (Y/N).
+            </p>
           </div>
         </div>
 

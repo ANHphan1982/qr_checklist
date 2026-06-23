@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { resolveParamStatus } from "../lib/paramStatus";
+import { isYesNoUnit } from "../lib/paramUnits";
 import Button from "./ui/Button";
 
 /**
@@ -37,11 +38,14 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
     e.preventDefault();
     const param_values = params.map((p, i) => {
       const raw = (values[i] ?? "").trim();
+      // Thông số Yes/No: lưu nguyên text (Y/N/Yes/No...); còn lại parse số.
+      let value = null;
+      if (raw !== "") value = isYesNoUnit(p.param_unit) ? raw : parseFloat(raw);
       return {
         tag:   p.tag ?? null,
         label: p.param_label,
         unit:  p.param_unit,
-        value: raw !== "" ? parseFloat(raw) : null,
+        value,
         low:   p.param_low ?? null,
         high:  p.param_high ?? null,
       };
@@ -74,6 +78,7 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
               const unit  = p.param_unit  || "";
               const low   = p.param_low  ?? null;
               const high  = p.param_high ?? null;
+              const isYN  = isYesNoUnit(unit);
               const paramStatus = resolveParamStatus(values[i], low, high);
 
               const inputBorder = {
@@ -96,12 +101,11 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
 
                   <input
                     id={`op-param-input-${i}`}
-                    type="number"
-                    step="any"
-                    inputMode="decimal"
+                    type={isYN ? "text" : "number"}
+                    {...(isYN ? {} : { step: "any", inputMode: "decimal" })}
                     value={values[i]}
                     onChange={(e) => setValueAt(i, e.target.value)}
-                    placeholder={`Nhập ${label}...`}
+                    placeholder={isYN ? "Nhập Y / N…" : `Nhập ${label}...`}
                     className={`w-full rounded-xl border bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 px-4 py-3 text-base focus:outline-none focus:ring-2 transition-colors ${inputBorder}`}
                     style={{ fontSize: "16px" }}
                     autoFocus={i === 0}

@@ -169,8 +169,11 @@ def _is_number(v):
 def _validate_param_values(param_values):
     """Kiểm tra cấu trúc param_values từ client. Trả về message lỗi hoặc None nếu OK.
 
-    Shape hợp lệ: list các dict {tag, label, unit, value, low, high} — value/low/high
-    là số hoặc None, các trường chữ ≤ MAX_PARAM_STR_LEN ký tự.
+    Shape hợp lệ: list các dict {tag, label, unit, value, low, high}.
+      - value: số HOẶC chuỗi ≤ MAX_PARAM_STR_LEN (thông số Yes/No nhập text Y/N)
+               hoặc None.
+      - low/high: số hoặc None (ngưỡng chỉ áp cho thông số dạng số).
+      - tag/label/unit: chuỗi ≤ MAX_PARAM_STR_LEN ký tự.
     """
     if not isinstance(param_values, list):
         return "param_values phải là danh sách"
@@ -179,7 +182,12 @@ def _validate_param_values(param_values):
     for pv in param_values:
         if not isinstance(pv, dict):
             return "mỗi thông số phải là object"
-        for key in ("value", "low", "high"):
+        # value cho phép chuỗi (Yes/No) — giới hạn độ dài như các trường chữ khác.
+        value = pv.get("value")
+        if value is not None and not _is_number(value):
+            if not isinstance(value, str) or len(value) > MAX_PARAM_STR_LEN:
+                return f"'value' phải là số, chuỗi ≤ {MAX_PARAM_STR_LEN} ký tự hoặc null"
+        for key in ("low", "high"):
             v = pv.get(key)
             if v is not None and not _is_number(v):
                 return f"'{key}' phải là số hoặc null"

@@ -98,6 +98,7 @@ CREATE TABLE scan_logs (
   token_valid   BOOLEAN DEFAULT FALSE,    -- true = rotating QR hợp lệ
   oil_level_mm  FLOAT,                    -- backward compat = param đầu tiên
   param_values  JSON,                     -- [{tag,label,unit,value,low,high}, ...]
+                                          -- value: số HOẶC text (đơn vị Yes/No → Y/N); low/high luôn số
   scanned_at    TIMESTAMPTZ DEFAULT NOW(),
   email_sent    BOOLEAN DEFAULT FALSE,
   created_at    TIMESTAMPTZ DEFAULT NOW()
