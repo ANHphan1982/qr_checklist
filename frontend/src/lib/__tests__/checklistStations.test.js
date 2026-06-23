@@ -8,6 +8,7 @@ import {
   getStationsFor,
   isAssigned,
   assignmentsFromStations,
+  getChecklistTypesOf,
 } from "../checklistStations";
 
 describe("getStationsFor / isAssigned", () => {
@@ -53,5 +54,33 @@ describe("assignmentsFromStations", () => {
   it("đầu vào rỗng / undefined → {}", () => {
     expect(assignmentsFromStations([])).toEqual({});
     expect(assignmentsFromStations(undefined)).toEqual({});
+  });
+
+  it("trạm thuộc nhiều checklist → xuất hiện ở mỗi checklist", () => {
+    const multi = [
+      { name: "LA-8111", checklist_types: ["routine", "safety"], active: true },
+      { name: "PUMP_STATION_6", checklist_types: ["pump"], active: true },
+    ];
+    expect(assignmentsFromStations(multi)).toEqual({
+      routine: ["LA-8111"],
+      safety: ["LA-8111"],
+      pump: ["PUMP_STATION_6"],
+    });
+  });
+});
+
+describe("getChecklistTypesOf", () => {
+  it("trả mảng checklist_types đã chuẩn hoá (lowercase, dedupe)", () => {
+    expect(getChecklistTypesOf({ checklist_types: ["Pump", "routine", "pump"] }))
+      .toEqual(["pump", "routine"]);
+  });
+
+  it("fallback checklist_type (single) khi chưa có checklist_types", () => {
+    expect(getChecklistTypesOf({ checklist_type: "Routine" })).toEqual(["routine"]);
+  });
+
+  it("[] khi chưa gán hoặc đầu vào rỗng", () => {
+    expect(getChecklistTypesOf({})).toEqual([]);
+    expect(getChecklistTypesOf(null)).toEqual([]);
   });
 });

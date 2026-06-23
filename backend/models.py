@@ -57,6 +57,27 @@ class ScanLog(Base):
         }
 
 
+def resolve_checklist_list(checklist_types, checklist_type) -> list:
+    """Danh sách checklist (chuẩn hoá) mà một trạm thuộc về.
+
+    Ưu tiên `checklist_types` (JSON list, đa giá trị). Nếu là list → lowercase,
+    strip, bỏ rỗng, dedupe giữ thứ tự (list rỗng = đã gỡ hết, thắng single cũ).
+    Nếu `checklist_types` là None (trạm cũ chưa migrate) → fallback về
+    `[checklist_type]` để không mất gán cũ. Cả hai None/rỗng → [].
+    """
+    if isinstance(checklist_types, list):
+        seen, out = set(), []
+        for c in checklist_types:
+            v = str(c).strip().lower()
+            if v and v not in seen:
+                seen.add(v)
+                out.append(v)
+        return out
+    if checklist_type:
+        return [str(checklist_type).strip().lower()]
+    return []
+
+
 class Station(Base):
     __tablename__ = "stations"
 
@@ -67,11 +88,15 @@ class Station(Base):
     radius         = Column(Integer, default=300)
     active         = Column(Boolean, default=True)
     # Loại checklist trạm thuộc về (pump/tank/routine/valve/safety/elec...).
-    # NULL = chưa gán. Lưu ở DB để mọi thiết bị đọc chung (qua /api/checklist-stations).
-    checklist_type = Column(String(50), nullable=True)
-    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+    # checklist_type: single (backward compat, = phần tử đầu của list).
+    # checklist_types: JSON list — một trạm có thể thuộc NHIỀU checklist.
+    # NULL/[] = chưa gán. Lưu ở DB để mọi thiết bị đọc chung (/api/checklist-stations).
+    checklist_type  = Column(String(50), nullable=True)
+    checklist_types = Column(JSON, nullable=True)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
 
     def to_dict(self):
+        cl = resolve_checklist_list(self.checklist_types, self.checklist_type)
         return {
             "id": self.id,
             "name": self.name,
@@ -79,7 +104,9 @@ class Station(Base):
             "lng": self.lng,
             "radius": self.radius,
             "active": self.active,
-            "checklist_type": self.checklist_type,
+            # Single giữ cho client cũ; list là nguồn chuẩn cho gán đa checklist.
+            "checklist_type": cl[0] if cl else None,
+            "checklist_types": cl,
         }
 
 
@@ -177,6 +204,9 @@ def ensure_scan_log_indexes(engine) -> None:
 # Supabase (PG ≥ 9.6) hỗ trợ — idempotent, an toàn chạy lại mỗi lần boot.
 _STATION_COLUMN_DDL = (
     "ALTER TABLE stations ADD COLUMN IF NOT EXISTS checklist_type VARCHAR(50)",
+    # Đa checklist/trạm — JSON list. Trạm cũ giữ checklist_type, đọc fallback
+    # qua resolve_checklist_list nên không cần backfill bắt buộc.
+    "ALTER TABLE stations ADD COLUMN IF NOT EXISTS checklist_types JSON",
 )
 
 

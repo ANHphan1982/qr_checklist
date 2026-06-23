@@ -1,7 +1,7 @@
 // ChecklistStationsPanel — gán trạm đã cấu hình vào từng checklist (tick chọn).
-// Hướng A: lưu Ở BACKEND qua cột stations.checklist_type (PUT /api/admin/stations/<name>)
-// → mọi điện thoại đọc chung. Mỗi trạm thuộc DUY NHẤT 1 checklist (tick trạm ở
-// checklist khác sẽ chuyển nó sang checklist đó).
+// Hướng A: lưu Ở BACKEND qua cột stations.checklist_types (PUT /api/admin/stations/<name>)
+// → mọi điện thoại đọc chung. Một trạm có thể thuộc NHIỀU checklist (tick trạm ở
+// nhiều checklist khác nhau, không loại trừ lẫn nhau).
 //
 // UX: chọn 1 checklist ở trên → tick các trạm thuộc checklist đó ở dưới.
 // Tối ưu mobile: hàng cao ≥52px, cả hàng là hit-target, có ô tìm trạm.
@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 import { ListChecks, Search, Check } from "lucide-react";
 import { CHECKLISTS } from "../../pages/HomePage";
+import { getChecklistTypesOf } from "../../lib/checklistStations";
 
 export default function ChecklistStationsPanel({ stations, client, onRefresh, flash }) {
   const [selected, setSelected] = useState(CHECKLISTS[0]?.id || "");
@@ -21,9 +22,11 @@ export default function ChecklistStationsPanel({ stations, client, onRefresh, fl
   );
 
   // Đếm số trạm mỗi checklist từ chính dữ liệu stations (nguồn sự thật = DB).
+  // Một trạm thuộc nhiều checklist → cộng vào mỗi checklist của nó.
   const countByChecklist = useMemo(() => {
     const m = {};
-    for (const s of activeStations) if (s.checklist_type) m[s.checklist_type] = (m[s.checklist_type] || 0) + 1;
+    for (const s of activeStations)
+      for (const ct of getChecklistTypesOf(s)) m[ct] = (m[ct] || 0) + 1;
     return m;
   }, [activeStations]);
 
@@ -34,13 +37,16 @@ export default function ChecklistStationsPanel({ stations, client, onRefresh, fl
   }, [activeStations, query]);
 
   const toggle = async (st) => {
-    const checked = st.checklist_type === selected;
+    const current = getChecklistTypesOf(st);
+    const checked = current.includes(selected);
+    // Thêm/bớt checklist đang chọn khỏi danh sách hiện có (không loại trừ checklist khác).
+    const next = checked
+      ? current.filter((c) => c !== selected)
+      : [...current, selected];
     const title = CHECKLISTS.find((c) => c.id === selected)?.title || selected;
     setSaving(st.name);
     try {
-      await client.put(`/api/admin/stations/${st.name}`, {
-        checklist_type: checked ? "" : selected,
-      });
+      await client.put(`/api/admin/stations/${st.name}`, { checklist_types: next });
       flash(true, checked ? `Đã gỡ ${st.name} khỏi ${title}` : `Đã gán ${st.name} → ${title}`);
       onRefresh();
     } catch (e) {
@@ -83,7 +89,7 @@ export default function ChecklistStationsPanel({ stations, client, onRefresh, fl
           })}
         </div>
         <p className="text-xs text-slate-400 dark:text-slate-500">
-          Mỗi trạm thuộc 1 checklist. Lưu trên máy chủ → mọi điện thoại thấy giống nhau.
+          Một trạm có thể thuộc nhiều checklist. Lưu trên máy chủ → mọi điện thoại thấy giống nhau.
         </p>
       </div>
 
@@ -111,10 +117,12 @@ export default function ChecklistStationsPanel({ stations, client, onRefresh, fl
           <p className="text-center text-slate-400 py-6 text-sm">Không tìm thấy trạm khớp.</p>
         )}
         {filtered.map((st) => {
-          const checked = st.checklist_type === selected;
-          const otherTitle = !checked && st.checklist_type
-            ? CHECKLISTS.find((c) => c.id === st.checklist_type)?.title
-            : null;
+          const types = getChecklistTypesOf(st);
+          const checked = types.includes(selected);
+          // Các checklist KHÁC mà trạm đang thuộc (hiển thị để khỏi nhầm).
+          const otherTitles = types
+            .filter((c) => c !== selected)
+            .map((c) => CHECKLISTS.find((x) => x.id === c)?.title || c);
           return (
             <label
               key={st.name}
@@ -138,8 +146,10 @@ export default function ChecklistStationsPanel({ stations, client, onRefresh, fl
               </span>
               <span className="flex-1 min-w-0">
                 <span className="block font-semibold text-slate-800 dark:text-slate-100 truncate">{st.name}</span>
-                {otherTitle && (
-                  <span className="block text-xs text-amber-600 dark:text-amber-400">Đang thuộc: {otherTitle}</span>
+                {otherTitles.length > 0 && (
+                  <span className="block text-xs text-slate-400 dark:text-slate-500 truncate">
+                    Cũng thuộc: {otherTitles.join(", ")}
+                  </span>
                 )}
               </span>
             </label>

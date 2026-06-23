@@ -5,7 +5,7 @@ Bảo vệ bằng header X-Admin-Key khớp với ADMIN_SECRET env var.
 import hmac
 from flask import Blueprint, request, jsonify
 from config import SessionLocal, ADMIN_SECRET
-from models import Station, QrAlias, StationParam, ScanLog
+from models import Station, QrAlias, StationParam, ScanLog, resolve_checklist_list
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone, timedelta
 
@@ -101,10 +101,20 @@ def update_station(name):
             st.radius = int(data["radius"])
         if data.get("active") is not None:
             st.active = bool(data["active"])
-        if "checklist_type" in data:
-            # "" / None → gỡ gán; ngược lại chuẩn hoá về chữ thường.
+        # Gán checklist: ưu tiên checklist_types (list, đa giá trị). Giữ
+        # checklist_type (single) đồng bộ = phần tử đầu cho client/route cũ.
+        if "checklist_types" in data:
+            raw = data.get("checklist_types") or []
+            if not isinstance(raw, list):
+                raw = [raw]
+            cl = resolve_checklist_list(raw, None)
+            st.checklist_types = cl
+            st.checklist_type = cl[0] if cl else None
+        elif "checklist_type" in data:
+            # Backward compat: "" / None → gỡ gán; ngược lại chuẩn hoá chữ thường.
             ct = (data.get("checklist_type") or "").strip().lower()
             st.checklist_type = ct or None
+            st.checklist_types = [ct] if ct else []
         s.commit()
         s.refresh(st)
         return jsonify(st.to_dict())

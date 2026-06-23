@@ -40,9 +40,50 @@ class TestStationModel:
         st = Station(name="A", lat=1.0, lng=2.0)
         assert st.to_dict()["checklist_type"] is None
 
+    def test_to_dict_includes_checklist_types_list(self):
+        """Trạm thuộc NHIỀU checklist → checklist_types là danh sách."""
+        from models import Station
+        st = Station(name="A", lat=1.0, lng=2.0, checklist_types=["pump", "routine"])
+        assert st.to_dict()["checklist_types"] == ["pump", "routine"]
+        # checklist_type (single) giữ backward compat = phần tử đầu
+        assert st.to_dict()["checklist_type"] == "pump"
+
+    def test_to_dict_checklist_types_falls_back_to_single(self):
+        """Trạm cũ chỉ có checklist_type → checklist_types = [checklist_type]."""
+        from models import Station
+        st = Station(name="A", lat=1.0, lng=2.0, checklist_type="routine")
+        assert st.to_dict()["checklist_types"] == ["routine"]
+
+    def test_to_dict_checklist_types_empty_when_unassigned(self):
+        from models import Station
+        st = Station(name="A", lat=1.0, lng=2.0)
+        assert st.to_dict()["checklist_types"] == []
+
     def test_ensure_station_columns_none_engine_noop(self):
         from models import ensure_station_columns
         assert ensure_station_columns(None) is None
+
+
+class TestResolveChecklistList:
+    """resolve_checklist_list — chuẩn hoá danh sách checklist của 1 trạm
+    (lowercase, strip, bỏ rỗng, dedupe giữ thứ tự), fallback single-value."""
+
+    def test_list_normalized_and_deduped(self):
+        from models import resolve_checklist_list
+        assert resolve_checklist_list(["Pump", " routine ", "pump", ""], None) == ["pump", "routine"]
+
+    def test_falls_back_to_single_value(self):
+        from models import resolve_checklist_list
+        assert resolve_checklist_list(None, "Routine") == ["routine"]
+
+    def test_empty_list_wins_over_single(self):
+        """checklist_types là list rỗng (đã gỡ hết) → [] kể cả khi single còn giá trị cũ."""
+        from models import resolve_checklist_list
+        assert resolve_checklist_list([], "routine") == []
+
+    def test_none_and_none_returns_empty(self):
+        from models import resolve_checklist_list
+        assert resolve_checklist_list(None, None) == []
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +101,23 @@ class TestGetChecklistAssignments:
         with patch.object(sdb, "SessionLocal", _fake_sessionlocal(stations)):
             out = sdb.get_checklist_assignments()
         assert out == {"routine": ["LA-8111", "LA-9000"], "pump": ["PUMP_STATION_6"]}
+
+    def test_station_in_multiple_checklists(self):
+        """Trạm có checklist_types nhiều giá trị → xuất hiện trong mọi checklist đó."""
+        import services.stations_db as sdb
+        stations = [
+            SimpleNamespace(name="LA-8111", checklist_types=["routine", "safety"],
+                            checklist_type="routine", active=True),
+            SimpleNamespace(name="PUMP_STATION_6", checklist_types=["pump"],
+                            checklist_type="pump", active=True),
+        ]
+        with patch.object(sdb, "SessionLocal", _fake_sessionlocal(stations)):
+            out = sdb.get_checklist_assignments()
+        assert out == {
+            "routine": ["LA-8111"],
+            "safety": ["LA-8111"],
+            "pump": ["PUMP_STATION_6"],
+        }
 
     def test_no_db_returns_empty(self):
         import services.stations_db as sdb
@@ -142,3 +200,38 @@ class TestAdminSetChecklistType:
         with patch("routes.admin.ADMIN_SECRET", "test-secret"):
             resp = c.put("/api/admin/stations/LA-8111", json={"checklist_type": "routine"})
         assert resp.status_code == 401
+
+    def test_put_sets_multiple_checklist_types(self):
+        """PUT checklist_types (list) → trạm thuộc nhiều checklist; single sync = đầu list."""
+        station = self._station_mock()
+        sess = self._client_with_session(station)
+        with patch.object(cfg, "SessionLocal", None):
+            from app import app as flask_app
+            flask_app.config["TESTING"] = True
+            c = flask_app.test_client()
+        with patch("routes.admin.ADMIN_SECRET", "test-secret"), \
+             patch("routes.admin.SessionLocal", lambda: sess):
+            resp = c.put("/api/admin/stations/LA-8111",
+                         json={"checklist_types": ["Pump", "routine", "pump"]},
+                         headers={"X-Admin-Key": "test-secret"})
+        assert resp.status_code == 200
+        assert station.checklist_types == ["pump", "routine"]   # normalized + deduped
+        assert station.checklist_type == "pump"                  # backward-compat sync
+
+    def test_put_empty_list_clears_assignment(self):
+        station = self._station_mock()
+        station.checklist_type = "routine"
+        station.checklist_types = ["routine"]
+        sess = self._client_with_session(station)
+        with patch.object(cfg, "SessionLocal", None):
+            from app import app as flask_app
+            flask_app.config["TESTING"] = True
+            c = flask_app.test_client()
+        with patch("routes.admin.ADMIN_SECRET", "test-secret"), \
+             patch("routes.admin.SessionLocal", lambda: sess):
+            resp = c.put("/api/admin/stations/LA-8111",
+                         json={"checklist_types": []},
+                         headers={"X-Admin-Key": "test-secret"})
+        assert resp.status_code == 200
+        assert station.checklist_types == []
+        assert station.checklist_type is None

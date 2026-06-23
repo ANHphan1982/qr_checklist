@@ -95,11 +95,15 @@ def get_checklist_assignments() -> dict:
     if SessionLocal is None:
         return result
     try:
+        from models import resolve_checklist_list
         with SessionLocal() as s:
             rows = s.query(Station).filter(Station.active == True).all()
         for r in rows:
-            ct = getattr(r, "checklist_type", None)
-            if ct:
+            # Một trạm có thể thuộc nhiều checklist → xuất hiện dưới mỗi key.
+            for ct in resolve_checklist_list(
+                getattr(r, "checklist_types", None),
+                getattr(r, "checklist_type", None),
+            ):
                 result.setdefault(ct, []).append(r.name)
     except Exception as e:
         print(f"[stations_db] get_checklist_assignments DB error: {e}")
