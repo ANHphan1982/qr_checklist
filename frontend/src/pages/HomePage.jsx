@@ -5,14 +5,14 @@
 // Tối ưu Android: card bo lớn, ảnh/icon 64px, label rõ, progress bar,
 // search lọc nhanh, "Tiếp tục" để mở lại checklist hay dùng.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import { CHECKLIST_ART, IMAGE_ART } from "../components/ChecklistArt";
-import { getReports, getChecklistStations } from "../lib/api";
-import { exportToExcel } from "../lib/exportExcel";
+import { getReports, getChecklistStations, getStationParamConfigs } from "../lib/api";
+import { exportHistoryToExcel } from "../lib/exportExcel";
 import { getShiftAt } from "../lib/shifts";
-import { computeCoverage, buildChecklistShiftRows } from "../lib/checklistCoverage";
+import { computeCoverage, selectChecklistShiftLogs } from "../lib/checklistCoverage";
 import { getStationsFor } from "../lib/checklistStations";
 
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -116,6 +116,25 @@ export default function HomePage() {
   const [scans, setScans] = useState([]);
   // Mapping checklist → trạm đọc từ backend (đồng bộ mọi thiết bị, Hướng A).
   const [assignments, setAssignments] = useState({});
+  // paramConfigs: map station_name → cấu hình thông số — để Excel xuất ra có
+  // cột "Cảnh báo" giống trang Lịch sử (fallback localStorage khi offline).
+  const paramConfigsRef = useRef({});
+
+  useEffect(() => {
+    getStationParamConfigs()
+      .then((configs) => {
+        const map = {};
+        configs.forEach((c) => { map[c.station_name] = c; });
+        paramConfigsRef.current = map;
+      })
+      .catch(() => {
+        try {
+          paramConfigsRef.current = JSON.parse(
+            localStorage.getItem("qr_station_param_configs") || "{}"
+          );
+        } catch (_) {}
+      });
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -148,8 +167,10 @@ export default function HomePage() {
 
   const exportChecklist = (item) => {
     const stationNames = getStationsFor(assignments, item.id);
-    const rows = buildChecklistShiftRows(stationNames, scans, shift);
-    exportToExcel(rows, `${item.id}-${shift.id}.xlsx`, item.title.slice(0, 31));
+    // Lọc scan của checklist trong ca rồi xuất CÙNG cấu trúc với trang Lịch sử
+    // (đầy đủ GPS, route assessment, thông số, cảnh báo).
+    const logs = selectChecklistShiftLogs(stationNames, scans, shift);
+    exportHistoryToExcel(logs, `${item.id}-${shift.id}.xlsx`, paramConfigsRef.current);
   };
 
   // TODO: tiến độ thật theo từng checklist (localStorage / API)

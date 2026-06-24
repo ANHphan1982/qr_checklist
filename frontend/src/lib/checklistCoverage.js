@@ -46,6 +46,23 @@ export function computeCoverage(stationNames, scans, shift) {
   };
 }
 
+/**
+ * Lọc scan logs thuộc các trạm của 1 checklist, NẰM TRONG ca hiện tại, sắp xếp
+ * theo thời gian tăng dần. Giữ nguyên mọi lượt scan (không gộp 1 lần/trạm như
+ * computeCoverage) để xuất Excel cùng cấu trúc đầy đủ với trang Lịch sử.
+ *
+ * @param {string[]} stationNames - trạm thuộc checklist
+ * @param {Array} scans - scan logs (đã enrich từ /reports: route assessment, lat/lng…)
+ * @param {object} shift - từ getShiftAt
+ * @returns {Array} logs đã lọc + sắp xếp (giữ nguyên field gốc của từng log)
+ */
+export function selectChecklistShiftLogs(stationNames, scans, shift) {
+  const wanted = new Set(stationNames);
+  return (scans || [])
+    .filter((s) => wanted.has(s.location) && isWithinShift(new Date(s.scanned_at), shift))
+    .sort((a, b) => new Date(a.scanned_at) - new Date(b.scanned_at));
+}
+
 /** Dòng Excel: mỗi trạm 1 dòng — trạng thái kiểm tra trong ca + lần gần nhất. */
 export function buildChecklistShiftRows(stationNames, scans, shift) {
   const latest = latestInShift(stationNames, scans, shift);
