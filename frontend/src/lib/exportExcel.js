@@ -111,9 +111,26 @@ function buildParamEntries(log, paramConfigs) {
  * @param {Object} [paramConfigs] - map station_name → { param_low, param_high, ... }
  *   Nếu truyền vào, mỗi row sẽ có thêm cột "Cảnh báo" khi value ngoài giới hạn.
  */
-export function buildHistoryRows(logs, paramConfigs) {
+/**
+ * Link Google Maps tới vị trí scan để quản lý click kiểm tra vị trí nhân viên.
+ * @returns {string} URL hoặc "" nếu log không có lat/lng.
+ */
+export function gpsMapsUrl(log) {
+  const lat = log?.lat;
+  const lng = log?.lng;
+  if (lat == null || lng == null) return "";
+  return `https://maps.google.com/?q=${lat},${lng}`;
+}
+
+/**
+ * Dựng vừa rows (long format) vừa mảng log nguồn song song theo từng dòng —
+ * worksheet builder cần log nguồn để gắn hyperlink GPS đúng dòng (1 log có thể
+ * nở thành nhiều dòng theo số thông số).
+ */
+function buildHistoryRowsAndLogs(logs, paramConfigs) {
   const hasConfigs = paramConfigs != null;
   const rows = [];
+  const rowLogs = [];
 
   logs.forEach((log) => {
     const base = {
@@ -149,10 +166,15 @@ export function buildHistoryRows(logs, paramConfigs) {
 
       row["Email"] = log.email_sent ? "Đã gửi" : "Chưa gửi";
       rows.push(row);
+      rowLogs.push(log);
     });
   });
 
-  return rows;
+  return { rows, rowLogs };
+}
+
+export function buildHistoryRows(logs, paramConfigs) {
+  return buildHistoryRowsAndLogs(logs, paramConfigs).rows;
 }
 
 export function exportToExcel(rows, filename, sheetName = "Sheet1") {
@@ -169,36 +191,57 @@ function _numOrNull(v) {
 }
 
 /**
- * Xuất lịch sử (long format) với highlight đỏ cho giá trị ngoài giới hạn.
- * Out-of-range tính trực tiếp từ mỗi dòng (Giá trị vs Giới hạn dưới/trên).
+ * Dựng worksheet lịch sử với:
+ *  - highlight đỏ cho "Giá trị" ngoài giới hạn (Giá trị vs Giới hạn dưới/trên)
+ *  - hyperlink Google Maps trên cột "GPS" để click kiểm tra vị trí nhân viên
+ * @param {Array} logs
+ * @param {Object} [paramConfigs] - map station_name → { param_low, param_high }
+ * @returns {object} XLSX worksheet
+ */
+export function buildHistoryWorksheet(logs, paramConfigs = undefined) {
+  const { rows, rowLogs } = buildHistoryRowsAndLogs(logs, paramConfigs);
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  if (rows.length > 0) {
+    const headers = Object.keys(rows[0]);
+    const valColIdx = headers.indexOf("Giá trị");
+    const gpsColIdx = headers.indexOf("GPS");
+
+    rows.forEach((row, i) => {
+      // Màu đỏ cho cell "Giá trị" khi ngoài giới hạn
+      if (valColIdx >= 0) {
+        const val  = _numOrNull(row["Giá trị"]);
+        const low  = _numOrNull(row["Giới hạn dưới"]);
+        const high = _numOrNull(row["Giới hạn trên"]);
+        if (isOutOfRange(val, low, high)) {
+          const addr = XLSX.utils.encode_cell({ r: i + 1, c: valColIdx });
+          if (ws[addr]) ws[addr].s = { font: { color: { rgb: "CC0000" }, bold: true } };
+        }
+      }
+
+      // Hyperlink GPS → mở bản đồ tại vị trí scan (chỉ khi có lat/lng)
+      if (gpsColIdx >= 0) {
+        const url = gpsMapsUrl(rowLogs[i]);
+        if (url) {
+          const addr = XLSX.utils.encode_cell({ r: i + 1, c: gpsColIdx });
+          if (ws[addr]) ws[addr].l = { Target: url, Tooltip: "Mở vị trí GPS trên bản đồ" };
+        }
+      }
+    });
+  }
+
+  return ws;
+}
+
+/**
+ * Xuất lịch sử (long format) với highlight đỏ cho giá trị ngoài giới hạn và
+ * link bản đồ ở cột GPS.
  * @param {Array} logs
  * @param {string} filename
  * @param {Object} paramConfigs - map station_name → { param_low, param_high }
  */
 export function exportHistoryToExcel(logs, filename, paramConfigs = {}) {
-  const rows = buildHistoryRows(logs, paramConfigs);
-  const ws = XLSX.utils.json_to_sheet(rows);
-
-  // Áp dụng màu đỏ cho cell "Giá trị" khi ngoài giới hạn
-  if (rows.length > 0) {
-    const headers = Object.keys(rows[0]);
-    const valColIdx = headers.indexOf("Giá trị");
-
-    if (valColIdx >= 0) {
-      rows.forEach((row, i) => {
-        const val  = _numOrNull(row["Giá trị"]);
-        const low  = _numOrNull(row["Giới hạn dưới"]);
-        const high = _numOrNull(row["Giới hạn trên"]);
-        if (!isOutOfRange(val, low, high)) return;
-
-        const cellAddr = XLSX.utils.encode_cell({ r: i + 1, c: valColIdx });
-        if (ws[cellAddr]) {
-          ws[cellAddr].s = { font: { color: { rgb: "CC0000" }, bold: true } };
-        }
-      });
-    }
-  }
-
+  const ws = buildHistoryWorksheet(logs, paramConfigs);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Lịch sử");
   XLSX.writeFile(wb, filename, { cellStyles: true });

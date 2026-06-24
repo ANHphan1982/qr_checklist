@@ -232,13 +232,21 @@ class TestEmailConditions:
         assert result["status"] == "ok"
         dispatch.assert_called_once()
 
-    @pytest.mark.parametrize("geo_status", ["no_gps", "cached", "unverified"])
+    @pytest.mark.parametrize("geo_status", ["no_gps", "cached"])
     def test_non_out_of_range_geo_skips_email_when_alerts_only(self, geo_status):
-        """no_gps / cached / unverified KHÔNG còn là 'sai trạm' → không gửi email
+        """no_gps / cached KHÔNG phải bất thường → không gửi email
         (trừ khi route quá nhanh)."""
         result, dispatch = self._scan(geo_status=geo_status, alerts_only=True)
         assert result["status"] == "ok"
         dispatch.assert_not_called()
+
+    def test_unverified_emails_when_alerts_only(self):
+        """Trạm chưa cấu hình tọa độ GPS (unverified) → gửi email để quản lý biết
+        cần bổ sung tọa độ trạm / kiểm tra vị trí nhân viên. GPS có nhưng không thể
+        xác nhận phạm vi nên đây là tình huống cần chú ý."""
+        result, dispatch = self._scan(geo_status="unverified", alerts_only=True)
+        assert result["status"] == "ok"
+        dispatch.assert_called_once()
 
     def test_route_too_fast_emails_even_when_geo_ok(self):
         """Thời gian di chuyển giữa 2 trạm quá nhanh → gửi email dù geo_status ok."""

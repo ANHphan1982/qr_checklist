@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { buildStationsRows, buildAliasesRows, buildHistoryRows, isOutOfRange } from "../exportExcel";
+import * as XLSX from "xlsx";
+import {
+  buildStationsRows,
+  buildAliasesRows,
+  buildHistoryRows,
+  isOutOfRange,
+  gpsMapsUrl,
+  buildHistoryWorksheet,
+} from "../exportExcel";
 
 // ---------------------------------------------------------------------------
 // buildStationsRows
@@ -168,6 +176,76 @@ describe("buildHistoryRows", () => {
 
   it("returns empty array for empty input", () => {
     expect(buildHistoryRows([])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// gpsMapsUrl — link bản đồ từ lat/lng để kiểm tra vị trí nhân viên (TDD)
+// ---------------------------------------------------------------------------
+describe("gpsMapsUrl", () => {
+  it("dựng link Google Maps từ lat/lng", () => {
+    expect(gpsMapsUrl({ lat: 15.4088, lng: 108.8146 })).toBe(
+      "https://maps.google.com/?q=15.4088,108.8146"
+    );
+  });
+
+  it("trả '' khi thiếu lat", () => {
+    expect(gpsMapsUrl({ lat: null, lng: 108.8146 })).toBe("");
+  });
+
+  it("trả '' khi thiếu lng", () => {
+    expect(gpsMapsUrl({ lat: 15.4088, lng: undefined })).toBe("");
+  });
+
+  it("trả '' khi log rỗng", () => {
+    expect(gpsMapsUrl({})).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildHistoryWorksheet — cột GPS thành link click mở bản đồ (TDD)
+// ---------------------------------------------------------------------------
+describe("buildHistoryWorksheet — GPS hyperlink", () => {
+  const gpsCellOf = (ws, rowIdx) => {
+    const headers = XLSX.utils.sheet_to_json(ws, { header: 1 })[0];
+    const col = headers.indexOf("GPS");
+    return ws[XLSX.utils.encode_cell({ r: rowIdx + 1, c: col })];
+  };
+
+  it("gắn hyperlink Google Maps vào cell cột GPS khi có lat/lng", () => {
+    const logs = [{
+      id: 1, location: "TK-5201A", scanned_at: "2026-04-18T01:30:00.000Z",
+      device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true,
+      lat: 15.4088, lng: 108.8146,
+    }];
+    const ws = buildHistoryWorksheet(logs);
+    const cell = gpsCellOf(ws, 0);
+    expect(cell.l).toBeTruthy();
+    expect(cell.l.Target).toBe("https://maps.google.com/?q=15.4088,108.8146");
+  });
+
+  it("không gắn hyperlink khi thiếu lat/lng", () => {
+    const logs = [{
+      id: 2, location: "TK-5203C", scanned_at: "2026-04-18T08:00:00.000Z",
+      device_id: null, geo_status: "no_gps", geo_distance: null, email_sent: false,
+    }];
+    const ws = buildHistoryWorksheet(logs);
+    const cell = gpsCellOf(ws, 0);
+    expect(cell.l).toBeFalsy();
+  });
+
+  it("vẫn tô đỏ giá trị ngoài giới hạn (giữ hành vi cũ)", () => {
+    const logs = [{
+      id: 3, location: "PUMP_STATION_6", scanned_at: "2026-04-18T01:30:00.000Z",
+      device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true,
+      lat: 15.4, lng: 108.8,
+      param_values: [{ tag: "PG-1", label: "Seal", value: 0.6, unit: "bar", low: null, high: 0.5 }],
+    }];
+    const ws = buildHistoryWorksheet(logs, {});
+    const headers = XLSX.utils.sheet_to_json(ws, { header: 1 })[0];
+    const col = headers.indexOf("Giá trị");
+    const cell = ws[XLSX.utils.encode_cell({ r: 1, c: col })];
+    expect(cell.s.font.color.rgb).toBe("CC0000");
   });
 });
 

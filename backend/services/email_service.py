@@ -132,6 +132,9 @@ def send_scan_email(
             age_part = f" {age_min} phút trước" if age_min >= 1 else " <1 phút trước"
         dist_part = f", cách trạm {geo_distance:.0f}m" if geo_distance is not None else ""
         geo_info = f"📍 Vị trí cache (lấy{age_part}{dist_part})"
+    elif geo_status == "unverified":
+        dist_part = f" (cách trạm {geo_distance:.0f}m)" if geo_distance is not None else ""
+        geo_info = f"⚠️ Trạm chưa cấu hình tọa độ GPS{dist_part}"
     elif geo_status == "no_gps":
         geo_info = "⚠️ Không có GPS"
     else:
@@ -144,6 +147,8 @@ def send_scan_email(
         status_info = '<span style="color:#dc2626;">🚨 CẢNH BÁO: Không đúng vị trí trạm!</span>'
     elif geo_status == "cached":
         status_info = '<span style="color:#d97706;">📍 Đã check-in (vị trí từ cache, GPS không bắt được tại trạm)</span>'
+    elif geo_status == "unverified":
+        status_info = '<span style="color:#d97706;">⚠️ Đã check-in (trạm chưa cấu hình tọa độ — chưa xác nhận được vị trí)</span>'
     else:
         status_info = '<span style="color:#d97706;">⚠️ Đã check-in (không có GPS)</span>'
 

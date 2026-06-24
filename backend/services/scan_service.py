@@ -265,6 +265,11 @@ def process_scan(
     if not send_now:
         if geo_status == "out_of_range":
             send_now = True
+        elif geo_status == "unverified":
+            # Trạm chưa được cấu hình tọa độ GPS — không xác nhận được nhân viên
+            # có đứng tại trạm hay không. Gửi email để quản lý bổ sung tọa độ /
+            # kiểm tra vị trí khi cần.
+            send_now = True
         elif _is_route_too_fast(prev_location, prev_dt, location, dt):
             send_now = True
     if send_now:
