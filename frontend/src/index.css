@@ -107,6 +107,18 @@ button, a {
   100% { opacity: 1; transform: scale(1); }
 }
 
+/* Tôn trọng người dùng tắt hiệu ứng (tiền đình/say chuyển động): vô hiệu hóa
+   mọi animation + transition của Tailwind (animate-spin/pulse, transition-*,
+   active:scale...) — các .anim-* tùy biến đã nằm trong no-preference nên tự ẩn. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 html {
   font-size: 18px;
   transition: background-color 0.2s ease, color 0.2s ease;

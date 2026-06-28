@@ -5,32 +5,27 @@
 // Tối ưu Android: card bo lớn, ảnh/icon 64px, label rõ, progress bar,
 // search lọc nhanh, "Tiếp tục" để mở lại checklist hay dùng.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreadsheet, Mail, Loader2 } from "lucide-react";
+import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreadsheet, Mail, Loader2, RefreshCw, Info, X, QrCode, MapPin, WifiOff } from "lucide-react";
 import { CHECKLIST_ART, IMAGE_ART } from "../components/ChecklistArt";
+import { CHECKLISTS } from "../lib/checklists";
 import { getReports, getChecklistStations, getStationParamConfigs, emailChecklistExcel } from "../lib/api";
 import { exportHistoryToExcel, buildHistoryWorkbookBase64 } from "../lib/exportExcel";
 import { getShiftAt } from "../lib/shifts";
-import { computeCoverage, selectChecklistShiftLogs, checklistCardCounts } from "../lib/checklistCoverage";
+import { computeCoverage, selectChecklistShiftLogs, checklistCardCounts, summarizeCoverage } from "../lib/checklistCoverage";
 import { getStationsFor } from "../lib/checklistStations";
+import { saveRecentChecklist, loadRecentChecklist } from "../lib/recentChecklist";
+import { shouldShowOnboarding, markOnboardingSeen } from "../lib/onboarding";
+import { useToast } from "../components/ui/Toast";
+
+// Chỉ hiện ô tìm kiếm khi danh sách dài; ít mục thì search chỉ gây nhiễu.
+const SEARCH_MIN_ITEMS = 8;
 
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
 const toVnDate = (ms) => new Date(ms + VN_OFFSET_MS).toISOString().slice(0, 10);
 
-// ---------------------------------------------------------------------------
-// Định nghĩa các checklist — thay bằng nguồn dữ liệu thật của bạn.
-// `art` = id hình minh họa trong CHECKLIST_ART; `accent` = màu nhấn (progress,
-// icon, viền) theo từng loại.
-// ---------------------------------------------------------------------------
-const CHECKLISTS = [
-  { id: "pump",    title: "Pump Check List",       desc: "Kiểm tra bơm & động cơ",     stations: 6, items: 24, art: "pump",    accent: "blue"    },
-  { id: "tank",    title: "Tank Check List",       desc: "Bồn chứa, mức & rò rỉ",      stations: 4, items: 18, art: "tank",    accent: "cyan"    },
-  { id: "routine", title: "Routine Check List",    desc: "Tuần tra định kỳ hằng ngày", stations: 8, items: 32, art: "routine", accent: "emerald" },
-  { id: "valve",   title: "Valve Check List",      desc: "Van & đường ống",            stations: 5, items: 15, art: "valve",   accent: "violet"  },
-  { id: "safety",  title: "Safety Check List",     desc: "An toàn & PCCC",             stations: 7, items: 28, art: "safety",  accent: "amber"   },
-  { id: "elec",    title: "Electrical Check List", desc: "Tủ điện & nguồn",            stations: 3, items: 12, art: "elec",    accent: "red"     },
-];
+// CHECKLISTS chuyển sang lib/checklists.js để ScanPage & admin dùng chung.
 
 // Bảng class theo màu nhấn — tách rõ để Tailwind không bị purge (không nối chuỗi động).
 const ACCENT = {
@@ -56,6 +51,101 @@ function greeting() {
   if (h < 14) return "Chào buổi trưa";
   if (h < 18) return "Chào buổi chiều";
   return "Chào buổi tối";
+}
+
+// ---------------------------------------------------------------------------
+// ShiftOverviewCard — tổng quan tiến độ ca (đã/tổng trạm) + nút Làm mới
+// ---------------------------------------------------------------------------
+function ShiftOverviewCard({ shift, overview, refreshing, onRefresh }) {
+  const { totalStations, checkedStations, missingStations, allDone } = overview;
+  const pct = totalStations > 0 ? Math.round((checkedStations / totalStations) * 100) : 0;
+  return (
+    <div className={[
+      "rounded-2xl border px-4 py-3",
+      allDone
+        ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30"
+        : "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30",
+    ].join(" ")} role="status">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {allDone ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" aria-hidden />
+          ) : (
+            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" aria-hidden />
+          )}
+          <span className={[
+            "text-[13px] font-semibold truncate",
+            allDone ? "text-emerald-800 dark:text-emerald-300" : "text-amber-800 dark:text-amber-300",
+          ].join(" ")}>
+            {shift.label} · {allDone ? `Đã kiểm tra đủ ${totalStations} trạm` : `còn ${missingStations} trạm chưa kiểm tra`}
+          </span>
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label="Làm mới tiến độ"
+          className="w-9 h-9 flex-shrink-0 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 active:bg-black/5 dark:active:bg-white/5 disabled:opacity-60"
+        >
+          <RefreshCw className={["w-4 h-4", refreshing ? "animate-spin" : ""].join(" ")} aria-hidden />
+        </button>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <div className="flex-1 h-1.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+          <div
+            className={["h-full rounded-full transition-all", allDone ? "bg-emerald-500" : "bg-amber-500"].join(" ")}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <span className="text-[12px] font-semibold tabular-nums text-slate-500 dark:text-slate-400 flex-shrink-0">
+          {checkedStations}/{totalStations}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OnboardingCard — 3 mẹo nhanh cho người dùng lần đầu
+// ---------------------------------------------------------------------------
+const TIPS = [
+  { Icon: QrCode,  text: "Chọn checklist rồi quét QR tại từng trạm để check-in." },
+  { Icon: MapPin,  text: "Bật GPS giúp xác thực bạn có mặt đúng trạm." },
+  { Icon: WifiOff, text: "Mất mạng vẫn quét được — app tự đồng bộ khi có mạng lại." },
+];
+
+function OnboardingCard({ onDismiss }) {
+  return (
+    <div className="relative rounded-2xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 px-4 py-3.5">
+      <button
+        onClick={onDismiss}
+        aria-label="Đã hiểu, đóng hướng dẫn"
+        className="absolute top-2.5 right-2.5 w-8 h-8 rounded-lg flex items-center justify-center text-blue-500/70 active:bg-blue-100 dark:active:bg-blue-500/20"
+      >
+        <X className="w-4.5 h-4.5" aria-hidden />
+      </button>
+      <div className="flex items-center gap-1.5 text-[13px] font-bold text-blue-800 dark:text-blue-300 mb-2.5">
+        <Info className="w-4 h-4 flex-shrink-0" aria-hidden />
+        Cách dùng nhanh
+      </div>
+      <ul className="flex flex-col gap-2">
+        {TIPS.map(({ Icon, text }, i) => (
+          <li key={i} className="flex items-start gap-2.5 text-[13px] text-blue-900/90 dark:text-blue-200">
+            <Icon className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-500" aria-hidden />
+            <span>{text}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ShiftOverviewSkeleton() {
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 animate-pulse">
+      <div className="h-4 w-2/3 rounded bg-slate-200 dark:bg-slate-700" />
+      <div className="mt-3 h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-700" />
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +199,10 @@ function ChecklistCard({ item, progress = 0, total = item.stations, onClick }) {
 // ---------------------------------------------------------------------------
 export default function HomePage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [query, setQuery] = useState("");
+  const [showTips, setShowTips] = useState(() => shouldShowOnboarding());
+  const dismissTips = () => { markOnboardingSeen(); setShowTips(false); };
 
   // Ca hiện tại + scan trong ca → biết trạm nào chưa kiểm tra (≥1 lần/ca).
   const [shift] = useState(() => getShiftAt(new Date()));
@@ -136,22 +229,32 @@ export default function HomePage() {
       });
   }, []);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      // Ca đêm vắt qua nửa đêm → có thể cần cả ngày hôm trước. Lấy mọi ngày VN
-      // trong khoảng [đầu ca, hiện tại], gộp logs. Lỗi mạng → bỏ qua (offline-safe).
-      const dates = Array.from(new Set([toVnDate(shift.startMs), toVnDate(Date.now())]));
+  // loading: chỉ true ở lần tải đầu (chưa có dữ liệu) → hiện skeleton, tránh
+  // layout shift. Lần "Làm mới" sau đó dùng refreshing để không nháy skeleton.
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const loadedOnceRef = useRef(false);
+
+  const fetchCoverage = useCallback(async () => {
+    if (loadedOnceRef.current) setRefreshing(true);
+    // Ca đêm vắt qua nửa đêm → có thể cần cả ngày hôm trước. Lấy mọi ngày VN
+    // trong khoảng [đầu ca, hiện tại], gộp logs. Lỗi mạng → bỏ qua (offline-safe).
+    const dates = Array.from(new Set([toVnDate(shift.startMs), toVnDate(Date.now())]));
+    try {
       const [reportResults, assignMap] = await Promise.all([
         Promise.all(dates.map((d) => getReports(d).catch(() => null))),
         getChecklistStations().catch(() => ({})),
       ]);
-      if (!alive) return;
       setScans(reportResults.filter(Boolean).flatMap((r) => r.logs || []));
       setAssignments(assignMap);
-    })();
-    return () => { alive = false; };
+    } finally {
+      loadedOnceRef.current = true;
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, [shift]);
+
+  useEffect(() => { fetchCoverage(); }, [fetchCoverage]);
 
   // Coverage theo từng checklist (chỉ tính checklist đã gán trạm).
   const coverageMap = useMemo(() => {
@@ -162,8 +265,6 @@ export default function HomePage() {
     }
     return map;
   }, [assignments, scans, shift]);
-
-  const missingTotal = Object.values(coverageMap).reduce((sum, c) => sum + c.missingCount, 0);
 
   // Trạng thái gửi email theo từng checklist: undefined|"sending"|"sent"|"error"
   const [emailState, setEmailState] = useState({});
@@ -176,7 +277,9 @@ export default function HomePage() {
   };
 
   const exportChecklist = (item) => {
-    exportHistoryToExcel(checklistLogs(item), `${item.id}-${shift.id}.xlsx`, paramConfigsRef.current);
+    const logs = checklistLogs(item);
+    exportHistoryToExcel(logs, `${item.id}-${shift.id}.xlsx`, paramConfigsRef.current);
+    toast.success(`Đã tạo file Excel ${item.title} (${logs.length} lượt)`);
   };
 
   // Gửi email kèm file Excel checklist cho quản lý. Dựng cùng workbook với nút
@@ -193,14 +296,16 @@ export default function HomePage() {
         fileBase64,
       });
       setEmailState((s) => ({ ...s, [item.id]: "sent" }));
+      toast.success(`Đã gửi email checklist ${item.title}`);
     } catch (_) {
       setEmailState((s) => ({ ...s, [item.id]: "error" }));
+      toast.error(`Gửi email ${item.title} thất bại — thử lại`);
     }
   };
 
-  // TODO: id checklist đã mở gần đây
-  const recentId = "routine";
-  const recent = CHECKLISTS.find((c) => c.id === recentId);
+  // Checklist mở gần nhất (thật, từ localStorage) — ẩn thẻ nếu chưa từng mở.
+  const [recentId] = useState(() => loadRecentChecklist());
+  const recent = recentId ? CHECKLISTS.find((c) => c.id === recentId) : null;
   const RecentArt = recent ? CHECKLIST_ART[recent.art] : null;
   // Tiến độ thật của checklist "Tiếp tục" — khớp coverage trong ca.
   const recentCounts = checklistCardCounts(
@@ -208,6 +313,10 @@ export default function HomePage() {
     recent ? recent.stations : 0
   );
 
+  // Tổng quan ca: gộp coverage mọi checklist đã gán trạm.
+  const overview = useMemo(() => summarizeCoverage(coverageMap), [coverageMap]);
+
+  const showSearch = CHECKLISTS.length >= SEARCH_MIN_ITEMS;
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return CHECKLISTS;
@@ -216,7 +325,10 @@ export default function HomePage() {
     );
   }, [query]);
 
-  const go = (item) => navigate(`/scan/${item.id}`);
+  const go = (item) => {
+    saveRecentChecklist(item.id);
+    navigate(`/scan/${item.id}`);
+  };
 
   return (
     <div className="max-w-md mx-auto flex flex-col gap-5 py-1">
@@ -233,29 +345,37 @@ export default function HomePage() {
         </p>
       </div>
 
-      {/* Cảnh báo ca: còn trạm chưa kiểm tra trong ca hiện tại */}
-      {missingTotal > 0 && (
-        <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-4 py-3" role="alert">
-          <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" aria-hidden />
-          <div className="text-[13px] text-amber-800 dark:text-amber-300">
-            <span className="font-bold">{shift.label}</span> — còn{" "}
-            <span className="font-bold">{missingTotal}</span> trạm chưa được kiểm tra. Hãy quét đủ mỗi trạm tối thiểu 1 lần/ca.
-          </div>
-        </div>
+      {/* Hướng dẫn lần đầu — chỉ hiện ở lần mở app đầu tiên */}
+      {showTips && <OnboardingCard onDismiss={dismissTips} />}
+
+      {/* Tổng quan ca — skeleton khi tải lần đầu, sau đó hiện tiến độ + nút Làm mới */}
+      {loading ? (
+        <ShiftOverviewSkeleton />
+      ) : (
+        overview.hasData && (
+          <ShiftOverviewCard
+            shift={shift}
+            overview={overview}
+            refreshing={refreshing}
+            onRefresh={fetchCoverage}
+          />
+        )
       )}
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Tìm checklist…"
-          aria-label="Tìm checklist"
-          className="w-full min-h-[52px] pl-12 pr-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-        />
-      </div>
+      {/* Search — chỉ hiện khi danh sách dài */}
+      {showSearch && (
+        <div className="relative">
+          <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Tìm checklist…"
+            aria-label="Tìm checklist"
+            className="w-full min-h-[52px] pl-12 pr-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+          />
+        </div>
+      )}
 
       {/* Tiếp tục gần đây */}
       {recent && !query && (

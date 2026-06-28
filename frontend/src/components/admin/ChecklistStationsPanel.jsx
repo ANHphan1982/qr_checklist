@@ -8,7 +8,7 @@
 
 import { useMemo, useState } from "react";
 import { ListChecks, Search, Check } from "lucide-react";
-import { CHECKLISTS } from "../../pages/HomePage";
+import { CHECKLISTS } from "../../lib/checklists";
 import { getChecklistTypesOf } from "../../lib/checklistStations";
 
 export default function ChecklistStationsPanel({ stations, client, onRefresh, flash }) {

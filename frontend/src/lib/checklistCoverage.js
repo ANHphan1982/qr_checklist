@@ -63,6 +63,30 @@ export function checklistCardCounts(cov, fallbackTotal = 0) {
 }
 
 /**
+ * Tổng hợp coverage của NHIỀU checklist (map id → {total, missingCount}) thành
+ * số liệu cho thẻ tổng quan ca ở HomePage.
+ *
+ * @param {Object<string,{total:number, missingCount:number}>} coverageMap
+ * @returns {{totalStations, checkedStations, missingStations, allDone, hasData}}
+ */
+export function summarizeCoverage(coverageMap) {
+  const list = Object.values(coverageMap || {});
+  let totalStations = 0;
+  let missingStations = 0;
+  for (const c of list) {
+    totalStations += c.total || 0;
+    missingStations += c.missingCount || 0;
+  }
+  return {
+    totalStations,
+    missingStations,
+    checkedStations: totalStations - missingStations,
+    allDone: list.length > 0 && missingStations === 0,
+    hasData: list.length > 0,
+  };
+}
+
+/**
  * Lọc scan logs thuộc các trạm của 1 checklist, NẰM TRONG ca hiện tại, sắp xếp
  * theo thời gian tăng dần. Giữ nguyên mọi lượt scan (không gộp 1 lần/trạm như
  * computeCoverage) để xuất Excel cùng cấu trúc đầy đủ với trang Lịch sử.

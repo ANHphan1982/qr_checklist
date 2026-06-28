@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useParams } from "react-router-dom";
 import { QRScanner } from "../components/QRScanner";
 import ScanResult from "../components/ScanResult";
-import { postScan, postQueuedScan, pingServer, checkConnectivity } from "../lib/api";
+import { postScan, postQueuedScan, pingServer, checkConnectivity, getReports, getChecklistStations } from "../lib/api";
+import { getShiftAt } from "../lib/shifts";
+import { buildScanChecklistInfo } from "../lib/scanChecklist";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loadLastFix } from "../lib/geolocation";
 import { enqueue, flushQueue, queueSize, clearQueue, updateLastItem, hasQueueItem, updateItemByQueuedAt } from "../lib/offlineQueue";
@@ -16,7 +19,7 @@ import { resolveStatusBanner } from "../lib/statusBanner";
 import { resolveButtonState } from "../lib/buttonState";
 import { resolveStepDisplay } from "../lib/stepDisplay";
 import { triggerVibration } from "../lib/haptics";
-import { Camera, Square, Clock, Trash2, PlugZap, Satellite, UploadCloud } from "lucide-react";
+import { Camera, Square, Clock, Trash2, PlugZap, Satellite, UploadCloud, MapPin, HelpCircle, X } from "lucide-react";
 import Button from "../components/ui/Button";
 import Banner from "../components/ui/Banner";
 /**
@@ -85,6 +88,38 @@ export default function ScanPage() {
   const [connTest, setConnTest]   = useState(null);  // { ok, detail } — kết quả test kết nối
   const [isTestingConn, setIsTestingConn] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [gpsHelpOpen, setGpsHelpOpen] = useState(false);
+
+  // --- Ngữ cảnh checklist đang quét (header + danh sách trạm còn thiếu) ---
+  // type lấy từ URL /scan/:type. Tải mapping trạm + scan trong ca để biết còn
+  // trạm nào chưa check-in. Lỗi mạng → bỏ qua (offline-safe), header gọn lại.
+  const { type } = useParams();
+  const [shift] = useState(() => getShiftAt(new Date()));
+  const [scans, setScans] = useState([]);
+  const [assignments, setAssignments] = useState({});
+
+  const refreshChecklistData = useCallback(async () => {
+    const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+    const toVnDate = (ms) => new Date(ms + VN_OFFSET_MS).toISOString().slice(0, 10);
+    const dates = Array.from(new Set([toVnDate(shift.startMs), toVnDate(Date.now())]));
+    try {
+      const [reportResults, assignMap] = await Promise.all([
+        Promise.all(dates.map((d) => getReports(d).catch(() => null))),
+        getChecklistStations().catch(() => ({})),
+      ]);
+      setScans(reportResults.filter(Boolean).flatMap((r) => r.logs || []));
+      setAssignments(assignMap);
+    } catch (_) {
+      /* offline-safe — giữ nguyên dữ liệu hiện có */
+    }
+  }, [shift]);
+
+  useEffect(() => { refreshChecklistData(); }, [refreshChecklistData]);
+
+  const checklistInfo = useMemo(
+    () => buildScanChecklistInfo(type, assignments, scans, shift),
+    [type, assignments, scans, shift]
+  );
 
   // GPS watch: chạy liên tục từ lúc mount để giữ chip GPS warm.
   // latestGpsRef = fix gần nhất {lat,lng,accuracy,ts} | null
@@ -520,6 +555,11 @@ export default function ScanPage() {
   // Computed
   // ---------------------------------------------------------------------------
 
+  // Sau khi check-in xong, cập nhật lại danh sách trạm còn thiếu của checklist.
+  useEffect(() => {
+    if (step === "done") refreshChecklistData();
+  }, [step, refreshChecklistData]);
+
   const isScanning = step === "scanning";
   const isParams = step === "params";
 
@@ -536,13 +576,36 @@ export default function ScanPage() {
   return (
     <div className="flex flex-col gap-5 w-full">
 
-      {/* Header */}
+      {/* Header — hiện checklist đang quét + tiến độ ca nếu biết ngữ cảnh */}
       <div className="text-center">
-        <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">Quét QR Check-in</h1>
-        <p className="text-base text-slate-500 dark:text-slate-400 mt-1">
-          Hướng camera vào mã QR tại trạm kiểm tra
-        </p>
+        <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">
+          {checklistInfo ? checklistInfo.title : "Quét QR Check-in"}
+        </h1>
+        {checklistInfo && checklistInfo.hasAssignments ? (
+          <p className="text-base text-slate-500 dark:text-slate-400 mt-1">
+            {checklistInfo.allDone ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                ✓ Đã kiểm tra đủ {checklistInfo.total} trạm trong ca
+              </span>
+            ) : (
+              <>
+                Đã quét <span className="font-semibold text-slate-700 dark:text-slate-200">{checklistInfo.checkedCount}/{checklistInfo.total}</span> trạm ·
+                còn <span className="font-semibold text-amber-600 dark:text-amber-400">{checklistInfo.missing.length}</span> trạm
+              </>
+            )}
+          </p>
+        ) : (
+          <p className="text-base text-slate-500 dark:text-slate-400 mt-1">
+            Hướng camera vào mã QR tại trạm kiểm tra
+          </p>
+        )}
       </div>
+
+      {/* Danh sách trạm còn thiếu của checklist — để nhân viên biết đi trạm nào tiếp.
+          Ẩn khi đang nhập thông số để không che modal. */}
+      {checklistInfo?.hasAssignments && checklistInfo.missing.length > 0 && !isParams && (
+        <MissingStations stations={checklistInfo.missing} />
+      )}
 
       {/* Smart status banner — 1 block thay 5 banners */}
       {banner && <StatusBanner banner={banner} />}
@@ -648,7 +711,8 @@ export default function ScanPage() {
         />
       )}
 
-      {/* Unified action button — loading state từ step hiện tại */}
+      {/* Unified action button — loading state từ step hiện tại.
+          Khi xong + checklist còn trạm thiếu → nhãn rõ "Quét trạm tiếp theo". */}
       {btnState.show && (
         <Button
           size="xl"
@@ -659,16 +723,106 @@ export default function ScanPage() {
           data-scan-btn
           className="w-full"
         >
-          {btnState.label}
+          {step === "done" && checklistInfo?.hasAssignments && checklistInfo.missing.length > 0
+            ? `Quét trạm tiếp theo (còn ${checklistInfo.missing.length})`
+            : btnState.label}
         </Button>
       )}
 
       {/* Step progress bar — ẩn khi idle/done */}
       <StepProgressBar stepDisplay={stepDisplay} />
 
-      <p className="text-center text-sm text-slate-400 dark:text-slate-500">
+      <p className="text-center text-sm text-slate-400 dark:text-slate-500 flex items-center justify-center gap-1.5 flex-wrap">
         Yêu cầu HTTPS · Camera · GPS giúp xác thực vị trí
+        <button
+          onClick={() => setGpsHelpOpen(true)}
+          className="inline-flex items-center gap-1 text-blue-500 dark:text-blue-400 font-semibold active:opacity-70 min-h-[44px] px-1"
+        >
+          <HelpCircle className="w-4 h-4" aria-hidden />
+          Trạng thái GPS nghĩa là gì?
+        </button>
       </p>
+
+      <GpsHelpDialog open={gpsHelpOpen} onClose={() => setGpsHelpOpen(false)} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GpsHelpDialog — giải thích các trạng thái GPS bằng tiếng Việt dễ hiểu
+// ---------------------------------------------------------------------------
+
+const GPS_STATUS_HELP = [
+  { dot: "bg-emerald-500", title: "Đúng trạm",          desc: "GPS xác nhận bạn đứng trong phạm vi trạm — check-in hợp lệ." },
+  { dot: "bg-red-500",     title: "Ngoài phạm vi",       desc: "GPS cho thấy bạn ở xa trạm. Lượt quét vẫn lưu nhưng được đánh dấu cảnh báo." },
+  { dot: "bg-amber-500",   title: "Vị trí lưu tạm",      desc: "Chip GPS không bắt được tại chỗ nên dùng vị trí lấy gần đây — chưa chắc chắn." },
+  { dot: "bg-slate-400",   title: "Chưa xác thực vị trí", desc: "Có GPS nhưng trạm chưa cấu hình tọa độ nên không so sánh được." },
+  { dot: "bg-slate-400",   title: "Không có GPS",        desc: "Thiết bị chưa bắt được tín hiệu GPS. Hãy ra gần cửa sổ / ngoài trời." },
+];
+
+function GpsHelpDialog({ open, onClose }) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="gps-help-title"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-800 shadow-xl p-5 flex flex-col gap-3 anim-card-in max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 id="gps-help-title" className="text-lg font-bold text-slate-800 dark:text-slate-100">
+            Trạng thái GPS
+          </h2>
+          <button
+            onClick={onClose}
+            aria-label="Đóng"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 active:bg-slate-100 dark:active:bg-slate-700"
+          >
+            <X className="w-5 h-5" aria-hidden />
+          </button>
+        </div>
+        <ul className="flex flex-col gap-3">
+          {GPS_STATUS_HELP.map((s) => (
+            <li key={s.title} className="flex items-start gap-2.5">
+              <span className={["w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0", s.dot].join(" ")} aria-hidden />
+              <div>
+                <div className="text-[14px] font-semibold text-slate-800 dark:text-slate-100">{s.title}</div>
+                <div className="text-[13px] text-slate-500 dark:text-slate-400">{s.desc}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MissingStations — chip các trạm chưa check-in trong ca của checklist hiện tại
+// ---------------------------------------------------------------------------
+
+function MissingStations({ stations }) {
+  return (
+    <div className="rounded-2xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
+      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-amber-800 dark:text-amber-300 mb-2">
+        <MapPin className="w-4 h-4 flex-shrink-0" aria-hidden />
+        Còn {stations.length} trạm chưa kiểm tra trong ca
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {stations.map((name) => (
+          <span
+            key={name}
+            className="text-[12px] font-medium px-2 py-1 rounded-lg bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30"
+          >
+            {name}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

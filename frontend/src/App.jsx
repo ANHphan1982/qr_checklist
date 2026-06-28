@@ -7,6 +7,7 @@ import HistoryPage from "./pages/HistoryPage";
 import StationDisplayPage from "./pages/StationDisplayPage";
 import AdminPage from "./pages/AdminPage";
 import MdmCheckPage from "./pages/MdmCheckPage";
+import { ToastProvider } from "./components/ui/Toast";
 
 // ---------------------------------------------------------------------------
 // PWA display mode hook — thêm class pwa-mode lên <html> khi chạy standalone
@@ -275,6 +276,7 @@ export default function App() {
   const showBanner = canInstall && !bannerDismissed;
 
   return (
+    <ToastProvider>
     <BrowserRouter>
       <Routes>
         {/* Trang màn hình trạm — fullscreen, không có chrome */}
@@ -305,5 +307,6 @@ export default function App() {
         />
       </Routes>
     </BrowserRouter>
+    </ToastProvider>
   );
 }
