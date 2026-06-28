@@ -9,6 +9,7 @@ import {
   computeCoverage,
   buildChecklistShiftRows,
   selectChecklistShiftLogs,
+  checklistCardCounts,
 } from "../checklistCoverage";
 import { buildHistoryRows } from "../exportExcel";
 
@@ -19,6 +20,27 @@ const dayShift = getShiftAt(utc("2026-06-22T03:00:00")); // ca ngày 22/6 (VN 06
 const scanA = { location: "A", scanned_at: "2026-06-22T03:00:00Z" };
 // scan NGOÀI ca (VN 05:00 — ca đêm trước) cho trạm B
 const scanBoutside = { location: "B", scanned_at: "2026-06-21T22:00:00Z" };
+
+describe("checklistCardCounts — số hiển thị trên thẻ checklist", () => {
+  it("dùng coverage thật (checked/total) khi có cov — KHỚP với dòng cảnh báo", () => {
+    // Pump: 13 trạm gán thật, mới kiểm tra 0 → thẻ phải hiện 0/13, không phải 2/6
+    const cov = computeCoverage(["A", "B", "C"], [scanA], dayShift); // checked=1, total=3
+    expect(checklistCardCounts(cov, 6)).toEqual({ checked: 1, total: 3 });
+  });
+
+  it("checked = total - missingCount", () => {
+    const cov = computeCoverage(["A", "B", "C"], [], dayShift); // checked=0, total=3
+    expect(checklistCardCounts(cov, 6)).toEqual({ checked: 0, total: 3 });
+  });
+
+  it("dùng fallbackTotal và checked=0 khi chưa có coverage (chưa gán trạm)", () => {
+    expect(checklistCardCounts(undefined, 6)).toEqual({ checked: 0, total: 6 });
+  });
+
+  it("fallbackTotal mặc định 0 khi không truyền", () => {
+    expect(checklistCardCounts(null)).toEqual({ checked: 0, total: 0 });
+  });
+});
 
 describe("computeCoverage", () => {
   it("phân loại trạm đã kiểm tra vs còn thiếu trong ca", () => {

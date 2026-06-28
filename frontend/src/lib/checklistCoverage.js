@@ -47,6 +47,22 @@ export function computeCoverage(stationNames, scans, shift) {
 }
 
 /**
+ * Số hiển thị trên thẻ checklist ở HomePage (đã kiểm tra / tổng trạm).
+ * ƯU TIÊN coverage thật (`cov`) để KHỚP với dòng cảnh báo bên dưới thẻ. Chỉ khi
+ * chưa có coverage (checklist chưa gán trạm) mới dùng `fallbackTotal` của catalog.
+ *
+ * @param {{total:number, missingCount:number}|null|undefined} cov - từ computeCoverage
+ * @param {number} [fallbackTotal=0] - tổng trạm tĩnh khi chưa có coverage
+ * @returns {{checked:number, total:number}}
+ */
+export function checklistCardCounts(cov, fallbackTotal = 0) {
+  if (cov) {
+    return { checked: cov.total - cov.missingCount, total: cov.total };
+  }
+  return { checked: 0, total: fallbackTotal };
+}
+
+/**
  * Lọc scan logs thuộc các trạm của 1 checklist, NẰM TRONG ca hiện tại, sắp xếp
  * theo thời gian tăng dần. Giữ nguyên mọi lượt scan (không gộp 1 lần/trạm như
  * computeCoverage) để xuất Excel cùng cấu trúc đầy đủ với trang Lịch sử.

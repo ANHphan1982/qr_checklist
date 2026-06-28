@@ -12,7 +12,7 @@ import { CHECKLIST_ART, IMAGE_ART } from "../components/ChecklistArt";
 import { getReports, getChecklistStations, getStationParamConfigs, emailChecklistExcel } from "../lib/api";
 import { exportHistoryToExcel, buildHistoryWorkbookBase64 } from "../lib/exportExcel";
 import { getShiftAt } from "../lib/shifts";
-import { computeCoverage, selectChecklistShiftLogs } from "../lib/checklistCoverage";
+import { computeCoverage, selectChecklistShiftLogs, checklistCardCounts } from "../lib/checklistCoverage";
 import { getStationsFor } from "../lib/checklistStations";
 
 const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -61,10 +61,10 @@ function greeting() {
 // ---------------------------------------------------------------------------
 // Checklist card — tap toàn thẻ
 // ---------------------------------------------------------------------------
-function ChecklistCard({ item, progress = 0, onClick }) {
+function ChecklistCard({ item, progress = 0, total = item.stations, onClick }) {
   const Art = CHECKLIST_ART[item.art];
-  const pct = Math.min(100, Math.round((progress / item.stations) * 100));
-  const done = pct === 100;
+  const pct = total > 0 ? Math.min(100, Math.round((progress / total) * 100)) : 0;
+  const done = total > 0 && pct === 100;
   return (
     <button
       onClick={onClick}
@@ -94,7 +94,7 @@ function ChecklistCard({ item, progress = 0, onClick }) {
             <div className={["h-full rounded-full transition-all", ACCENT[item.accent].bar].join(" ")} style={{ width: `${pct}%` }} />
           </div>
           <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500 tabular-nums flex-shrink-0">
-            {progress}/{item.stations} trạm
+            {progress}/{total} trạm
           </span>
         </div>
       </div>
@@ -198,12 +198,15 @@ export default function HomePage() {
     }
   };
 
-  // TODO: tiến độ thật theo từng checklist (localStorage / API)
-  const progressMap = { pump: 2, tank: 0, routine: 5, valve: 1, safety: 0, elec: 0 };
   // TODO: id checklist đã mở gần đây
   const recentId = "routine";
   const recent = CHECKLISTS.find((c) => c.id === recentId);
   const RecentArt = recent ? CHECKLIST_ART[recent.art] : null;
+  // Tiến độ thật của checklist "Tiếp tục" — khớp coverage trong ca.
+  const recentCounts = checklistCardCounts(
+    recent ? coverageMap[recent.id] : null,
+    recent ? recent.stations : 0
+  );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -271,7 +274,7 @@ export default function HomePage() {
             </div>
             <div className="text-[17px] font-bold truncate">{recent.title}</div>
             <div className="text-[13px] text-blue-100 mt-0.5">
-              {progressMap[recent.id]}/{recent.stations} trạm đã quét
+              {recentCounts.checked}/{recentCounts.total} trạm đã quét
             </div>
           </div>
           <ChevronRight className="relative w-6 h-6 text-white/80 flex-shrink-0" aria-hidden />
@@ -292,11 +295,15 @@ export default function HomePage() {
       <div className="flex flex-col gap-3">
         {filtered.map((item) => {
           const cov = coverageMap[item.id];
+          // Số trên thẻ lấy từ coverage thật → khớp dòng cảnh báo bên dưới
+          // (tránh "2/6 trạm" giả mâu thuẫn với "Còn 13/13 trạm chưa kiểm tra").
+          const counts = checklistCardCounts(cov, item.stations);
           return (
             <div key={item.id} className="flex flex-col gap-1.5">
               <ChecklistCard
                 item={item}
-                progress={progressMap[item.id] || 0}
+                progress={counts.checked}
+                total={counts.total}
                 onClick={() => go(item)}
               />
               {cov && (
