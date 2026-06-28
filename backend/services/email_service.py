@@ -186,6 +186,56 @@ def send_scan_email(
     return _send_via_resend(params)
 
 
+CHECKLIST_EMAIL_TEMPLATE = """
+<div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto;">
+  <h2 style="color: #16a34a; margin-bottom: 12px;">📋 Báo Cáo Checklist</h2>
+  <p style="font-size: 14px; color: #374151; margin: 0 0 16px;">
+    File Excel checklist được đính kèm trong email này để hoàn thành / lưu hồ sơ.
+  </p>
+  <p style="color: #6b7280; font-size: 11px; margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 12px;">
+    Gửi tự động bởi hệ thống QR Checklist
+  </p>
+</div>
+"""
+
+
+def send_checklist_excel_email(
+    subject: str,
+    filename: str,
+    file_base64: str,
+) -> tuple[bool, str]:
+    """Gửi email kèm file Excel checklist (đính kèm).
+
+    `file_base64` là nội dung file .xlsx đã mã hóa base64 (do frontend dựng).
+    Trả về (ok, error_message); error_message = "" nếu thành công.
+    """
+    if not RESEND_API_KEY:
+        msg = "RESEND_API_KEY chưa cấu hình"
+        print(f"[email] {msg}")
+        return False, msg
+
+    to_list = _recipients()
+    if not to_list:
+        msg = "EMAIL_TO chưa cấu hình"
+        print(f"[email] {msg}")
+        return False, msg
+
+    if not file_base64:
+        return False, "Thiếu nội dung file đính kèm"
+
+    params: resend.Emails.SendParams = {
+        "from": EMAIL_FROM,
+        "to": to_list,
+        "subject": subject,
+        "html": CHECKLIST_EMAIL_TEMPLATE,
+        "attachments": [
+            {"filename": filename, "content": file_base64}
+        ],
+    }
+
+    return _send_via_resend(params)
+
+
 def _format_breach_row(b: dict) -> str:
     """Một dòng <tr> mô tả thông số vượt ngưỡng (giá trị đỏ + mũi tên hướng vượt)."""
     label = b.get("label") or b.get("tag") or "Thông số"

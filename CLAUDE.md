@@ -146,6 +146,7 @@ BẤT KỲ bản ghi DB nào thì DB nắm toàn quyền trạm đó (kể cả 
 | `GET /api/reports?date=YYYY-MM-DD` | Logs theo ngày (giờ VN) + route assessment theo device |
 | `GET /api/dashboard?days=7` | Analytics tổng hợp N ngày gần nhất (mặc định 7, clamp 1..90): `heatmap` (24 giờ VN), `geo` (phân bố geo_status + out_of_range_rate), `stations` (sort theo total), `param_trends` (xu hướng từng thông số + breaches). UI chỉ hiện trong AdminPage (tab Thống kê), không phải tab app thường |
 | `GET /api/checklist-stations` | Mapping checklist → [tên trạm] từ `stations.checklist_types` (public). Một trạm có thể thuộc NHIỀU checklist → xuất hiện dưới mỗi key. Mọi thiết bị đọc chung → cảnh báo "đủ 1 lần/ca" giống nhau. Gán/gỡ bằng PUT `/api/admin/stations/<name>` với field `checklist_types` (list; `checklist_type` single vẫn nhận cho client cũ) |
+| `POST /api/email-checklist` | Gửi email kèm file Excel checklist (đính kèm). Body: `file_base64` (xlsx base64 do FE dựng), `filename`, `subject` (optional). Gửi cho `EMAIL_TO` qua Resend. Dùng cho nút "Email" cạnh nút Excel ở HomePage |
 | `GET /api/qr-token/<station>` | Token rotating QR hiện tại (màn hình trạm poll) |
 | `GET /api/debug/connectivity` | Chẩn đoán CORS/mạng — frontend dùng nút "Test kết nối" |
 

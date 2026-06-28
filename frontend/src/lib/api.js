@@ -118,6 +118,21 @@ export async function getChecklistStations() {
   return data.assignments || {};
 }
 
+/**
+ * Gửi email kèm file Excel checklist (public). File do frontend dựng (base64).
+ * Backend forward sang Resend, gửi cho quản lý (EMAIL_TO).
+ * @param {{ subject?: string, filename: string, fileBase64: string }} payload
+ * @returns {Promise<{status: string, message?: string}>}
+ */
+export async function emailChecklistExcel({ subject, filename, fileBase64 }) {
+  const { data } = await api.post("/api/email-checklist", {
+    subject,
+    filename,
+    file_base64: fileBase64,
+  });
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Admin — station params
 // ---------------------------------------------------------------------------

@@ -7,10 +7,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreadsheet } from "lucide-react";
+import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreadsheet, Mail, Loader2 } from "lucide-react";
 import { CHECKLIST_ART, IMAGE_ART } from "../components/ChecklistArt";
-import { getReports, getChecklistStations, getStationParamConfigs } from "../lib/api";
-import { exportHistoryToExcel } from "../lib/exportExcel";
+import { getReports, getChecklistStations, getStationParamConfigs, emailChecklistExcel } from "../lib/api";
+import { exportHistoryToExcel, buildHistoryWorkbookBase64 } from "../lib/exportExcel";
 import { getShiftAt } from "../lib/shifts";
 import { computeCoverage, selectChecklistShiftLogs } from "../lib/checklistCoverage";
 import { getStationsFor } from "../lib/checklistStations";
@@ -165,12 +165,37 @@ export default function HomePage() {
 
   const missingTotal = Object.values(coverageMap).reduce((sum, c) => sum + c.missingCount, 0);
 
-  const exportChecklist = (item) => {
+  // Trạng thái gửi email theo từng checklist: undefined|"sending"|"sent"|"error"
+  const [emailState, setEmailState] = useState({});
+
+  const checklistLogs = (item) => {
     const stationNames = getStationsFor(assignments, item.id);
-    // Lọc scan của checklist trong ca rồi xuất CÙNG cấu trúc với trang Lịch sử
+    // Lọc scan của checklist trong ca, CÙNG cấu trúc với trang Lịch sử
     // (đầy đủ GPS, route assessment, thông số, cảnh báo).
-    const logs = selectChecklistShiftLogs(stationNames, scans, shift);
-    exportHistoryToExcel(logs, `${item.id}-${shift.id}.xlsx`, paramConfigsRef.current);
+    return selectChecklistShiftLogs(stationNames, scans, shift);
+  };
+
+  const exportChecklist = (item) => {
+    exportHistoryToExcel(checklistLogs(item), `${item.id}-${shift.id}.xlsx`, paramConfigsRef.current);
+  };
+
+  // Gửi email kèm file Excel checklist cho quản lý. Dựng cùng workbook với nút
+  // Excel rồi POST base64 lên backend (Resend đính kèm file).
+  const emailChecklist = async (item) => {
+    if (emailState[item.id] === "sending") return;
+    setEmailState((s) => ({ ...s, [item.id]: "sending" }));
+    try {
+      const filename = `${item.id}-${shift.id}.xlsx`;
+      const fileBase64 = buildHistoryWorkbookBase64(checklistLogs(item), paramConfigsRef.current);
+      await emailChecklistExcel({
+        subject: `[Checklist] ${item.title} — ${shift.label}`,
+        filename,
+        fileBase64,
+      });
+      setEmailState((s) => ({ ...s, [item.id]: "sent" }));
+    } catch (_) {
+      setEmailState((s) => ({ ...s, [item.id]: "error" }));
+    }
   };
 
   // TODO: tiến độ thật theo từng checklist (localStorage / API)
@@ -287,13 +312,43 @@ export default function HomePage() {
                       <span className="truncate">Còn {cov.missingCount}/{cov.total} trạm chưa kiểm tra</span>
                     </span>
                   )}
-                  <button
-                    onClick={() => exportChecklist(item)}
-                    className="flex items-center gap-1 text-[12px] font-semibold text-blue-600 dark:text-blue-400 px-2 py-1 rounded-lg active:bg-blue-50 dark:active:bg-blue-500/10 flex-shrink-0"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" aria-hidden />
-                    Excel
-                  </button>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={() => exportChecklist(item)}
+                      className="flex items-center gap-1 text-[12px] font-semibold text-blue-600 dark:text-blue-400 px-2 py-1 rounded-lg active:bg-blue-50 dark:active:bg-blue-500/10"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" aria-hidden />
+                      Excel
+                    </button>
+                    <button
+                      onClick={() => emailChecklist(item)}
+                      disabled={emailState[item.id] === "sending"}
+                      aria-label={`Gửi email checklist ${item.title}`}
+                      className={[
+                        "flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-lg disabled:opacity-60",
+                        emailState[item.id] === "sent"
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : emailState[item.id] === "error"
+                          ? "text-red-600 dark:text-red-400 active:bg-red-50 dark:active:bg-red-500/10"
+                          : "text-blue-600 dark:text-blue-400 active:bg-blue-50 dark:active:bg-blue-500/10",
+                      ].join(" ")}
+                    >
+                      {emailState[item.id] === "sending" ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />
+                      ) : emailState[item.id] === "sent" ? (
+                        <CheckCircle2 className="w-3.5 h-3.5" aria-hidden />
+                      ) : (
+                        <Mail className="w-3.5 h-3.5" aria-hidden />
+                      )}
+                      {emailState[item.id] === "sending"
+                        ? "Đang gửi"
+                        : emailState[item.id] === "sent"
+                        ? "Đã gửi"
+                        : emailState[item.id] === "error"
+                        ? "Lỗi, thử lại"
+                        : "Email"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

@@ -7,6 +7,7 @@ import {
   isOutOfRange,
   gpsMapsUrl,
   buildHistoryWorksheet,
+  buildHistoryWorkbookBase64,
 } from "../exportExcel";
 
 // ---------------------------------------------------------------------------
@@ -246,6 +247,39 @@ describe("buildHistoryWorksheet — GPS hyperlink", () => {
     const col = headers.indexOf("Giá trị");
     const cell = ws[XLSX.utils.encode_cell({ r: 1, c: col })];
     expect(cell.s.font.color.rgb).toBe("CC0000");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildHistoryWorkbookBase64 — dựng workbook xlsx dạng base64 để đính kèm email (TDD)
+// ---------------------------------------------------------------------------
+describe("buildHistoryWorkbookBase64", () => {
+  const logs = [{
+    id: 1, location: "TK-5201A", scanned_at: "2026-04-18T01:30:00.000Z",
+    device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true,
+    oil_level_mm: 800,
+  }];
+
+  it("trả base64 string giải mã được thành workbook có sheet 'Lịch sử'", () => {
+    const b64 = buildHistoryWorkbookBase64(logs, {});
+    expect(typeof b64).toBe("string");
+    expect(b64.length).toBeGreaterThan(0);
+    const wb = XLSX.read(b64, { type: "base64" });
+    expect(wb.SheetNames).toContain("Lịch sử");
+  });
+
+  it("giữ nguyên dữ liệu dòng (cùng nội dung với export)", () => {
+    const b64 = buildHistoryWorkbookBase64(logs, {});
+    const wb = XLSX.read(b64, { type: "base64" });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets["Lịch sử"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]["Trạm"]).toBe("TK-5201A");
+  });
+
+  it("logs rỗng vẫn cho base64 hợp lệ với sheet 'Lịch sử'", () => {
+    const b64 = buildHistoryWorkbookBase64([], {});
+    const wb = XLSX.read(b64, { type: "base64" });
+    expect(wb.SheetNames).toContain("Lịch sử");
   });
 });
 

@@ -10,6 +10,7 @@ from routes.debug import debug_bp
 from routes.admin import admin_bp
 from routes.summary import summary_bp
 from routes.dashboard import dashboard_bp
+from routes.email_checklist import email_checklist_bp
 
 app = Flask(__name__)
 
@@ -32,6 +33,7 @@ app.register_blueprint(debug_bp, url_prefix="/api")
 app.register_blueprint(admin_bp, url_prefix="/api")
 app.register_blueprint(summary_bp, url_prefix="/api")
 app.register_blueprint(dashboard_bp, url_prefix="/api")
+app.register_blueprint(email_checklist_bp, url_prefix="/api")
 
 # Áp index scan_logs + cột mới của stations lên DB prod lúc khởi động (idempotent).
 ensure_scan_log_indexes(engine)

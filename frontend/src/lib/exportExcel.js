@@ -246,3 +246,17 @@ export function exportHistoryToExcel(logs, filename, paramConfigs = {}) {
   XLSX.utils.book_append_sheet(wb, ws, "Lịch sử");
   XLSX.writeFile(wb, filename, { cellStyles: true });
 }
+
+/**
+ * Dựng workbook lịch sử (giống exportHistoryToExcel) nhưng trả về chuỗi base64
+ * thay vì tải file — để đính kèm vào email gửi qua backend.
+ * @param {Array} logs
+ * @param {Object} [paramConfigs] - map station_name → { param_low, param_high }
+ * @returns {string} nội dung file .xlsx đã mã hóa base64
+ */
+export function buildHistoryWorkbookBase64(logs, paramConfigs = {}) {
+  const ws = buildHistoryWorksheet(logs, paramConfigs);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Lịch sử");
+  return XLSX.write(wb, { bookType: "xlsx", type: "base64", cellStyles: true });
+}
