@@ -4,7 +4,7 @@ import { QRScanner } from "../components/QRScanner";
 import ScanResult from "../components/ScanResult";
 import { postScan, postQueuedScan, pingServer, checkConnectivity, getReports, getChecklistStations } from "../lib/api";
 import { getShiftAt } from "../lib/shifts";
-import { buildScanChecklistInfo } from "../lib/scanChecklist";
+import { buildScanChecklistInfo, splitMissingStations } from "../lib/scanChecklist";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loadLastFix } from "../lib/geolocation";
 import { enqueue, flushQueue, queueSize, clearQueue, updateLastItem, hasQueueItem, updateItemByQueuedAt } from "../lib/offlineQueue";
@@ -19,7 +19,7 @@ import { resolveStatusBanner } from "../lib/statusBanner";
 import { resolveButtonState } from "../lib/buttonState";
 import { resolveStepDisplay } from "../lib/stepDisplay";
 import { triggerVibration } from "../lib/haptics";
-import { Camera, Square, Clock, Trash2, PlugZap, Satellite, UploadCloud, MapPin, HelpCircle, X } from "lucide-react";
+import { Camera, Square, Clock, Trash2, PlugZap, Satellite, UploadCloud, MapPin, HelpCircle, X, ChevronDown, ChevronUp } from "lucide-react";
 import Button from "../components/ui/Button";
 import Banner from "../components/ui/Banner";
 /**
@@ -803,26 +803,64 @@ function GpsHelpDialog({ open, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
-// MissingStations — chip các trạm chưa check-in trong ca của checklist hiện tại
+// MissingStations — chip các trạm chưa check-in trong ca của checklist hiện tại.
+// Thu gọn mặc định (chỉ vài chip + "+N nữa") để không chiếm hết màn hình khi
+// checklist nhiều trạm; mở rộng thì giới hạn chiều cao + cuộn trong khung.
 // ---------------------------------------------------------------------------
 
+const MISSING_COLLAPSE_LIMIT = 6;
+
+const chipCls =
+  "text-[12px] font-medium px-2 py-1 rounded-lg bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30";
+
 function MissingStations({ stations }) {
+  const [expanded, setExpanded] = useState(false);
+  const canCollapse = stations.length > MISSING_COLLAPSE_LIMIT;
+  const { visible, hiddenCount } = splitMissingStations(stations, MISSING_COLLAPSE_LIMIT, expanded);
+
   return (
     <div className="rounded-2xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-4 py-3">
-      <div className="flex items-center gap-1.5 text-[13px] font-semibold text-amber-800 dark:text-amber-300 mb-2">
-        <MapPin className="w-4 h-4 flex-shrink-0" aria-hidden />
-        Còn {stations.length} trạm chưa kiểm tra trong ca
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {stations.map((name) => (
-          <span
-            key={name}
-            className="text-[12px] font-medium px-2 py-1 rounded-lg bg-white dark:bg-slate-800 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30"
-          >
-            {name}
-          </span>
+      <button
+        type="button"
+        onClick={() => canCollapse && setExpanded((v) => !v)}
+        aria-expanded={canCollapse ? expanded : undefined}
+        className="w-full flex items-center justify-between gap-2 text-[13px] font-semibold text-amber-800 dark:text-amber-300"
+      >
+        <span className="flex items-center gap-1.5 min-w-0">
+          <MapPin className="w-4 h-4 flex-shrink-0" aria-hidden />
+          Còn {stations.length} trạm chưa kiểm tra trong ca
+        </span>
+        {canCollapse && (
+          expanded
+            ? <ChevronUp className="w-4 h-4 flex-shrink-0" aria-hidden />
+            : <ChevronDown className="w-4 h-4 flex-shrink-0" aria-hidden />
+        )}
+      </button>
+
+      <div className={["mt-2 flex flex-wrap gap-1.5", expanded ? "max-h-32 overflow-y-auto pr-1" : ""].join(" ")}>
+        {visible.map((name) => (
+          <span key={name} className={chipCls}>{name}</span>
         ))}
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className={[chipCls, "font-semibold active:bg-amber-100 dark:active:bg-amber-500/20"].join(" ")}
+          >
+            +{hiddenCount} nữa
+          </button>
+        )}
       </div>
+
+      {expanded && canCollapse && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="mt-2 text-[12px] font-semibold text-amber-700 dark:text-amber-400 active:opacity-70"
+        >
+          Thu gọn
+        </button>
+      )}
     </div>
   );
 }

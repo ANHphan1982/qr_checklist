@@ -44,3 +44,20 @@ export function buildScanChecklistInfo(type, assignments, scans, shift) {
     allDone: cov.ok,
   };
 }
+
+/**
+ * Giới hạn số chip trạm còn thiếu hiển thị để không chiếm hết màn hình khi
+ * checklist có nhiều trạm. Khi `expanded` → hiện tất cả.
+ *
+ * @param {string[]} stations - danh sách trạm còn thiếu
+ * @param {number} limit - số chip tối đa khi thu gọn
+ * @param {boolean} expanded - đã bấm "Xem tất cả" chưa
+ * @returns {{visible: string[], hiddenCount: number}}
+ */
+export function splitMissingStations(stations, limit, expanded) {
+  const list = Array.isArray(stations) ? stations : [];
+  if (expanded || list.length <= limit) {
+    return { visible: list, hiddenCount: 0 };
+  }
+  return { visible: list.slice(0, limit), hiddenCount: list.length - limit };
+}

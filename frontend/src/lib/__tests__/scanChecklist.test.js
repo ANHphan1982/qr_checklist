@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getShiftAt } from "../shifts";
-import { buildScanChecklistInfo } from "../scanChecklist";
+import { buildScanChecklistInfo, splitMissingStations } from "../scanChecklist";
 
 const utc = (s) => new Date(s + "Z");
 const dayShift = getShiftAt(utc("2026-06-22T03:00:00")); // ca ngày 22/6 (VN 06–18)
@@ -45,5 +45,37 @@ describe("buildScanChecklistInfo", () => {
     const info = buildScanChecklistInfo("pump", assignments, [outside], dayShift);
     expect(info.checkedCount).toBe(0);
     expect(info.missing).toEqual(["A"]);
+  });
+});
+
+describe("splitMissingStations", () => {
+  const five = ["A", "B", "C", "D", "E"];
+
+  it("ít hơn limit → hiện tất cả, không ẩn", () => {
+    expect(splitMissingStations(["A", "B"], 6, false)).toEqual({ visible: ["A", "B"], hiddenCount: 0 });
+  });
+
+  it("bằng limit → hiện tất cả, không ẩn", () => {
+    expect(splitMissingStations(five, 5, false)).toEqual({ visible: five, hiddenCount: 0 });
+  });
+
+  it("nhiều hơn limit + chưa mở → cắt còn limit, đếm phần ẩn", () => {
+    const r = splitMissingStations(five, 3, false);
+    expect(r.visible).toEqual(["A", "B", "C"]);
+    expect(r.hiddenCount).toBe(2);
+  });
+
+  it("nhiều hơn limit + đã mở → hiện tất cả, không ẩn", () => {
+    const r = splitMissingStations(five, 3, true);
+    expect(r.visible).toEqual(five);
+    expect(r.hiddenCount).toBe(0);
+  });
+
+  it("danh sách rỗng → visible rỗng, hidden 0", () => {
+    expect(splitMissingStations([], 6, false)).toEqual({ visible: [], hiddenCount: 0 });
+  });
+
+  it("không nhận stations null/undefined (an toàn)", () => {
+    expect(splitMissingStations(undefined, 6, false)).toEqual({ visible: [], hiddenCount: 0 });
   });
 });
