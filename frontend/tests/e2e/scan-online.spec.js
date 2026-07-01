@@ -13,7 +13,9 @@ test.describe("Online scan flow", () => {
     await sp.goto();
 
     await expect(sp.startButton).toBeVisible();
-    await expect(page.locator("h1")).toContainText("Quét QR Check-in");
+    // POM.goto() vào /scan/routine → h1 hiện tiêu đề checklist (checklistInfo.title),
+    // không còn fallback "Quét QR Check-in" (chỉ dùng khi route không có checklist).
+    await expect(page.locator("h1")).toContainText("Routine Check List");
     // Subtitle hướng dẫn hiển thị; step progress bar ẩn khi idle
     await expect(page.locator("text=Hướng camera vào mã QR")).toBeVisible();
   });

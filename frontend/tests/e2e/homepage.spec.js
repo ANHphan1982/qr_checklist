@@ -28,17 +28,17 @@ test.describe("HomePage — chọn checklist", () => {
     }
   });
 
-  test("search lọc checklist theo tên", async ({ page }) => {
-    await page.getByRole("searchbox").fill("pump");
-
+  // Ô tìm kiếm chỉ hiện khi danh sách ≥ SEARCH_MIN_ITEMS (8). Catalog hiện có 6
+  // → search cố tình ẩn để đỡ nhiễu; mọi thẻ luôn hiển thị (không cần lọc).
+  test("ô tìm kiếm ẩn khi danh sách ít hơn 8 checklist", async ({ page }) => {
+    await expect(page.getByRole("searchbox")).toHaveCount(0);
     await expect(page.getByText("Pump Check List", { exact: true })).toBeVisible();
-    await expect(page.getByText("Tank Check List", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Tank Check List", { exact: true })).toBeVisible();
   });
 
-  test("search không khớp hiển thị thông báo rỗng", async ({ page }) => {
-    await page.getByRole("searchbox").fill("zzzkhongco");
-
-    await expect(page.getByText(/không tìm thấy checklist/i)).toBeVisible();
+  test("badge tổng số checklist hiển thị đúng số bộ", async ({ page }) => {
+    // Section "Tất cả checklist" kèm badge "{n} bộ" — không lọc thì n = cả catalog.
+    await expect(page.getByText("6 bộ", { exact: true })).toBeVisible();
   });
 
   test("click card Routine → /scan/routine và hiện trang scan", async ({ page }) => {
@@ -49,17 +49,22 @@ test.describe("HomePage — chọn checklist", () => {
   });
 
   test("click card Pump → /scan/pump", async ({ page }) => {
-    // Lọc còn mỗi Pump để chắc chắn click đúng card (không dính nút Tiếp tục).
-    await page.getByRole("searchbox").fill("pump");
+    // Không còn ô tìm kiếm (catalog < 8) → click thẳng thẻ Pump.
+    // .last() bỏ qua nút "Tiếp tục" nếu có (thẻ thật render sau trong DOM).
     await page.getByRole("button", { name: /Pump Check List/i }).last().click();
 
     await expect(page).toHaveURL(/\/scan\/pump$/);
   });
 
   test("nút Tiếp tục (gần đây) điều hướng sang scan", async ({ page }) => {
+    // Thẻ "Tiếp tục" chỉ hiện khi đã có checklist mở gần nhất (localStorage).
+    // Seed 'pump' rồi reload để nút xuất hiện.
+    await page.evaluate(() => localStorage.setItem("qr_recent_checklist", "pump"));
+    await page.reload();
+
     await page.getByRole("button", { name: /Tiếp tục/i }).click();
 
-    await expect(page).toHaveURL(/\/scan\/[a-z]+$/);
+    await expect(page).toHaveURL(/\/scan\/pump$/);
     await expect(page.locator("button:has-text('Bắt đầu Scan')")).toBeVisible();
   });
 
