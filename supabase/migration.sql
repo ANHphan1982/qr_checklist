@@ -71,3 +71,28 @@ ALTER TABLE station_params DROP CONSTRAINT IF EXISTS station_params_station_name
 
 CREATE INDEX IF NOT EXISTS idx_station_params_station_name
   ON station_params (station_name);
+
+-- =============================================================================
+-- BẢO MẬT: bật Row Level Security (RLS) cho mọi bảng public.
+-- Vì sao: Supabase mở sẵn Data API (PostgREST) cho schema public, gọi được từ
+-- internet bằng `anon` key. Nếu RLS tắt → ai có anon key đọc/ghi/xoá được cả bảng.
+-- Chiến lược: bật RLS, KHÔNG tạo policy nào (deny-all cho Data API).
+-- Backend Flask kết nối bằng role `postgres` (superuser) → BỎ QUA RLS → chạy bình
+-- thường, không bị ảnh hưởng. An toàn để chạy lại nhiều lần.
+-- =============================================================================
+
+-- Chỉ áp dụng cho bảng đã tồn tại (stations/qr_aliases do backend tạo lúc khởi
+-- động — có thể chưa có khi chạy migration trên DB mới). Không bao giờ lỗi.
+DO $$
+DECLARE
+  t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['scan_logs', 'stations', 'station_params', 'qr_aliases']
+  LOOP
+    IF to_regclass('public.' || t) IS NOT NULL THEN
+      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', t);
+      -- Đai phòng hộ 2: thu hồi quyền của anon/authenticated trên Data API.
+      EXECUTE format('REVOKE ALL ON public.%I FROM anon, authenticated;', t);
+    END IF;
+  END LOOP;
+END $$;
