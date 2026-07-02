@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CHECKLISTS, getChecklistById } from "../checklists";
+import { getFrequencyById } from "../frequencies";
 
 describe("CHECKLISTS catalog", () => {
   it("là mảng không rỗng, mỗi mục có id + title", () => {
@@ -14,6 +15,18 @@ describe("CHECKLISTS catalog", () => {
   it("id là duy nhất", () => {
     const ids = CHECKLISTS.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("mỗi mục có tần suất mặc định (frequency) hợp lệ", () => {
+    for (const c of CHECKLISTS) {
+      expect(c.frequency).toBeTruthy();
+      expect(getFrequencyById(c.frequency)).toBeTruthy();
+    }
+  });
+
+  it("pump mặc định mỗi ca (shift); safety mặc định mỗi ngày (day)", () => {
+    expect(getChecklistById("pump").frequency).toBe("shift");
+    expect(getChecklistById("safety").frequency).toBe("day");
   });
 });
 

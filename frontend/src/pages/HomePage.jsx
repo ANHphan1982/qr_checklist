@@ -13,6 +13,8 @@ import { CHECKLISTS } from "../lib/checklists";
 import { getReports, getChecklistStations, getStationParamConfigs, emailChecklistExcel } from "../lib/api";
 import { exportHistoryToExcel, buildHistoryWorkbookBase64 } from "../lib/exportExcel";
 import { getShiftAt } from "../lib/shifts";
+import { getPeriodAt, vnDatesInRange, getFrequencyById } from "../lib/frequencies";
+import { getEffectiveFrequencyId, loadFrequencyOverrides } from "../lib/checklistFrequency";
 import { computeCoverage, selectChecklistShiftLogs, checklistCardCounts, summarizeCoverage } from "../lib/checklistCoverage";
 import { getStationsFor } from "../lib/checklistStations";
 import { saveRecentChecklist, loadRecentChecklist } from "../lib/recentChecklist";
@@ -21,9 +23,6 @@ import { useToast } from "../components/ui/Toast";
 
 // Chỉ hiện ô tìm kiếm khi danh sách dài; ít mục thì search chỉ gây nhiễu.
 const SEARCH_MIN_ITEMS = 8;
-
-const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
-const toVnDate = (ms) => new Date(ms + VN_OFFSET_MS).toISOString().slice(0, 10);
 
 // CHECKLISTS chuyển sang lib/checklists.js để ScanPage & admin dùng chung.
 
@@ -204,9 +203,30 @@ export default function HomePage() {
   const [showTips, setShowTips] = useState(() => shouldShowOnboarding());
   const dismissTips = () => { markOnboardingSeen(); setShowTips(false); };
 
-  // Ca hiện tại + scan trong ca → biết trạm nào chưa kiểm tra (≥1 lần/ca).
-  const [shift] = useState(() => getShiftAt(new Date()));
+  // Mốc "bây giờ" cố định trong phiên xem → ca + chu kỳ tính nhất quán.
+  const [now] = useState(() => Date.now());
+  // Ca hiện tại (cho thẻ tổng quan) — coverage từng checklist dùng chu kỳ riêng.
+  const [shift] = useState(() => getShiftAt(new Date(now)));
+  // Tần suất admin override (localStorage, theo thiết bị). Đọc 1 lần khi mount.
+  const [freqOverrides] = useState(() => loadFrequencyOverrides());
   const [scans, setScans] = useState([]);
+
+  // Chu kỳ ghi thông số hiện tại theo TỪNG checklist (tuỳ tần suất). Cùng shape
+  // {startMs,endMs,label} với ca → computeCoverage nhận trực tiếp.
+  const periods = useMemo(() => {
+    const d = new Date(now);
+    const map = {};
+    for (const c of CHECKLISTS) {
+      map[c.id] = getPeriodAt(getEffectiveFrequencyId(c, freqOverrides), d);
+    }
+    return map;
+  }, [now, freqOverrides]);
+
+  // Mốc sớm nhất cần tải report (chu kỳ dài như tháng vắt qua nhiều ngày VN).
+  const fetchStartMs = useMemo(
+    () => Math.min(now, ...Object.values(periods).map((p) => p.startMs)),
+    [now, periods]
+  );
   // Mapping checklist → trạm đọc từ backend (đồng bộ mọi thiết bị, Hướng A).
   const [assignments, setAssignments] = useState({});
   // paramConfigs: map station_name → cấu hình thông số — để Excel xuất ra có
@@ -237,9 +257,10 @@ export default function HomePage() {
 
   const fetchCoverage = useCallback(async () => {
     if (loadedOnceRef.current) setRefreshing(true);
-    // Ca đêm vắt qua nửa đêm → có thể cần cả ngày hôm trước. Lấy mọi ngày VN
-    // trong khoảng [đầu ca, hiện tại], gộp logs. Lỗi mạng → bỏ qua (offline-safe).
-    const dates = Array.from(new Set([toVnDate(shift.startMs), toVnDate(Date.now())]));
+    // Chu kỳ có thể vắt qua nhiều ngày VN (ca đêm, hoặc tần suất ngày/tháng).
+    // Lấy mọi ngày VN trong [đầu chu kỳ sớm nhất, hiện tại], gộp logs.
+    // Lỗi mạng → bỏ qua (offline-safe).
+    const dates = vnDatesInRange(fetchStartMs, now);
     try {
       const [reportResults, assignMap] = await Promise.all([
         Promise.all(dates.map((d) => getReports(d).catch(() => null))),
@@ -252,33 +273,34 @@ export default function HomePage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [shift]);
+  }, [fetchStartMs, now]);
 
   useEffect(() => { fetchCoverage(); }, [fetchCoverage]);
 
-  // Coverage theo từng checklist (chỉ tính checklist đã gán trạm).
+  // Coverage theo từng checklist (chỉ tính checklist đã gán trạm) — mỗi checklist
+  // dùng chu kỳ riêng theo tần suất đã cấu hình.
   const coverageMap = useMemo(() => {
     const map = {};
     for (const c of CHECKLISTS) {
       const stationNames = getStationsFor(assignments, c.id);
-      if (stationNames.length > 0) map[c.id] = computeCoverage(stationNames, scans, shift);
+      if (stationNames.length > 0) map[c.id] = computeCoverage(stationNames, scans, periods[c.id]);
     }
     return map;
-  }, [assignments, scans, shift]);
+  }, [assignments, scans, periods]);
 
   // Trạng thái gửi email theo từng checklist: undefined|"sending"|"sent"|"error"
   const [emailState, setEmailState] = useState({});
 
   const checklistLogs = (item) => {
     const stationNames = getStationsFor(assignments, item.id);
-    // Lọc scan của checklist trong ca, CÙNG cấu trúc với trang Lịch sử
-    // (đầy đủ GPS, route assessment, thông số, cảnh báo).
-    return selectChecklistShiftLogs(stationNames, scans, shift);
+    // Lọc scan của checklist trong CHU KỲ hiện tại, CÙNG cấu trúc với trang Lịch
+    // sử (đầy đủ GPS, route assessment, thông số, cảnh báo).
+    return selectChecklistShiftLogs(stationNames, scans, periods[item.id]);
   };
 
   const exportChecklist = (item) => {
     const logs = checklistLogs(item);
-    exportHistoryToExcel(logs, `${item.id}-${shift.id}.xlsx`, paramConfigsRef.current);
+    exportHistoryToExcel(logs, `${item.id}-${periods[item.id].id}.xlsx`, paramConfigsRef.current);
     toast.success(`Đã tạo file Excel ${item.title} (${logs.length} lượt)`);
   };
 
@@ -288,10 +310,10 @@ export default function HomePage() {
     if (emailState[item.id] === "sending") return;
     setEmailState((s) => ({ ...s, [item.id]: "sending" }));
     try {
-      const filename = `${item.id}-${shift.id}.xlsx`;
+      const filename = `${item.id}-${periods[item.id].id}.xlsx`;
       const fileBase64 = buildHistoryWorkbookBase64(checklistLogs(item), paramConfigsRef.current);
       await emailChecklistExcel({
-        subject: `[Checklist] ${item.title} — ${shift.label}`,
+        subject: `[Checklist] ${item.title} — ${periods[item.id].label}`,
         filename,
         fileBase64,
       });
@@ -418,6 +440,8 @@ export default function HomePage() {
           // Số trên thẻ lấy từ coverage thật → khớp dòng cảnh báo bên dưới
           // (tránh "2/6 trạm" giả mâu thuẫn với "Còn 13/13 trạm chưa kiểm tra").
           const counts = checklistCardCounts(cov, item.stations);
+          // Nhãn tần suất hiệu lực (vd "1 lần/ca", "8h/lần") cho dòng cảnh báo.
+          const freqShort = getFrequencyById(getEffectiveFrequencyId(item, freqOverrides))?.short;
           return (
             <div key={item.id} className="flex flex-col gap-1.5">
               <ChecklistCard
@@ -431,12 +455,12 @@ export default function HomePage() {
                   {cov.ok ? (
                     <span className="text-[12px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1 min-w-0">
                       <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
-                      <span className="truncate">Đã kiểm tra đủ {cov.total} trạm trong ca</span>
+                      <span className="truncate">Đã kiểm tra đủ {cov.total} trạm{freqShort ? ` (${freqShort})` : ""}</span>
                     </span>
                   ) : (
                     <span className="text-[12px] font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1 min-w-0">
                       <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
-                      <span className="truncate">Còn {cov.missingCount}/{cov.total} trạm chưa kiểm tra</span>
+                      <span className="truncate">Còn {cov.missingCount}/{cov.total} trạm chưa kiểm tra{freqShort ? ` (${freqShort})` : ""}</span>
                     </span>
                   )}
                   <div className="flex items-center gap-1 flex-shrink-0">
