@@ -284,6 +284,117 @@ describe("buildHistoryWorkbookBase64", () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildHistoryWorksheet / buildHistoryWorkbookBase64 — form báo cáo (TDD)
+// Khi truyền reportInfo {shiftLabel, employeeName}: chèn các dòng thông tin
+// Ca + Nhân viên thực hiện PHÍA TRÊN header bảng, bảng dữ liệu giữ nguyên
+// định dạng (chỉ dịch xuống dưới). Không truyền reportInfo → y hệt như cũ.
+// ---------------------------------------------------------------------------
+describe("buildHistoryWorksheet — form báo cáo (ca + nhân viên)", () => {
+  const logs = [{
+    id: 1, location: "TK-5201A", scanned_at: "2026-04-18T01:30:00.000Z",
+    device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true,
+    lat: 15.4088, lng: 108.8146,
+    param_values: [{ tag: "PG-1", label: "Seal", value: 0.6, unit: "bar", low: null, high: 0.5 }],
+  }];
+  const reportInfo = {
+    shiftLabel: "Ca ngày (06:00–18:00)",
+    employeeName: "Nguyễn Văn A",
+  };
+
+  it("dòng 1: nhãn 'Ca:' + giá trị ca", () => {
+    const ws = buildHistoryWorksheet(logs, {}, reportInfo);
+    expect(ws["A1"].v).toBe("Ca:");
+    expect(ws["B1"].v).toBe("Ca ngày (06:00–18:00)");
+  });
+
+  it("dòng 2: nhãn 'Nhân viên thực hiện:' + tên", () => {
+    const ws = buildHistoryWorksheet(logs, {}, reportInfo);
+    expect(ws["A2"].v).toBe("Nhân viên thực hiện:");
+    expect(ws["B2"].v).toBe("Nguyễn Văn A");
+  });
+
+  it("header bảng bắt đầu ở dòng 4 (sau 1 dòng trống), giữ nguyên cột như cũ", () => {
+    const ws = buildHistoryWorksheet(logs, {}, reportInfo);
+    expect(ws["A3"]).toBeUndefined(); // dòng trống ngăn cách
+    expect(ws["A4"].v).toBe("ID");
+    // các cột khác của bảng không đổi định dạng/thứ tự so với bản không header
+    const plain = buildHistoryWorksheet(logs, {});
+    const headersPlain = XLSX.utils.sheet_to_json(plain, { header: 1 })[0];
+    const headersForm = XLSX.utils.sheet_to_json(ws, { header: 1 })[3];
+    expect(headersForm).toEqual(headersPlain);
+  });
+
+  it("dữ liệu dòng đầu nằm ngay dưới header bảng (dòng 5)", () => {
+    const ws = buildHistoryWorksheet(logs, {}, reportInfo);
+    expect(ws["A5"].v).toBe(1); // ID
+  });
+
+  it("highlight đỏ giá trị ngoài giới hạn dịch đúng theo offset form", () => {
+    const ws = buildHistoryWorksheet(logs, {}, reportInfo);
+    const headers = XLSX.utils.sheet_to_json(ws, { header: 1 })[3];
+    const col = headers.indexOf("Giá trị");
+    // header ở r=3 (0-based) → dòng dữ liệu đầu r=4
+    const cell = ws[XLSX.utils.encode_cell({ r: 4, c: col })];
+    expect(cell.s.font.color.rgb).toBe("CC0000");
+  });
+
+  it("hyperlink GPS dịch đúng theo offset form", () => {
+    const ws = buildHistoryWorksheet(logs, {}, reportInfo);
+    const headers = XLSX.utils.sheet_to_json(ws, { header: 1 })[3];
+    const col = headers.indexOf("GPS");
+    const cell = ws[XLSX.utils.encode_cell({ r: 4, c: col })];
+    expect(cell.l).toBeTruthy();
+    expect(cell.l.Target).toBe("https://maps.google.com/?q=15.4088,108.8146");
+  });
+
+  it("thiếu employeeName → ô tên để trống nhưng nhãn vẫn hiện (form viết tay)", () => {
+    const ws = buildHistoryWorksheet(logs, {}, { shiftLabel: "Ca ngày (06:00–18:00)" });
+    expect(ws["A2"].v).toBe("Nhân viên thực hiện:");
+    expect(ws["B2"]).toBeUndefined();
+    expect(ws["A4"].v).toBe("ID");
+  });
+
+  it("backward compat: không truyền reportInfo → header bảng vẫn ở dòng 1", () => {
+    const ws = buildHistoryWorksheet(logs, {});
+    expect(ws["A1"].v).toBe("ID");
+  });
+
+  it("logs rỗng vẫn dựng được form header", () => {
+    const ws = buildHistoryWorksheet([], {}, reportInfo);
+    expect(ws["A1"].v).toBe("Ca:");
+    expect(ws["A2"].v).toBe("Nhân viên thực hiện:");
+  });
+});
+
+describe("buildHistoryWorkbookBase64 — form báo cáo", () => {
+  const logs = [{
+    id: 1, location: "TK-5201A", scanned_at: "2026-04-18T01:30:00.000Z",
+    device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true,
+    oil_level_mm: 800,
+  }];
+
+  it("workbook đính kèm email cũng có form header phía trên bảng", () => {
+    const b64 = buildHistoryWorkbookBase64(logs, {}, {
+      shiftLabel: "Ca đêm (18:00–06:00)",
+      employeeName: "Trần Thị B",
+    });
+    const wb = XLSX.read(b64, { type: "base64" });
+    const ws = wb.Sheets["Lịch sử"];
+    expect(ws["A1"].v).toBe("Ca:");
+    expect(ws["B1"].v).toBe("Ca đêm (18:00–06:00)");
+    expect(ws["B2"].v).toBe("Trần Thị B");
+    expect(ws["A4"].v).toBe("ID");
+    expect(ws["A5"].v).toBe(1);
+  });
+
+  it("backward compat: không truyền reportInfo → giữ layout cũ", () => {
+    const b64 = buildHistoryWorkbookBase64(logs, {});
+    const wb = XLSX.read(b64, { type: "base64" });
+    expect(wb.Sheets["Lịch sử"]["A1"].v).toBe("ID");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildHistoryRows — operational params (TDD)
 // ---------------------------------------------------------------------------
 describe("buildHistoryRows — operational params (long format)", () => {

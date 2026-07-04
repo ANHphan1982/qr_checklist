@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreadsheet, Mail, Loader2, RefreshCw, Info, X, QrCode, MapPin, WifiOff } from "lucide-react";
+import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreadsheet, Mail, Loader2, RefreshCw, Info, X, QrCode, MapPin, WifiOff, UserRound } from "lucide-react";
 import { CHECKLIST_ART, IMAGE_ART } from "../components/ChecklistArt";
 import { CHECKLISTS } from "../lib/checklists";
 import { getReports, getChecklistStations, getStationParamConfigs, emailChecklistExcel } from "../lib/api";
@@ -18,6 +18,7 @@ import { getEffectiveFrequencyId, loadFrequencyOverrides } from "../lib/checklis
 import { computeCoverage, selectChecklistShiftLogs, checklistCardCounts, summarizeCoverage } from "../lib/checklistCoverage";
 import { getStationsFor } from "../lib/checklistStations";
 import { saveRecentChecklist, loadRecentChecklist } from "../lib/recentChecklist";
+import { saveEmployeeName, loadEmployeeName } from "../lib/employeeName";
 import { shouldShowOnboarding, markOnboardingSeen } from "../lib/onboarding";
 import { useToast } from "../components/ui/Toast";
 
@@ -298,9 +299,23 @@ export default function HomePage() {
     return selectChecklistShiftLogs(stationNames, scans, periods[item.id]);
   };
 
+  // Tên nhân viên thực hiện checklist — persist theo thiết bị, in vào form
+  // báo cáo (phía trên header bảng) khi xuất Excel/email.
+  const [employeeName, setEmployeeName] = useState(() => loadEmployeeName());
+  const onEmployeeNameChange = (e) => {
+    setEmployeeName(e.target.value);
+    saveEmployeeName(e.target.value);
+  };
+
+  // Thông tin form báo cáo cho file Excel: ca/chu kỳ hiện tại + nhân viên.
+  const reportInfoFor = (item) => ({
+    shiftLabel: periods[item.id].label,
+    employeeName: employeeName.trim(),
+  });
+
   const exportChecklist = (item) => {
     const logs = checklistLogs(item);
-    exportHistoryToExcel(logs, `${item.id}-${periods[item.id].id}.xlsx`, paramConfigsRef.current);
+    exportHistoryToExcel(logs, `${item.id}-${periods[item.id].id}.xlsx`, paramConfigsRef.current, reportInfoFor(item));
     toast.success(`Đã tạo file Excel ${item.title} (${logs.length} lượt)`);
   };
 
@@ -311,7 +326,7 @@ export default function HomePage() {
     setEmailState((s) => ({ ...s, [item.id]: "sending" }));
     try {
       const filename = `${item.id}-${periods[item.id].id}.xlsx`;
-      const fileBase64 = buildHistoryWorkbookBase64(checklistLogs(item), paramConfigsRef.current);
+      const fileBase64 = buildHistoryWorkbookBase64(checklistLogs(item), paramConfigsRef.current, reportInfoFor(item));
       await emailChecklistExcel({
         subject: `[Checklist] ${item.title} — ${periods[item.id].label}`,
         filename,
@@ -365,6 +380,20 @@ export default function HomePage() {
         <p className="text-[14px] text-slate-500 dark:text-slate-400 mt-1">
           Chọn bộ kiểm tra rồi bắt đầu quét QR theo trạm
         </p>
+      </div>
+
+      {/* Tên nhân viên thực hiện — persist theo thiết bị, in vào form báo cáo Excel */}
+      <div className="relative">
+        <UserRound className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" aria-hidden />
+        <input
+          type="text"
+          value={employeeName}
+          onChange={onEmployeeNameChange}
+          placeholder="Tên nhân viên thực hiện"
+          aria-label="Tên nhân viên thực hiện checklist"
+          autoComplete="name"
+          className="w-full min-h-[52px] pl-12 pr-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm text-[16px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+        />
       </div>
 
       {/* Hướng dẫn lần đầu — chỉ hiện ở lần mở app đầu tiên */}

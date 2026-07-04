@@ -190,17 +190,39 @@ function _numOrNull(v) {
   return Number.isNaN(n) ? null : n;
 }
 
+// Form báo cáo phía trên bảng: 2 dòng thông tin (Ca, Nhân viên) + 1 dòng trống.
+const FORM_HEADER_ROWS = 3;
+
 /**
  * Dựng worksheet lịch sử với:
  *  - highlight đỏ cho "Giá trị" ngoài giới hạn (Giá trị vs Giới hạn dưới/trên)
  *  - hyperlink Google Maps trên cột "GPS" để click kiểm tra vị trí nhân viên
+ *  - (optional) form báo cáo phía trên header bảng: Ca + Nhân viên thực hiện.
+ *    Nhãn luôn hiện kể cả khi thiếu giá trị (điền tay được); bảng dữ liệu giữ
+ *    nguyên định dạng, chỉ dịch xuống dưới form.
  * @param {Array} logs
  * @param {Object} [paramConfigs] - map station_name → { param_low, param_high }
+ * @param {Object} [reportInfo] - { shiftLabel, employeeName } — thiếu = layout cũ
  * @returns {object} XLSX worksheet
  */
-export function buildHistoryWorksheet(logs, paramConfigs = undefined) {
+export function buildHistoryWorksheet(logs, paramConfigs = undefined, reportInfo = undefined) {
   const { rows, rowLogs } = buildHistoryRowsAndLogs(logs, paramConfigs);
-  const ws = XLSX.utils.json_to_sheet(rows);
+  const offset = reportInfo ? FORM_HEADER_ROWS : 0;
+
+  let ws;
+  if (reportInfo) {
+    // null (không phải "") để aoa_to_sheet bỏ qua cell giá trị trống.
+    ws = XLSX.utils.aoa_to_sheet([
+      ["Ca:", reportInfo.shiftLabel || null],
+      ["Nhân viên thực hiện:", reportInfo.employeeName || null],
+    ]);
+    ["A1", "A2"].forEach((addr) => { ws[addr].s = { font: { bold: true } }; });
+    if (rows.length > 0) {
+      XLSX.utils.sheet_add_json(ws, rows, { origin: { r: offset, c: 0 } });
+    }
+  } else {
+    ws = XLSX.utils.json_to_sheet(rows);
+  }
 
   if (rows.length > 0) {
     const headers = Object.keys(rows[0]);
@@ -208,13 +230,15 @@ export function buildHistoryWorksheet(logs, paramConfigs = undefined) {
     const gpsColIdx = headers.indexOf("GPS");
 
     rows.forEach((row, i) => {
+      const dataRow = offset + i + 1; // +1: dòng header bảng
+
       // Màu đỏ cho cell "Giá trị" khi ngoài giới hạn
       if (valColIdx >= 0) {
         const val  = _numOrNull(row["Giá trị"]);
         const low  = _numOrNull(row["Giới hạn dưới"]);
         const high = _numOrNull(row["Giới hạn trên"]);
         if (isOutOfRange(val, low, high)) {
-          const addr = XLSX.utils.encode_cell({ r: i + 1, c: valColIdx });
+          const addr = XLSX.utils.encode_cell({ r: dataRow, c: valColIdx });
           if (ws[addr]) ws[addr].s = { font: { color: { rgb: "CC0000" }, bold: true } };
         }
       }
@@ -223,7 +247,7 @@ export function buildHistoryWorksheet(logs, paramConfigs = undefined) {
       if (gpsColIdx >= 0) {
         const url = gpsMapsUrl(rowLogs[i]);
         if (url) {
-          const addr = XLSX.utils.encode_cell({ r: i + 1, c: gpsColIdx });
+          const addr = XLSX.utils.encode_cell({ r: dataRow, c: gpsColIdx });
           if (ws[addr]) ws[addr].l = { Target: url, Tooltip: "Mở vị trí GPS trên bản đồ" };
         }
       }
@@ -239,9 +263,10 @@ export function buildHistoryWorksheet(logs, paramConfigs = undefined) {
  * @param {Array} logs
  * @param {string} filename
  * @param {Object} paramConfigs - map station_name → { param_low, param_high }
+ * @param {Object} [reportInfo] - { shiftLabel, employeeName } — form báo cáo trên đầu
  */
-export function exportHistoryToExcel(logs, filename, paramConfigs = {}) {
-  const ws = buildHistoryWorksheet(logs, paramConfigs);
+export function exportHistoryToExcel(logs, filename, paramConfigs = {}, reportInfo = undefined) {
+  const ws = buildHistoryWorksheet(logs, paramConfigs, reportInfo);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Lịch sử");
   XLSX.writeFile(wb, filename, { cellStyles: true });
@@ -252,10 +277,11 @@ export function exportHistoryToExcel(logs, filename, paramConfigs = {}) {
  * thay vì tải file — để đính kèm vào email gửi qua backend.
  * @param {Array} logs
  * @param {Object} [paramConfigs] - map station_name → { param_low, param_high }
+ * @param {Object} [reportInfo] - { shiftLabel, employeeName } — form báo cáo trên đầu
  * @returns {string} nội dung file .xlsx đã mã hóa base64
  */
-export function buildHistoryWorkbookBase64(logs, paramConfigs = {}) {
-  const ws = buildHistoryWorksheet(logs, paramConfigs);
+export function buildHistoryWorkbookBase64(logs, paramConfigs = {}, reportInfo = undefined) {
+  const ws = buildHistoryWorksheet(logs, paramConfigs, reportInfo);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Lịch sử");
   return XLSX.write(wb, { bookType: "xlsx", type: "base64", cellStyles: true });
