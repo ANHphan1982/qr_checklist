@@ -13,8 +13,8 @@ import { CHECKLISTS } from "../lib/checklists";
 import { getReports, getChecklistStations, getStationParamConfigs, emailChecklistExcel } from "../lib/api";
 import { exportHistoryToExcel, buildHistoryWorkbookBase64 } from "../lib/exportExcel";
 import { getShiftAt } from "../lib/shifts";
-import { getPeriodAt, vnDatesInRange, getFrequencyById } from "../lib/frequencies";
-import { getEffectiveFrequencyId, loadFrequencyOverrides } from "../lib/checklistFrequency";
+import { getPeriodAt, vnDatesInRange, frequencyShortLabel } from "../lib/frequencies";
+import { getEffectiveFrequencySetting, loadFrequencyOverrides } from "../lib/checklistFrequency";
 import { computeCoverage, selectChecklistShiftLogs, checklistCardCounts, summarizeCoverage } from "../lib/checklistCoverage";
 import { getStationsFor } from "../lib/checklistStations";
 import { saveRecentChecklist, loadRecentChecklist } from "../lib/recentChecklist";
@@ -218,7 +218,7 @@ export default function HomePage() {
     const d = new Date(now);
     const map = {};
     for (const c of CHECKLISTS) {
-      map[c.id] = getPeriodAt(getEffectiveFrequencyId(c, freqOverrides), d);
+      map[c.id] = getPeriodAt(getEffectiveFrequencySetting(c, freqOverrides), d);
     }
     return map;
   }, [now, freqOverrides]);
@@ -469,8 +469,8 @@ export default function HomePage() {
           // Số trên thẻ lấy từ coverage thật → khớp dòng cảnh báo bên dưới
           // (tránh "2/6 trạm" giả mâu thuẫn với "Còn 13/13 trạm chưa kiểm tra").
           const counts = checklistCardCounts(cov, item.stations);
-          // Nhãn tần suất hiệu lực (vd "1 lần/ca", "8h/lần") cho dòng cảnh báo.
-          const freqShort = getFrequencyById(getEffectiveFrequencyId(item, freqOverrides))?.short;
+          // Nhãn tần suất hiệu lực (vd "1 lần/ca", "1 lần/tháng (ngày 15)").
+          const freqShort = frequencyShortLabel(getEffectiveFrequencySetting(item, freqOverrides));
           return (
             <div key={item.id} className="flex flex-col gap-1.5">
               <ChecklistCard

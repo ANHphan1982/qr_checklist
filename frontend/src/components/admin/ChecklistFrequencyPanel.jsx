@@ -7,30 +7,36 @@
 // này) — logic thuần đã test ở lib/checklistFrequency & lib/frequencies.
 
 import { useState } from "react";
-import { Timer, RotateCcw, Info } from "lucide-react";
+import { Timer, RotateCcw, Info, CalendarDays } from "lucide-react";
 import { CHECKLISTS } from "../../lib/checklists";
 import { FREQUENCIES, getFrequencyById } from "../../lib/frequencies";
 import {
   loadFrequencyOverrides,
   setChecklistFrequency,
-  resolveFrequencyId,
+  resolveFrequencySetting,
 } from "../../lib/checklistFrequency";
+
+const MONTH_DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
+
+// Nhãn đầy đủ của setting hiệu lực, vd "Mỗi tháng (ngày 15)".
+function settingLabel(setting) {
+  const base = getFrequencyById(setting.id)?.label || "mặc định";
+  return setting.monthDay ? `${base} (ngày ${setting.monthDay})` : base;
+}
 
 export default function ChecklistFrequencyPanel({ flash }) {
   const [overrides, setOverrides] = useState(() => loadFrequencyOverrides());
 
-  const apply = (checklist, freqId) => {
-    const next = setChecklistFrequency(checklist.id, freqId);
+  const apply = (checklist, freqId, monthDay) => {
+    const next = setChecklistFrequency(checklist.id, freqId, { monthDay });
     setOverrides({ ...next });
-    const label = getFrequencyById(resolveFrequencyId(checklist, next))?.label || "mặc định";
-    flash(true, `Tần suất ${checklist.title}: ${label}`);
+    flash(true, `Tần suất ${checklist.title}: ${settingLabel(resolveFrequencySetting(checklist, next))}`);
   };
 
   const reset = (checklist) => {
     const next = setChecklistFrequency(checklist.id, ""); // gỡ override → về mặc định catalog
     setOverrides({ ...next });
-    const label = getFrequencyById(resolveFrequencyId(checklist, next))?.label || "mặc định";
-    flash(true, `${checklist.title} về mặc định (${label})`);
+    flash(true, `${checklist.title} về mặc định (${settingLabel(resolveFrequencySetting(checklist, next))})`);
   };
 
   return (
@@ -49,7 +55,8 @@ export default function ChecklistFrequencyPanel({ flash }) {
 
       <div className="space-y-2">
         {CHECKLISTS.map((c) => {
-          const effective = resolveFrequencyId(c, overrides);
+          const setting = resolveFrequencySetting(c, overrides);
+          const effective = setting.id;
           const isOverride = Boolean(overrides[c.id]);
           return (
             <div
@@ -82,7 +89,8 @@ export default function ChecklistFrequencyPanel({ flash }) {
                   return (
                     <button
                       key={f.id}
-                      onClick={() => apply(c, f.id)}
+                      // Bấm lại "Mỗi tháng" giữ nguyên ngày chốt đã chọn.
+                      onClick={() => apply(c, f.id, f.id === "month" ? setting.monthDay : undefined)}
                       aria-pressed={on}
                       className={`px-3 min-h-[40px] rounded-lg text-sm font-semibold border transition-colors ${
                         on
@@ -95,6 +103,30 @@ export default function ChecklistFrequencyPanel({ flash }) {
                   );
                 })}
               </div>
+
+              {effective === "month" && (
+                <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                  <CalendarDays className="w-4 h-4 flex-shrink-0 text-slate-400" aria-hidden />
+                  <span className="flex-shrink-0">Ngày chốt hàng tháng</span>
+                  <select
+                    value={setting.monthDay || 1}
+                    onChange={(e) => apply(c, "month", Number(e.target.value))}
+                    className="min-h-[40px] px-2 rounded-lg text-base font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200"
+                    aria-label={`Ngày chốt hàng tháng cho ${c.title}`}
+                  >
+                    {MONTH_DAYS.map((d) => (
+                      <option key={d} value={d}>
+                        Ngày {d}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {effective === "month" && (setting.monthDay || 1) > 28 && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Tháng không có ngày {setting.monthDay} sẽ chốt vào ngày cuối tháng.
+                </p>
+              )}
             </div>
           );
         })}

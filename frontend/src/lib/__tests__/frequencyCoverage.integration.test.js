@@ -39,4 +39,28 @@ describe("tần suất điều khiển coverage", () => {
     const cov = computeCoverage(stations, scans, period);
     expect(cov.checked).toEqual(["A"]); // 07:00 nằm trong ca ngày
   });
+
+  it("month + ngày chốt 15: scan SAU ngày chốt tính cho kỳ hiện tại", () => {
+    // Kỳ hiện tại (now = 22/06): [15/06, 15/07) VN. Scan 20/06 → đã kiểm tra.
+    const period = getPeriodAt({ id: "month", monthDay: 15 }, now);
+    const cov = computeCoverage(
+      stations,
+      [{ location: "A", scanned_at: "2026-06-20T00:00:00Z" }],
+      period
+    );
+    expect(cov.checked).toEqual(["A"]);
+    expect(cov.missing).toEqual(["B"]);
+  });
+
+  it("month + ngày chốt 15: scan TRƯỚC ngày chốt thuộc kỳ trước, KHÔNG tính", () => {
+    // Scan 10/06 nằm trong kỳ [15/05, 15/06) → kỳ hiện tại vẫn thiếu cả 2 trạm.
+    const period = getPeriodAt({ id: "month", monthDay: 15 }, now);
+    const cov = computeCoverage(
+      stations,
+      [{ location: "A", scanned_at: "2026-06-10T00:00:00Z" }],
+      period
+    );
+    expect(cov.checked).toEqual([]);
+    expect(cov.missingCount).toBe(2);
+  });
 });

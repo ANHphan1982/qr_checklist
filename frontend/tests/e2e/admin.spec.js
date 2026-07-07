@@ -249,3 +249,62 @@ test.describe("Admin page — ẩn/hiện thông số trạm", () => {
     await expect(page.locator("button[title='Bật']")).toBeVisible({ timeout: 5_000 });
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Tab Tần suất: chọn "Mỗi tháng" + ngày chốt trong tháng
+// ────────────────────────────────────────────────────────────────────────────
+test.describe("Admin page — tần suất tháng có ngày chốt", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAdminApi(page);
+    await mockStationParams(page, { initial: [] });
+    await loginAdmin(page);
+    await page.getByRole("button", { name: /Tần suất/ }).click();
+  });
+
+  // Card của checklist Pump trong tab Tần suất (chứa nút tần suất).
+  const pumpCard = (page) =>
+    page
+      .locator("div", { has: page.getByRole("button", { name: "Mỗi tháng" }) })
+      .filter({ hasText: "Pump Check List" })
+      .last();
+
+  test("chọn 'Mỗi tháng' hiện selector ngày chốt, tần suất khác thì ẩn", async ({ page }) => {
+    const card = pumpCard(page);
+    // Mặc định (mỗi ca) → chưa có selector ngày
+    await expect(card.getByLabel(/Ngày chốt hàng tháng cho Pump/)).toHaveCount(0);
+
+    await card.getByRole("button", { name: "Mỗi tháng" }).click();
+    await expect(card.getByLabel(/Ngày chốt hàng tháng cho Pump/)).toBeVisible();
+
+    // Chuyển sang tần suất khác → selector biến mất
+    await card.getByRole("button", { name: "Mỗi ngày" }).click();
+    await expect(card.getByLabel(/Ngày chốt hàng tháng cho Pump/)).toHaveCount(0);
+  });
+
+  test("chọn ngày 15 → lưu localStorage, reload vẫn giữ", async ({ page }) => {
+    const card = pumpCard(page);
+    await card.getByRole("button", { name: "Mỗi tháng" }).click();
+    await card.getByLabel(/Ngày chốt hàng tháng cho Pump/).selectOption("15");
+
+    // Lưu descriptor {id:'month', monthDay:15} theo thiết bị
+    const stored = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("qr_checklist_frequency") || "{}")
+    );
+    expect(stored.pump).toEqual({ id: "month", monthDay: 15 });
+
+    // Reload → tab Tần suất vẫn hiện month + ngày 15
+    await page.reload();
+    await expect(page.locator("button:has-text('Đăng xuất')")).toBeVisible({ timeout: 8_000 });
+    await page.getByRole("button", { name: /Tần suất/ }).click();
+    const cardAfter = pumpCard(page);
+    await expect(cardAfter.getByRole("button", { name: "Mỗi tháng" })).toHaveAttribute("aria-pressed", "true");
+    await expect(cardAfter.getByLabel(/Ngày chốt hàng tháng cho Pump/)).toHaveValue("15");
+  });
+
+  test("chọn ngày 31 hiện ghi chú kẹp về cuối tháng", async ({ page }) => {
+    const card = pumpCard(page);
+    await card.getByRole("button", { name: "Mỗi tháng" }).click();
+    await card.getByLabel(/Ngày chốt hàng tháng cho Pump/).selectOption("31");
+    await expect(card.locator("text=chốt vào ngày cuối tháng")).toBeVisible();
+  });
+});

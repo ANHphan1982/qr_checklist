@@ -5,7 +5,8 @@
 //   shift  — mỗi ca vận hành (06:00–18:00 / 18:00–06:00), dùng lại shifts.js
 //   4h/8h/12h — cửa sổ N giờ căn theo nửa đêm VN (vd 8h: 00–08, 08–16, 16–24)
 //   day    — ngày lịch VN (00:00 → 24:00)
-//   month  — tháng lịch VN, reset ngày 1 (ngày cố định trong tháng)
+//   month  — tháng lịch VN, reset tại NGÀY CHỐT (monthDay, mặc định 1); tháng
+//            thiếu ngày đó (vd 31 với tháng 4) kẹp về ngày cuối tháng
 //
 // getPeriodAt trả cửa sổ {id, label, startMs, endMs} CÙNG shape với getShiftAt
 // → checklistCoverage.computeCoverage nhận trực tiếp, không phải sửa logic cũ.
@@ -53,13 +54,48 @@ function dayLabel(p) {
   return `Ngày ${pad2(p.d)}/${pad2(p.mo + 1)}/${p.y}`;
 }
 
+/** Ngày chốt trong tháng hợp lệ (số nguyên 1..31); còn lại → undefined. */
+export function sanitizeMonthDay(value) {
+  const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  if (typeof n !== "number" || !Number.isInteger(n)) return undefined;
+  return n >= 1 && n <= 31 ? n : undefined;
+}
+
 /**
- * Cửa sổ chu kỳ chứa thời điểm `date` cho tần suất `frequencyId`.
+ * Nhãn ngắn cho setting {id, monthDay?} — month có ngày chốt ≠ 1 kèm "(ngày N)".
+ * undefined nếu id không tồn tại (cùng quy ước với getFrequencyById).
+ */
+export function frequencyShortLabel(setting) {
+  const freq = getFrequencyById(setting?.id);
+  if (!freq) return undefined;
+  const monthDay = freq.id === "month" ? sanitizeMonthDay(setting.monthDay) : undefined;
+  return monthDay && monthDay !== 1 ? `${freq.short} (ngày ${monthDay})` : freq.short;
+}
+
+// Instant nửa đêm VN của ngày chốt trong tháng (y, mo) — kẹp về cuối tháng
+// nếu tháng không có ngày đó (Date.UTC(y, mo+1, 0) = ngày cuối tháng mo).
+function monthAnchorMs(y, mo, day, offsetMin) {
+  const lastDay = new Date(Date.UTC(y, mo + 1, 0)).getUTCDate();
+  return Date.UTC(y, mo, Math.min(day, lastDay), 0, 0, 0) - offsetMin * 60000;
+}
+
+function anchorLabel(ms, offsetMin) {
+  const p = vnParts(new Date(ms), offsetMin);
+  return `${pad2(p.d)}/${pad2(p.mo + 1)}/${p.y}`;
+}
+
+/**
+ * Cửa sổ chu kỳ chứa thời điểm `date` cho tần suất `frequency`.
+ * @param {string|{id: string, monthDay?: number}} frequency - id tần suất hoặc
+ *        descriptor; `monthDay` (1..31) = ngày chốt cho tần suất month.
  * @returns {{id, label, startMs, endMs}} startMs/endMs là instant UTC (ms),
  *          khoảng [startMs, endMs) — cùng shape với getShiftAt.
  */
-export function getPeriodAt(frequencyId, date, offsetMin = VN_OFFSET_MIN) {
-  const freq = getFrequencyById(frequencyId) || getFrequencyById(DEFAULT_ID);
+export function getPeriodAt(frequency, date, offsetMin = VN_OFFSET_MIN) {
+  const isDescriptor = frequency !== null && typeof frequency === "object";
+  const freq =
+    getFrequencyById(isDescriptor ? frequency.id : frequency) || getFrequencyById(DEFAULT_ID);
+  const monthDay = (isDescriptor && sanitizeMonthDay(frequency.monthDay)) || 1;
 
   if (freq.id === "shift") {
     const sh = getShiftAt(date, offsetMin);
@@ -79,9 +115,21 @@ export function getPeriodAt(frequencyId, date, offsetMin = VN_OFFSET_MIN) {
   }
 
   if (freq.id === "month") {
-    const startMs = Date.UTC(p.y, p.mo, 1, 0, 0, 0) - offsetMin * 60000;
-    const endMs = Date.UTC(p.y, p.mo + 1, 1, 0, 0, 0) - offsetMin * 60000;
-    return { id: "month", label: `Tháng ${pad2(p.mo + 1)}/${p.y}`, startMs, endMs };
+    // Kỳ = [ngày chốt gần nhất ≤ date, ngày chốt kế tiếp). Ngày chốt của từng
+    // tháng kẹp về cuối tháng nếu tháng thiếu ngày đó.
+    let startMs = monthAnchorMs(p.y, p.mo, monthDay, offsetMin);
+    let endMs;
+    if (date.getTime() >= startMs) {
+      endMs = monthAnchorMs(p.y, p.mo + 1, monthDay, offsetMin);
+    } else {
+      endMs = startMs;
+      startMs = monthAnchorMs(p.y, p.mo - 1, monthDay, offsetMin);
+    }
+    const label =
+      monthDay === 1
+        ? `Tháng ${pad2(p.mo + 1)}/${p.y}`
+        : `Kỳ ${anchorLabel(startMs, offsetMin)} – ${anchorLabel(endMs, offsetMin)}`;
+    return { id: "month", label, startMs, endMs };
   }
 
   // Canh theo giờ: chia ngày VN thành các cửa sổ N giờ căn từ nửa đêm.

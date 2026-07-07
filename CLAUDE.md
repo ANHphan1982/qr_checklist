@@ -30,7 +30,7 @@ offline queue tự đồng bộ khi có mạng, cache cấu hình thông số tr
 | Hosting FE | Vercel (free)                      | CI/CD tự động từ GitHub              |
 | Hosting BE | Render (free tier)                 | Cold start ~30s                      |
 | Test BE    | pytest (mock session, không DB thật)| `backend/tests/`                    |
-| Test FE    | Vitest (unit) + Playwright (e2e)   | e2e chạy từ `frontend/`, suite 54    |
+| Test FE    | Vitest (unit) + Playwright (e2e)   | e2e chạy từ `frontend/`, suite 66    |
 
 ---
 
@@ -230,7 +230,7 @@ VITE_API_URL=https://qr-checklist-api.onrender.com
   (đã làm với `src/lib/vendor/qrcode-generator.js`)
 - `backend/tests/test_e2e_live.py` bắn vào **PROD Render thật** — 400 khi chạy lại
   là rate limit, không phải regression. Chạy suite thường: `--ignore=tests/test_e2e_live.py`
-- Playwright e2e phải chạy từ `frontend/` — suite chuẩn 54 test; gotcha: `setOffline`
+- Playwright e2e phải chạy từ `frontend/` — suite chuẩn 66 test; gotcha: `setOffline`
   + vite dev reload
 - Test backend mock session bằng MagicMock — query chain mới (vd dedupe `.first()`)
   phải set return_value tường minh, nếu không MagicMock truthy phá logic
