@@ -1,13 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, NavLink, useParams } from "react-router-dom";
 import { Sun, Moon, Home, History, Smartphone, X } from "lucide-react";
 import HomePage from "./pages/HomePage";
 import ScanPage from "./pages/ScanPage";
-import HistoryPage from "./pages/HistoryPage";
-import StationDisplayPage from "./pages/StationDisplayPage";
-import AdminPage from "./pages/AdminPage";
-import MdmCheckPage from "./pages/MdmCheckPage";
 import { ToastProvider } from "./components/ui/Toast";
+import Spinner from "./components/ui/Spinner";
+
+// Route phụ nạp lười (code-splitting) — HomePage + ScanPage là flow chính của
+// nhân viên nên giữ eager; các trang còn lại tách chunk riêng để bundle khởi
+// động nhỏ, mở app nhanh trên mạng hiện trường yếu.
+const HistoryPage        = lazy(() => import("./pages/HistoryPage"));
+const StationDisplayPage = lazy(() => import("./pages/StationDisplayPage"));
+const AdminPage          = lazy(() => import("./pages/AdminPage"));
+const MdmCheckPage       = lazy(() => import("./pages/MdmCheckPage"));
+
+// Fallback khi chunk của trang lazy đang tải — spinner giữa vùng nội dung.
+function PageFallback() {
+  return (
+    <div className="flex items-center justify-center py-20 text-blue-500">
+      <Spinner className="h-8 w-8" />
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // PWA display mode hook — thêm class pwa-mode lên <html> khi chạy standalone
@@ -280,7 +294,14 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         {/* Trang màn hình trạm — fullscreen, không có chrome */}
-        <Route path="/station/:name" element={<StationDisplayRoute />} />
+        <Route
+          path="/station/:name"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <StationDisplayRoute />
+            </Suspense>
+          }
+        />
 
         {/* Trang nhân viên — NavBar trên + BottomTabs dưới */}
         <Route
@@ -293,13 +314,16 @@ export default function App() {
                 <InstallBanner onInstall={handleInstall} onDismiss={handleDismiss} />
               )}
               <main className="flex-1 w-full max-w-md mx-auto px-4 py-4 pb-24">
-                <Routes>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/scan/:type" element={<ScanPage />} />
-                  <Route path="/history" element={<HistoryPage />} />
-                  <Route path="/admin" element={<AdminPage />} />
-                  <Route path="/mdm-check" element={<MdmCheckPage />} />
-                </Routes>
+                {/* Suspense đặt TRONG main — NavBar/BottomTabs vẫn hiện khi chunk trang lazy đang tải */}
+                <Suspense fallback={<PageFallback />}>
+                  <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/scan/:type" element={<ScanPage />} />
+                    <Route path="/history" element={<HistoryPage />} />
+                    <Route path="/admin" element={<AdminPage />} />
+                    <Route path="/mdm-check" element={<MdmCheckPage />} />
+                  </Routes>
+                </Suspense>
               </main>
               <BottomTabs />
             </div>

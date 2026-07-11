@@ -1,4 +1,9 @@
 import * as XLSX from "xlsx";
+import { isOutOfRange } from "./valueRange";
+
+// Re-export để giữ backward compat — code ở flow chính nên import trực tiếp
+// từ ./valueRange để không kéo xlsx vào bundle khởi động.
+export { isOutOfRange };
 
 const VN_TZ = "Asia/Ho_Chi_Minh";
 
@@ -30,18 +35,6 @@ function toVnDateTime(isoString) {
   const date = d.toLocaleDateString("vi-VN", { timeZone: VN_TZ, day: "2-digit", month: "2-digit", year: "numeric" });
   const time = d.toLocaleTimeString("vi-VN", { timeZone: VN_TZ, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
   return `${date} ${time}`;
-}
-
-/**
- * Kiểm tra value có nằm ngoài [low, high] không.
- * Trả về true nếu ngoài giới hạn, false nếu OK hoặc không có giới hạn.
- */
-export function isOutOfRange(value, low, high) {
-  if (value == null) return false;
-  if (low == null && high == null) return false;
-  if (low != null && value < low) return true;
-  if (high != null && value > high) return true;
-  return false;
 }
 
 export function buildStationsRows(stations) {

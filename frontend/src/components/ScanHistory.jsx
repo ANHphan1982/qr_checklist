@@ -1,5 +1,5 @@
 import { formatDateTime } from "../lib/utils";
-import { isOutOfRange } from "../lib/exportExcel";
+import { isOutOfRange } from "../lib/valueRange";
 import { MapPin, AlertTriangle, MapPinOff, MailCheck, MailX } from "lucide-react";
 
 // Skeleton card — giữ đúng hình khối card thật để không giật layout khi load xong

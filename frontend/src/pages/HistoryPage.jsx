@@ -3,7 +3,7 @@ import { Download, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import ScanHistory from "../components/ScanHistory";
 import Button from "../components/ui/Button";
 import { getReports, getStationParamConfigs } from "../lib/api";
-import { exportHistoryToExcel } from "../lib/exportExcel";
+// exportExcel (kéo theo xlsx ~800KB) nạp lười bằng import() khi bấm nút Excel.
 import { addDays, canGoNext } from "../lib/dateNav";
 import { summarizeLogs, filterLogs } from "../lib/historyFilter";
 
@@ -63,6 +63,16 @@ export default function HistoryPage() {
 
   useEffect(() => { fetchLogs(date); }, [date]);
 
+  const handleExport = async () => {
+    try {
+      const { exportHistoryToExcel } = await import("../lib/exportExcel");
+      exportHistoryToExcel(filtered, `checkin-${date}.xlsx`, paramConfigsRef.current);
+    } catch (_) {
+      // import() fail khi offline mà chunk chưa được SW cache
+      setError("Không tạo được file Excel — kiểm tra kết nối mạng rồi thử lại");
+    }
+  };
+
   // Thống kê ngày + danh sách đã lọc (client-side, trên logs đã tải).
   const summary  = useMemo(() => summarizeLogs(logs), [logs]);
   const filtered = useMemo(() => filterLogs(logs, { category, query }), [logs, category, query]);
@@ -88,7 +98,7 @@ export default function HistoryPage() {
               size="sm"
               variant="success"
               icon={Download}
-              onClick={() => exportHistoryToExcel(filtered, `checkin-${date}.xlsx`, paramConfigsRef.current)}
+              onClick={handleExport}
             >
               Excel
             </Button>

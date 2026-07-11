@@ -11,7 +11,8 @@ import { Search, ChevronRight, SearchX, AlertTriangle, CheckCircle2, FileSpreads
 import { CHECKLIST_ART, IMAGE_ART } from "../components/ChecklistArt";
 import { CHECKLISTS } from "../lib/checklists";
 import { getReports, getChecklistStations, getStationParamConfigs, emailChecklistExcel } from "../lib/api";
-import { exportHistoryToExcel, buildHistoryWorkbookBase64 } from "../lib/exportExcel";
+// exportExcel (kéo theo xlsx ~800KB) nạp lười bằng import() trong handler —
+// không nằm trong bundle khởi động vì chỉ cần khi bấm nút Excel/Email.
 import { getShiftAt } from "../lib/shifts";
 import { getPeriodAt, vnDatesInRange, frequencyShortLabel } from "../lib/frequencies";
 import { getEffectiveFrequencySetting, loadFrequencyOverrides } from "../lib/checklistFrequency";
@@ -313,10 +314,16 @@ export default function HomePage() {
     employeeName: employeeName.trim(),
   });
 
-  const exportChecklist = (item) => {
-    const logs = checklistLogs(item);
-    exportHistoryToExcel(logs, `${item.id}-${periods[item.id].id}.xlsx`, paramConfigsRef.current, reportInfoFor(item));
-    toast.success(`Đã tạo file Excel ${item.title} (${logs.length} lượt)`);
+  const exportChecklist = async (item) => {
+    try {
+      const { exportHistoryToExcel } = await import("../lib/exportExcel");
+      const logs = checklistLogs(item);
+      exportHistoryToExcel(logs, `${item.id}-${periods[item.id].id}.xlsx`, paramConfigsRef.current, reportInfoFor(item));
+      toast.success(`Đã tạo file Excel ${item.title} (${logs.length} lượt)`);
+    } catch (_) {
+      // import() fail khi offline mà chunk chưa được SW cache
+      toast.error("Không tạo được file Excel — kiểm tra kết nối mạng rồi thử lại");
+    }
   };
 
   // Gửi email kèm file Excel checklist cho quản lý. Dựng cùng workbook với nút
@@ -325,6 +332,7 @@ export default function HomePage() {
     if (emailState[item.id] === "sending") return;
     setEmailState((s) => ({ ...s, [item.id]: "sending" }));
     try {
+      const { buildHistoryWorkbookBase64 } = await import("../lib/exportExcel");
       const filename = `${item.id}-${periods[item.id].id}.xlsx`;
       const fileBase64 = buildHistoryWorkbookBase64(checklistLogs(item), paramConfigsRef.current, reportInfoFor(item));
       await emailChecklistExcel({

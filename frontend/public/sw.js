@@ -1,4 +1,7 @@
-const CACHE = "qr-checklist-v9";
+// Logic phân loại request tách ra sw-routing.js để unit-test được (vitest).
+importScripts("/sw-routing.js");
+
+const CACHE = "qr-checklist-v10";
 
 // App shell phụ — cache lúc install để mở app offline có đủ icon/font ngay cả
 // khi runtime cache chưa kịp lưu (vd cài PWA xong tắt mạng luôn).
@@ -45,29 +48,43 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// Fetch: network-first cho tất cả (luôn lấy bản mới nhất từ server)
+// Network-first: lấy bản mới nhất, cập nhật cache, fallback cache khi offline
+function networkFirst(request) {
+  return fetch(request)
+    .then((res) => {
+      if (res.ok) {
+        const clone = res.clone();
+        caches.open(CACHE).then((c) => c.put(request, clone));
+      }
+      return res;
+    })
+    .catch(() => caches.match(request));
+}
+
+// Cache-first: assets Vite có content-hash trong tên file → nội dung bất biến
+// theo URL, trả cache ngay không chờ network (mở app tức thời trên mạng chậm).
+// Miss (lần đầu sau deploy) → fetch rồi lưu cache cho các lần sau.
+function cacheFirst(request) {
+  return caches.match(request).then((hit) => hit || networkFirst(request));
+}
+
+// Fetch: chiến lược theo loại request — xem classifyRequest trong sw-routing.js
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET") return;
-  if (e.request.url.includes("/api/")) return; // bỏ qua API calls
+  const strategy = self.swRouting.classifyRequest(e.request);
+  if (strategy === "ignore") return;
 
   // HTML navigation — network first, fallback index.html khi offline
-  if (e.request.mode === "navigate") {
+  if (strategy === "navigate") {
     e.respondWith(
       fetch(e.request).catch(() => caches.match("/index.html"))
     );
     return;
   }
 
-  // JS/CSS/images — network first, cập nhật cache, fallback cache khi offline
-  e.respondWith(
-    fetch(e.request)
-      .then((res) => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, clone));
-        }
-        return res;
-      })
-      .catch(() => caches.match(e.request))
-  );
+  if (strategy === "cache-first") {
+    e.respondWith(cacheFirst(e.request));
+    return;
+  }
+
+  e.respondWith(networkFirst(e.request));
 });

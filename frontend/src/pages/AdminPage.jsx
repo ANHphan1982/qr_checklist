@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { Settings, MapPin, Link2, SlidersHorizontal, ListChecks, Timer, BarChart3, Download, CheckCircle2, XCircle } from "lucide-react";
-import { buildStationsRows, buildAliasesRows, exportToExcel } from "../lib/exportExcel";
 import { getAdminStationParams } from "../lib/api";
 import { api, SESSION_KEY } from "../components/admin/adminApi";
 import LoginGate from "../components/admin/LoginGate";
@@ -111,9 +110,15 @@ function AdminDashboard({ adminKey, onLogout }) {
         </div>
         {tab !== "params" && tab !== "dashboard" && tab !== "checklists" && tab !== "frequency" && (
           <button
-            onClick={() => {
-              if (tab === "stations") exportToExcel(buildStationsRows(stations), "tram-checkpoint.xlsx", "Trạm");
-              else exportToExcel(buildAliasesRows(aliases), "qr-alias.xlsx", "QR Alias");
+            onClick={async () => {
+              // exportExcel (xlsx ~800KB) nạp lười — chỉ tải khi bấm Xuất Excel
+              try {
+                const { buildStationsRows, buildAliasesRows, exportToExcel } = await import("../lib/exportExcel");
+                if (tab === "stations") exportToExcel(buildStationsRows(stations), "tram-checkpoint.xlsx", "Trạm");
+                else exportToExcel(buildAliasesRows(aliases), "qr-alias.xlsx", "QR Alias");
+              } catch (_) {
+                flash(false, "Không tạo được file Excel — kiểm tra kết nối mạng rồi thử lại");
+              }
             }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-semibold active:bg-green-700 transition-colors min-h-[44px]"
           >

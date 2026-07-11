@@ -2,7 +2,7 @@
 // test; UI (HistoryPage) chỉ render kết quả. Không gọi backend (lọc trên logs
 // đã tải sẵn theo ngày).
 
-import { isOutOfRange } from "./exportExcel";
+import { isOutOfRange } from "./valueRange";
 
 /** Log có thông số vận hành nào vượt ngưỡng không. */
 export function logHasBreach(log) {
