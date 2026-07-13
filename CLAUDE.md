@@ -153,7 +153,7 @@ BẤT KỲ bản ghi DB nào thì DB nắm toàn quyền trạm đó (kể cả 
 ### Cần `X-Admin-Key` (= ADMIN_SECRET)
 | Endpoint | Mô tả |
 |---|---|
-| `GET/POST /api/admin/stations`, `PUT/DELETE /api/admin/stations/<name>` | CRUD trạm (DELETE = soft, set active=false) |
+| `GET/POST /api/admin/stations`, `PUT/DELETE /api/admin/stations/<name>` | CRUD trạm (DELETE = soft, set active=false). PUT nhận `name` để ĐỔI TÊN trạm: cascade station_params + qr_aliases + scan_logs cùng transaction, tự tạo alias tên cũ → tên mới (QR đã in vẫn quét được); trùng tên khác → 409 |
 | `GET/POST /api/admin/qr-aliases`, `DELETE /api/admin/qr-aliases/<id>` | CRUD alias QR |
 | `GET/POST /api/admin/station-params`, `PUT/DELETE /api/admin/station-params/<id>` | CRUD thông số |
 | `POST /api/admin/purge` | Xóa scan cũ hơn `older_than_days` (mặc định 7) |

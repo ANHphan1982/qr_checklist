@@ -80,6 +80,36 @@ def create_station():
         return jsonify({"error": f"Trạm '{name}' hoặc QR '{qr_content}' đã tồn tại"}), 409
 
 
+def _rename_station(s, st, new_name):
+    """Đổi tên trạm + cascade. Trả về (json, status) khi lỗi, None khi OK.
+
+    Config thông số, alias QR và lịch sử scan đều tham chiếu trạm bằng tên
+    (không FK) → đổi đồng bộ trong cùng transaction với st.name.
+    """
+    if not new_name:
+        return jsonify({"error": "Tên trạm không được rỗng"}), 400
+    old_name = st.name
+    if new_name == old_name:
+        return None
+    if s.query(Station).filter(Station.name == new_name).first():
+        return jsonify({"error": f"Trạm '{new_name}' đã tồn tại"}), 409
+    st.name = new_name
+    s.query(StationParam).filter(StationParam.station_name == old_name)\
+        .update({"station_name": new_name}, synchronize_session=False)
+    s.query(QrAlias).filter(QrAlias.station_name == old_name)\
+        .update({"station_name": new_name}, synchronize_session=False)
+    s.query(ScanLog).filter(ScanLog.location == old_name)\
+        .update({"location": new_name}, synchronize_session=False)
+    # QR đã in tại trạm vẫn chứa tên cũ → giữ alias tên cũ → tên mới.
+    alias = s.query(QrAlias).filter(QrAlias.qr_content == old_name).first()
+    if alias:
+        alias.station_name = new_name
+    else:
+        s.add(QrAlias(qr_content=old_name, station_name=new_name,
+                      note=f"Đổi tên từ {old_name}"))
+    return None
+
+
 @admin_bp.route("/admin/stations/<name>", methods=["PUT"])
 def update_station(name):
     err = _auth()
@@ -93,6 +123,10 @@ def update_station(name):
         st = s.query(Station).filter(Station.name == name.upper()).first()
         if not st:
             return jsonify({"error": "Không tìm thấy trạm"}), 404
+        if "name" in data:
+            err = _rename_station(s, st, (data.get("name") or "").strip().upper())
+            if err:
+                return err
         if data.get("lat") is not None:
             st.lat = float(data["lat"])
         if data.get("lng") is not None:

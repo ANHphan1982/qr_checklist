@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pencil, Trash2, Plus, LocateFixed } from "lucide-react";
 import { INPUT_CLS, ROW_BTN_CLS, ROW_BTN_DANGER_CLS } from "./adminApi";
+import { buildStationUpdatePayload } from "../../lib/stationForm";
 
 export default function StationsPanel({ stations, client, onRefresh, flash }) {
   const empty = { name: "", lat: "", lng: "", radius: "300", qr_content: "" };
@@ -22,8 +23,11 @@ export default function StationsPanel({ stations, client, onRefresh, flash }) {
     setSaving(true);
     try {
       if (editing) {
-        await client.put(`/api/admin/stations/${editing}`, { lat: form.lat, lng: form.lng, radius: form.radius });
-        flash(true, `Đã cập nhật trạm ${editing}`);
+        const payload = buildStationUpdatePayload(form, editing);
+        await client.put(`/api/admin/stations/${editing}`, payload);
+        flash(true, payload.name
+          ? `Đã đổi tên ${editing} → ${payload.name}`
+          : `Đã cập nhật trạm ${editing}`);
       } else {
         await client.post("/api/admin/stations", form);
         flash(true, `Đã thêm trạm ${form.name}`);
@@ -64,29 +68,32 @@ export default function StationsPanel({ stations, client, onRefresh, flash }) {
             : <><Plus className="w-4 h-4" aria-hidden />Thêm trạm mới</>}
         </h2>
 
+        <div>
+          <label className="text-xs text-slate-500 dark:text-slate-400">Tên trạm *</label>
+          <input
+            value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value.toUpperCase() }))}
+            placeholder="VD: PUMP_STATION_7"
+            required
+            className={INPUT_CLS}
+          />
+          {editing && (
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+              Đổi tên sẽ cập nhật cả thông số, alias và lịch sử scan. QR cũ in tên cũ vẫn quét được.
+            </p>
+          )}
+        </div>
         {!editing && (
-          <>
-            <div>
-              <label className="text-xs text-slate-500 dark:text-slate-400">Tên trạm *</label>
-              <input
-                value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value.toUpperCase() }))}
-                placeholder="VD: PUMP_STATION_7"
-                required
-                className={INPUT_CLS}
-              />
-            </div>
-            <div>
-              <label className="text-xs text-slate-500 dark:text-slate-400">Nội dung QR code tại trạm (nếu khác tên trạm)</label>
-              <input
-                value={form.qr_content} onChange={e => setForm(f => ({ ...f, qr_content: e.target.value }))}
-                placeholder="VD: 052-PG-071"
-                className={INPUT_CLS}
-              />
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                Điền để hệ thống tự nhận diện QR → trạm. Bỏ trống nếu QR đã ghi đúng tên trạm.
-              </p>
-            </div>
-          </>
+          <div>
+            <label className="text-xs text-slate-500 dark:text-slate-400">Nội dung QR code tại trạm (nếu khác tên trạm)</label>
+            <input
+              value={form.qr_content} onChange={e => setForm(f => ({ ...f, qr_content: e.target.value }))}
+              placeholder="VD: 052-PG-071"
+              className={INPUT_CLS}
+            />
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+              Điền để hệ thống tự nhận diện QR → trạm. Bỏ trống nếu QR đã ghi đúng tên trạm.
+            </p>
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-3">
