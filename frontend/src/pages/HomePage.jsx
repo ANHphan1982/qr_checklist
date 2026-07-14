@@ -18,6 +18,9 @@ import { getPeriodAt, vnDatesInRange, frequencyShortLabel } from "../lib/frequen
 import { getEffectiveFrequencySetting, loadFrequencyOverrides } from "../lib/checklistFrequency";
 import { computeCoverage, selectChecklistShiftLogs, checklistCardCounts, summarizeCoverage } from "../lib/checklistCoverage";
 import { getStationsFor } from "../lib/checklistStations";
+// Form mẫu kiểm tra (thuần data, không kéo xlsx) — sheet "Form kiểm tra" dùng
+// chung cho mọi trạm của checklist, đính kèm vào file Excel/email nếu có.
+import { getInspectionForm } from "../lib/inspectionForms";
 import { saveRecentChecklist, loadRecentChecklist } from "../lib/recentChecklist";
 import { saveEmployeeName, loadEmployeeName } from "../lib/employeeName";
 import { shouldShowOnboarding, markOnboardingSeen } from "../lib/onboarding";
@@ -318,7 +321,7 @@ export default function HomePage() {
     try {
       const { exportHistoryToExcel } = await import("../lib/exportExcel");
       const logs = checklistLogs(item);
-      exportHistoryToExcel(logs, `${item.id}-${periods[item.id].id}.xlsx`, paramConfigsRef.current, reportInfoFor(item));
+      exportHistoryToExcel(logs, `${item.id}-${periods[item.id].id}.xlsx`, paramConfigsRef.current, reportInfoFor(item), getInspectionForm(item.id));
       toast.success(`Đã tạo file Excel ${item.title} (${logs.length} lượt)`);
     } catch (_) {
       // import() fail khi offline mà chunk chưa được SW cache
@@ -334,7 +337,7 @@ export default function HomePage() {
     try {
       const { buildHistoryWorkbookBase64 } = await import("../lib/exportExcel");
       const filename = `${item.id}-${periods[item.id].id}.xlsx`;
-      const fileBase64 = buildHistoryWorkbookBase64(checklistLogs(item), paramConfigsRef.current, reportInfoFor(item));
+      const fileBase64 = buildHistoryWorkbookBase64(checklistLogs(item), paramConfigsRef.current, reportInfoFor(item), getInspectionForm(item.id));
       await emailChecklistExcel({
         subject: `[Checklist] ${item.title} — ${periods[item.id].label}`,
         filename,

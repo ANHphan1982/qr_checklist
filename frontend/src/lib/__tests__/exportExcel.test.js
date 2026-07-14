@@ -8,7 +8,9 @@ import {
   gpsMapsUrl,
   buildHistoryWorksheet,
   buildHistoryWorkbookBase64,
+  buildInspectionFormSheet,
 } from "../exportExcel";
+import { getInspectionForm } from "../inspectionForms";
 
 // ---------------------------------------------------------------------------
 // buildStationsRows
@@ -391,6 +393,94 @@ describe("buildHistoryWorkbookBase64 — form báo cáo", () => {
     const b64 = buildHistoryWorkbookBase64(logs, {});
     const wb = XLSX.read(b64, { type: "base64" });
     expect(wb.Sheets["Lịch sử"]["A1"].v).toBe("ID");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildInspectionFormSheet + sheet "Form kiểm tra" trong workbook (TDD)
+// Form mẫu theo định dạng BSR-INS-WI-007-F001: khi checklist có form
+// (getInspectionForm), workbook Excel/email có thêm sheet "Form kiểm tra"
+// dùng chung cho mọi trạm của checklist. Không có form → giữ nguyên 1 sheet.
+// ---------------------------------------------------------------------------
+describe("buildInspectionFormSheet", () => {
+  const form = getInspectionForm("elec");
+
+  it("A1 là tiêu đề form", () => {
+    const ws = buildInspectionFormSheet(form);
+    expect(ws["A1"].v).toBe(form.title);
+  });
+
+  it("header bảng ở dòng 4: Stt + Đánh giá gộp, dòng 5: 4 cột con", () => {
+    const ws = buildInspectionFormSheet(form);
+    expect(ws["A4"].v).toBe("Stt/ No");
+    expect(ws["D4"].v).toBe("Đánh giá/ Judgement");
+    expect(ws["H4"].v).toBe("Ghi chú/ Remark");
+    expect(ws["D5"].v).toBe("No abnormal");
+    expect(ws["G5"].v).toBe("Not Acc");
+  });
+
+  it("merge nhóm 'Đánh giá' ngang 4 cột (D4:G4) và các header dọc 2 dòng", () => {
+    const ws = buildInspectionFormSheet(form);
+    const merges = (ws["!merges"] || []).map((m) => XLSX.utils.encode_range(m));
+    expect(merges).toContain("D4:G4"); // nhóm Đánh giá
+    expect(merges).toContain("A4:A5"); // Stt dọc
+    expect(merges).toContain("B4:B5"); // Hạng mục dọc
+    expect(merges).toContain("C4:C5"); // Fact & Finding dọc
+    expect(merges).toContain("H4:H5"); // Ghi chú dọc
+  });
+
+  it("item đầu tiên của form nằm ngay sau section row đầu", () => {
+    const ws = buildInspectionFormSheet(form);
+    expect(ws["A6"].v).toBe("1");                          // section 1
+    expect(ws["A7"].v).toBe("1.1");                        // item 1.1
+    expect(ws["B7"].v).toBe(form.sections[0].items[0].label);
+  });
+
+  it("có set độ rộng cột để in được (cột hạng mục rộng)", () => {
+    const ws = buildInspectionFormSheet(form);
+    expect(Array.isArray(ws["!cols"])).toBe(true);
+    expect(ws["!cols"][1].wch).toBeGreaterThan(30);
+  });
+});
+
+describe("workbook có sheet 'Form kiểm tra' khi truyền form", () => {
+  const logs = [{
+    id: 1, location: "SUB-01", scanned_at: "2026-04-18T01:30:00.000Z",
+    device_id: "d", geo_status: "ok", geo_distance: 30, email_sent: true,
+  }];
+  const reportInfo = { shiftLabel: "Ca ngày (06:00–18:00)", employeeName: "Nguyễn Văn A" };
+
+  it("buildHistoryWorkbookBase64 với form → 2 sheet: Lịch sử + Form kiểm tra", () => {
+    const form = getInspectionForm("elec");
+    const b64 = buildHistoryWorkbookBase64(logs, {}, reportInfo, form);
+    const wb = XLSX.read(b64, { type: "base64" });
+    expect(wb.SheetNames).toEqual(["Lịch sử", "Form kiểm tra"]);
+    expect(wb.Sheets["Form kiểm tra"]["A1"].v).toBe(form.title);
+  });
+
+  it("sheet Lịch sử giữ nguyên nội dung khi có form", () => {
+    const b64 = buildHistoryWorkbookBase64(logs, {}, reportInfo, getInspectionForm("elec"));
+    const wb = XLSX.read(b64, { type: "base64" });
+    expect(wb.Sheets["Lịch sử"]["A1"].v).toBe("Ca:");
+    expect(wb.Sheets["Lịch sử"]["A4"].v).toBe("ID");
+  });
+
+  it("backward compat: không truyền form → chỉ 1 sheet Lịch sử", () => {
+    const b64 = buildHistoryWorkbookBase64(logs, {}, reportInfo);
+    const wb = XLSX.read(b64, { type: "base64" });
+    expect(wb.SheetNames).toEqual(["Lịch sử"]);
+  });
+
+  it("form=undefined (checklist chưa có form) → chỉ 1 sheet", () => {
+    const b64 = buildHistoryWorkbookBase64(logs, {}, reportInfo, getInspectionForm("routine"));
+    const wb = XLSX.read(b64, { type: "base64" });
+    expect(wb.SheetNames).toEqual(["Lịch sử"]);
+  });
+
+  it("logs rỗng + form vẫn dựng được workbook 2 sheet", () => {
+    const b64 = buildHistoryWorkbookBase64([], {}, undefined, getInspectionForm("elec"));
+    const wb = XLSX.read(b64, { type: "base64" });
+    expect(wb.SheetNames).toEqual(["Lịch sử", "Form kiểm tra"]);
   });
 });
 

@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { isOutOfRange } from "./valueRange";
+import { buildInspectionFormRows, FORM_TABLE_HEADER_ROW, FORM_COLS } from "./inspectionForms";
 
 // Re-export để giữ backward compat — code ở flow chính nên import trực tiếp
 // từ ./valueRange để không kéo xlsx vào bundle khởi động.
@@ -250,6 +251,50 @@ export function buildHistoryWorksheet(logs, paramConfigs = undefined, reportInfo
   return ws;
 }
 
+// Độ rộng cột (ký tự) cho sheet form mẫu — cột hạng mục & fact/finding rộng
+// để in A4 ngang đọc được; 4 cột đánh giá hẹp (chỉ đánh dấu ✓).
+const FORM_COL_WIDTHS = [8, 55, 32, 12, 10, 8, 8, 22];
+
+/**
+ * Dựng worksheet "Form kiểm tra" từ form mẫu (inspectionForms) — layout theo
+ * biểu mẫu BSR-INS-WI-007-F001: header 2 tầng với nhóm "Đánh giá" merge ngang
+ * 4 cột con, các header còn lại merge dọc 2 dòng.
+ * @param {{title, sections}} form - từ getInspectionForm(checklistId)
+ * @returns {object} XLSX worksheet
+ */
+export function buildInspectionFormSheet(form) {
+  const ws = XLSX.utils.aoa_to_sheet(buildInspectionFormRows(form));
+
+  const h = FORM_TABLE_HEADER_ROW; // 0-based row của header tầng 1
+  ws["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: FORM_COLS - 1 } }, // tiêu đề form
+    { s: { r: h, c: 0 }, e: { r: h + 1, c: 0 } },         // Stt dọc
+    { s: { r: h, c: 1 }, e: { r: h + 1, c: 1 } },         // Hạng mục dọc
+    { s: { r: h, c: 2 }, e: { r: h + 1, c: 2 } },         // Fact & Finding dọc
+    { s: { r: h, c: 3 }, e: { r: h, c: 6 } },             // Đánh giá ngang 4 cột
+    { s: { r: h, c: 7 }, e: { r: h + 1, c: 7 } },         // Ghi chú dọc
+  ];
+  ws["!cols"] = FORM_COL_WIDTHS.map((wch) => ({ wch }));
+
+  // Bold tiêu đề + 2 dòng header bảng (cùng pattern style với sheet Lịch sử).
+  ["A1", "A4", "B4", "C4", "D4", "H4", "D5", "E5", "F5", "G5"].forEach((addr) => {
+    if (ws[addr]) ws[addr].s = { font: { bold: true } };
+  });
+
+  return ws;
+}
+
+// Dựng workbook chung cho cả nút Excel (download) lẫn Email (base64):
+// sheet "Lịch sử" luôn có; sheet "Form kiểm tra" thêm khi checklist có form mẫu.
+function buildHistoryWorkbook(logs, paramConfigs, reportInfo, form) {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, buildHistoryWorksheet(logs, paramConfigs, reportInfo), "Lịch sử");
+  if (form) {
+    XLSX.utils.book_append_sheet(wb, buildInspectionFormSheet(form), "Form kiểm tra");
+  }
+  return wb;
+}
+
 /**
  * Xuất lịch sử (long format) với highlight đỏ cho giá trị ngoài giới hạn và
  * link bản đồ ở cột GPS.
@@ -257,11 +302,10 @@ export function buildHistoryWorksheet(logs, paramConfigs = undefined, reportInfo
  * @param {string} filename
  * @param {Object} paramConfigs - map station_name → { param_low, param_high }
  * @param {Object} [reportInfo] - { shiftLabel, employeeName } — form báo cáo trên đầu
+ * @param {Object} [form] - form mẫu kiểm tra (getInspectionForm) → thêm sheet "Form kiểm tra"
  */
-export function exportHistoryToExcel(logs, filename, paramConfigs = {}, reportInfo = undefined) {
-  const ws = buildHistoryWorksheet(logs, paramConfigs, reportInfo);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Lịch sử");
+export function exportHistoryToExcel(logs, filename, paramConfigs = {}, reportInfo = undefined, form = undefined) {
+  const wb = buildHistoryWorkbook(logs, paramConfigs, reportInfo, form);
   XLSX.writeFile(wb, filename, { cellStyles: true });
 }
 
@@ -271,11 +315,10 @@ export function exportHistoryToExcel(logs, filename, paramConfigs = {}, reportIn
  * @param {Array} logs
  * @param {Object} [paramConfigs] - map station_name → { param_low, param_high }
  * @param {Object} [reportInfo] - { shiftLabel, employeeName } — form báo cáo trên đầu
+ * @param {Object} [form] - form mẫu kiểm tra (getInspectionForm) → thêm sheet "Form kiểm tra"
  * @returns {string} nội dung file .xlsx đã mã hóa base64
  */
-export function buildHistoryWorkbookBase64(logs, paramConfigs = {}, reportInfo = undefined) {
-  const ws = buildHistoryWorksheet(logs, paramConfigs, reportInfo);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Lịch sử");
+export function buildHistoryWorkbookBase64(logs, paramConfigs = {}, reportInfo = undefined, form = undefined) {
+  const wb = buildHistoryWorkbook(logs, paramConfigs, reportInfo, form);
   return XLSX.write(wb, { bookType: "xlsx", type: "base64", cellStyles: true });
 }
