@@ -96,6 +96,19 @@ frontend/test-results/
 /*.png
 
 # ---------------------------------------------------------------------------
+# Tạo tác quá trình làm việc ở root — giữ trên máy, không đẩy lên GitHub
+# (repo này PUBLIC)
+# ---------------------------------------------------------------------------
+# File Excel demo do chính app xuất ra bằng nút Excel — tái tạo được bất cứ lúc
+# nào, và lỗi thời ngay khi sửa lib/inspectionForms.js
+/*-demo.xlsx
+
+# Biểu mẫu gốc của nhà máy (tài liệu kiểm soát nội bộ, metadata có tên nhân viên).
+# Nội dung đã được số hóa vào frontend/src/lib/inspectionForms.js rồi.
+/BSR-*.doc
+/BSR-*.docx
+
+# ---------------------------------------------------------------------------
 # Docker
 # ---------------------------------------------------------------------------
 .docker/
