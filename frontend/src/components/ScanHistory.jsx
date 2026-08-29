@@ -37,7 +37,7 @@ export default function ScanHistory({ logs, loading, error }) {
 
   if (!logs || logs.length === 0) {
     return (
-      <div className="text-center py-12 text-slate-400 dark:text-slate-500">
+      <div className="text-center py-12 text-slate-500 dark:text-slate-400">
         Chưa có lượt check-in nào hôm nay.
       </div>
     );
@@ -83,7 +83,7 @@ export default function ScanHistory({ logs, loading, error }) {
                 </p>
               )}
               {log.geo_status === "no_gps" && (
-                <p className="text-sm text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1">
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1">
                   <MapPinOff className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
                   Không có GPS
                 </p>

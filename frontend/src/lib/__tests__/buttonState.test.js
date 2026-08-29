@@ -121,3 +121,27 @@ describe("resolveButtonState — loading states are exclusive to busy steps", ()
     expect(resolveButtonState(step).loading).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Chế độ quét liên tục — camera không tắt sau check-in
+// ---------------------------------------------------------------------------
+describe("resolveButtonState — chế độ quét liên tục", () => {
+  it("bước done: nút là Dừng Camera (camera vẫn sống, sắp tự decode lại)", () => {
+    const s = resolveButtonState("done", true);
+    expect(s.show).toBe(true);
+    expect(s.variant).toBe("secondary");
+    expect(s.loading).toBe(false);
+    expect(s.label).toMatch(/dừng/i);
+    expect(s.icon).toBe("stop");
+  });
+
+  it("các bước khác không đổi so với chế độ thường", () => {
+    for (const step of ["idle", "permission", "scanning", "gps", "sending"]) {
+      expect(resolveButtonState(step, true)).toEqual(resolveButtonState(step, false));
+    }
+  });
+
+  it("mặc định (không truyền cờ) giữ nguyên hành vi cũ ở bước done", () => {
+    expect(resolveButtonState("done").label).toMatch(/quét tiếp/i);
+  });
+});

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { resolveParamStatus } from "../lib/paramStatus";
 import { isYesNoUnit } from "../lib/paramUnits";
@@ -23,9 +23,18 @@ function normalizeParams(config) {
   return [];
 }
 
+// Thông số Yes/No lưu đúng 2 giá trị này — khớp isYesNoUnit ở backend/Excel.
+const YN_OPTIONS = [
+  { value: "Y", label: "Có (Y)" },
+  { value: "N", label: "Không (N)" },
+];
+
 export default function OperationalParamsModal({ location, config, onSubmit, onSkip }) {
   const params = normalizeParams(config);
   const [values, setValues] = useState(() => params.map(() => ""));
+  // Ref theo index để Enter nhảy sang ô kế tiếp. Ô Yes/No là nút bấm, không
+  // phải input → giữ null và bị bỏ qua khi tìm ô kế.
+  const inputRefs = useRef([]);
 
   const setValueAt = (i, v) =>
     setValues((prev) => {
@@ -33,6 +42,26 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
       next[i] = v;
       return next;
     });
+
+  // Index ô nhập số kế tiếp sau `from`, hoặc -1 nếu đây là ô cuối.
+  // Suy từ config chứ không từ inputRefs — ref chỉ được gán SAU lượt render đầu,
+  // dựa vào ref sẽ khiến enterKeyHint sai ở lần render đầu tiên.
+  const nextInputIndex = (from) => {
+    for (let j = from + 1; j < params.length; j++) {
+      if (!isYesNoUnit(params[j].param_unit)) return j;
+    }
+    return -1;
+  };
+
+  // Enter = sang ô kế; ở ô cuối để form tự submit (enterKeyHint="done").
+  const handleKeyDown = (e, i) => {
+    if (e.key !== "Enter") return;
+    const next = nextInputIndex(i);
+    if (next !== -1) {
+      e.preventDefault();
+      inputRefs.current[next]?.focus();
+    }
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -65,7 +94,7 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
             Trạm: <span className="font-semibold text-slate-700 dark:text-slate-200">{location}</span>
           </p>
           {params.length > 1 && (
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {params.length} thông số — có thể bỏ trống ô không đo được
             </p>
           )}
@@ -90,7 +119,8 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
               return (
                 <div key={p.id ?? i} className="flex flex-col gap-1.5">
                   <label
-                    htmlFor={`op-param-input-${i}`}
+                    id={`op-param-label-${i}`}
+                    {...(isYN ? {} : { htmlFor: `op-param-input-${i}` })}
                     className="text-base font-medium text-slate-700 dark:text-slate-200"
                   >
                     {p.tag && (
@@ -99,17 +129,52 @@ export default function OperationalParamsModal({ location, config, onSubmit, onS
                     {label}{unit ? ` (${unit})` : ""}
                   </label>
 
-                  <input
-                    id={`op-param-input-${i}`}
-                    type={isYN ? "text" : "number"}
-                    {...(isYN ? {} : { step: "any", inputMode: "decimal" })}
-                    value={values[i]}
-                    onChange={(e) => setValueAt(i, e.target.value)}
-                    placeholder={isYN ? "Nhập Y / N…" : `Nhập ${label}...`}
-                    className={`w-full rounded-xl border bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 px-4 py-3 text-base focus:outline-none focus:ring-2 transition-colors ${inputBorder}`}
-                    style={{ fontSize: "16px" }}
-                    autoFocus={i === 0}
-                  />
+                  {isYN ? (
+                    // Segmented 2 nút thay ô text: 1 tap thay vì mở bàn phím chữ
+                    // và gõ tay ("Yes"/"y"/"co" đều từng xuất hiện trong dữ liệu).
+                    // Tap lại lựa chọn đang chọn = bỏ chọn (ô được phép để trống).
+                    <div
+                      role="radiogroup"
+                      aria-labelledby={`op-param-label-${i}`}
+                      className="grid grid-cols-2 gap-2"
+                    >
+                      {YN_OPTIONS.map((opt) => {
+                        const selected = values[i] === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => setValueAt(i, selected ? "" : opt.value)}
+                            className={[
+                              "min-h-[56px] rounded-xl border-2 text-base font-bold transition-colors",
+                              selected
+                                ? "bg-blue-600 border-blue-600 text-white"
+                                : "bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 active:bg-slate-100 dark:active:bg-slate-600",
+                            ].join(" ")}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <input
+                      id={`op-param-input-${i}`}
+                      ref={(el) => { inputRefs.current[i] = el; }}
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      enterKeyHint={nextInputIndex(i) === -1 ? "done" : "next"}
+                      onKeyDown={(e) => handleKeyDown(e, i)}
+                      value={values[i]}
+                      onChange={(e) => setValueAt(i, e.target.value)}
+                      placeholder={`Nhập ${label}...`}
+                      className={`w-full rounded-xl border bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 px-4 py-3 text-base focus:outline-none focus:ring-2 transition-colors ${inputBorder}`}
+                      autoFocus={i === 0}
+                    />
+                  )}
 
                   {low != null && high != null && (
                     <p className="text-sm text-slate-500 dark:text-slate-400">

@@ -221,7 +221,7 @@ export default function StationParamsPanel({ stationParams, stations, adminKey, 
             <datalist id="param-unit-suggestions">
               {unitSuggestions.map(u => <option key={u} value={u} />)}
             </datalist>
-            <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
               Gõ tự do hoặc chọn gợi ý. Đơn vị <strong>Yes/No</strong> → ô nhập là text (Y/N).
             </p>
           </div>

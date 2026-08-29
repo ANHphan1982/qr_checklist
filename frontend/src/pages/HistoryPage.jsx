@@ -135,7 +135,7 @@ export default function HistoryPage() {
       </div>
 
       {isToday && !loading && (
-        <p className="text-sm text-slate-400 dark:text-slate-500 text-center -mt-2">Hôm nay</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 text-center -mt-2">Hôm nay</p>
       )}
 
       {/* Thẻ thống kê ngày — nhìn phát biết tình hình */}
@@ -168,7 +168,7 @@ export default function HistoryPage() {
                   ].join(" ")}
                 >
                   {f.label}
-                  <span className={["ml-1.5 tabular-nums", active ? "text-blue-100" : "text-slate-400 dark:text-slate-500"].join(" ")}>
+                  <span className={["ml-1.5 tabular-nums", active ? "text-blue-100" : "text-slate-500 dark:text-slate-400"].join(" ")}>
                     {count}
                   </span>
                 </button>
@@ -191,7 +191,7 @@ export default function HistoryPage() {
 
       {/* Báo khi lọc ra rỗng nhưng ngày vẫn có dữ liệu */}
       {!loading && logs.length > 0 && filtered.length === 0 ? (
-        <div className="text-center py-10 text-slate-400 dark:text-slate-500">
+        <div className="text-center py-10 text-slate-500 dark:text-slate-400">
           Không có lượt nào khớp bộ lọc.
         </div>
       ) : (

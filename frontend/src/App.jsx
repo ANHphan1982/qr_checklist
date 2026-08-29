@@ -1,10 +1,11 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, NavLink, useParams } from "react-router-dom";
-import { Sun, Moon, Home, History, Smartphone, X } from "lucide-react";
+import { Sun, Moon, Home, History, Smartphone, X, RefreshCw } from "lucide-react";
 import HomePage from "./pages/HomePage";
 import ScanPage from "./pages/ScanPage";
 import { ToastProvider } from "./components/ui/Toast";
 import Spinner from "./components/ui/Spinner";
+import { onUpdateAvailable, applyUpdate } from "./lib/swUpdate";
 
 // Route phụ nạp lười (code-splitting) — HomePage + ScanPage là flow chính của
 // nhân viên nên giữ eager; các trang còn lại tách chunk riêng để bundle khởi
@@ -108,6 +109,55 @@ function InstallBanner({ onInstall, onDismiss }) {
         onClick={onDismiss}
         aria-label="Bỏ qua"
         className="w-10 h-10 rounded-xl bg-blue-700/60 text-white flex items-center justify-center active:bg-blue-700/80 transition-colors flex-shrink-0"
+      >
+        <X className="w-5 h-5" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Service worker update — SW mới nằm chờ, chỉ kích hoạt khi user đồng ý.
+// Trước đây SW tự reload tab; deploy giữa lúc đang nhập thông số là mất dữ liệu.
+// ---------------------------------------------------------------------------
+function useSwUpdate() {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => onUpdateAvailable(setAvailable), []);
+  return { updateAvailable: available, applyUpdate };
+}
+
+function UpdateBanner({ onUpdate, onDismiss }) {
+  const [applying, setApplying] = useState(false);
+  const handle = () => {
+    setApplying(true);
+    onUpdate();
+  };
+  return (
+    <div
+      role="status"
+      className="mx-3 mt-3 rounded-2xl bg-emerald-600 text-white px-4 py-3 flex items-center gap-3"
+    >
+      <RefreshCw
+        className={["w-7 h-7 flex-shrink-0", applying ? "animate-spin" : ""].join(" ")}
+        aria-hidden
+      />
+      <div className="flex-1 min-w-0">
+        <div className="text-[15px] font-bold leading-tight">Có bản cập nhật mới</div>
+        <div className="text-[13px] text-emerald-100 leading-tight mt-0.5">
+          Cập nhật khi bạn đang rảnh — app sẽ tải lại
+        </div>
+      </div>
+      <button
+        onClick={handle}
+        disabled={applying}
+        className="min-h-[44px] px-4 bg-white text-emerald-700 rounded-xl text-[14px] font-bold active:bg-emerald-50 transition-colors flex-shrink-0 disabled:opacity-70"
+      >
+        {applying ? "Đang tải..." : "Cập nhật"}
+      </button>
+      <button
+        onClick={onDismiss}
+        aria-label="Để sau"
+        className="w-11 h-11 rounded-xl bg-emerald-700/60 text-white flex items-center justify-center active:bg-emerald-700/80 transition-colors flex-shrink-0"
       >
         <X className="w-5 h-5" aria-hidden />
       </button>
@@ -273,6 +323,8 @@ export default function App() {
   useDisplayMode();
   const [dark, setDark] = useDarkMode();
   const { canInstall, install } = useInstallPrompt();
+  const { updateAvailable, applyUpdate: doUpdate } = useSwUpdate();
+  const [updateDismissed, setUpdateDismissed] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(
     () => sessionStorage.getItem("pwa-dismissed") === "1"
   );
@@ -288,6 +340,8 @@ export default function App() {
   };
 
   const showBanner = canInstall && !bannerDismissed;
+  // Banner cập nhật ưu tiên hơn banner cài đặt — không xếp chồng 2 banner.
+  const showUpdate = updateAvailable && !updateDismissed;
 
   return (
     <ToastProvider>
@@ -310,8 +364,12 @@ export default function App() {
             <div className="min-h-[100dvh] flex flex-col bg-slate-50 dark:bg-slate-900 transition-colors">
               <PWADebugBadge />
               <NavBar dark={dark} onToggleDark={() => setDark((d) => !d)} />
-              {showBanner && (
-                <InstallBanner onInstall={handleInstall} onDismiss={handleDismiss} />
+              {showUpdate ? (
+                <UpdateBanner onUpdate={doUpdate} onDismiss={() => setUpdateDismissed(true)} />
+              ) : (
+                showBanner && (
+                  <InstallBanner onInstall={handleInstall} onDismiss={handleDismiss} />
+                )
               )}
               <main className="flex-1 w-full max-w-md mx-auto px-4 py-4 pb-24">
                 {/* Suspense đặt TRONG main — NavBar/BottomTabs vẫn hiện khi chunk trang lazy đang tải */}

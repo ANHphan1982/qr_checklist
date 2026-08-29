@@ -33,14 +33,33 @@ export const SCANNER_CONFIG = {
  * - Camera fail (denied/không có) → hiện lỗi TRONG component, không bounce về idle;
  *   user thoát bằng nút "Dừng Camera" — đồng thời giữ __triggerQRScan cho E2E.
  * - Zoom/đèn pin: hardware constraints nếu device hỗ trợ
+ *
+ * Quét liên tục (ScanPage giữ component mount qua cả gps/sending/params/done):
+ * - `resumeSignal` tăng 1 đơn vị → mở lại decode loop và reset chốt 1-lần.
+ * - `shouldAccept(text)` chạy ĐỒNG BỘ trước khi pause. Trả false = bỏ qua mã này
+ *   và tiếp tục decode; nếu pause trước rồi mới bỏ qua thì scanner kẹt vĩnh viễn.
+ *
+ * @param {object} props
+ * @param {(text: string, ctx: {video?: HTMLVideoElement}) => void} props.onScan
+ * @param {(text: string) => boolean} [props.shouldAccept]
+ * @param {number} [props.resumeSignal]
  */
-export function QRScanner({ onScan }) {
+export function QRScanner({ onScan, shouldAccept, resumeSignal = 0 }) {
   const scannerRef = useRef(null);
   const trackRef   = useRef(null);
   const pollRef    = useRef(null);
   const autoTorchRef = useRef(null);      // máy trạng thái hysteresis
   const lumCanvasRef = useRef(null);      // canvas ẩn để đo độ sáng frame
   const lumPollRef   = useRef(null);      // interval lấy mẫu độ sáng
+
+  // Chốt "chỉ trigger 1 lần mỗi lượt" — dùng ref thay biến closure để
+  // resumeSignal (effect khác) reset được sau mỗi lần quét.
+  const alreadyScannedRef = useRef(false);
+  // Callback mới nhất, tránh decode loop giữ closure cũ khi ScanPage re-render.
+  const onScanRef       = useRef(onScan);
+  const shouldAcceptRef = useRef(shouldAccept);
+  onScanRef.current       = onScan;
+  shouldAcceptRef.current = shouldAccept;
 
   // starting | active | failed
   const [cameraState, setCameraState] = useState("starting");
@@ -54,8 +73,8 @@ export function QRScanner({ onScan }) {
     const scanner = new Html5Qrcode(SCANNER_ID, /* verbose= */ false);
     scannerRef.current = scanner;
 
-    let alreadyScanned = false;
     let cancelled = false; // StrictMode double-mount / unmount giữa chừng
+    alreadyScannedRef.current = false;
 
     scanner
       .start(
@@ -63,8 +82,11 @@ export function QRScanner({ onScan }) {
         { fps: SCANNER_CONFIG.fps, qrbox: qrBoxSizeFor(window.innerWidth) },
         (decodedText) => {
           // Chỉ trigger 1 lần — decode loop vẫn chạy sau callback
-          if (alreadyScanned) return;
-          alreadyScanned = true;
+          if (alreadyScannedRef.current) return;
+          // Lọc TRƯỚC khi pause: mã bị từ chối (vd vừa quét xong, camera còn
+          // chĩa vào nó) phải để decode loop chạy tiếp, không được pause.
+          if (shouldAcceptRef.current && !shouldAcceptRef.current(decodedText)) return;
+          alreadyScannedRef.current = true;
           // Pause dừng decode nhưng giữ video alive → ScanPage chụp được frame
           try {
             scanner.pause(true);
@@ -72,7 +94,7 @@ export function QRScanner({ onScan }) {
             // pause() throw nếu scanner không ở trạng thái scanning — bỏ qua
           }
           const video = document.querySelector(`#${SCANNER_ID} video`);
-          onScan(decodedText, { video });
+          onScanRef.current(decodedText, { video });
         },
         () => {
           // per-frame decode miss (không có QR trong khung) — expected, bỏ qua
@@ -96,7 +118,7 @@ export function QRScanner({ onScan }) {
 
     // E2E test hook — only available in dev builds
     if (import.meta.env.DEV) {
-      window.__triggerQRScan = (text) => onScan(text);
+      window.__triggerQRScan = (text) => onScanRef.current(text, {});
     }
 
     return () => {
@@ -121,6 +143,21 @@ export function QRScanner({ onScan }) {
       }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Quét liên tục: ScanPage tăng resumeSignal sau mỗi lần check-in xong.
+  // Mở lại decode loop và nhả chốt 1-lần. Bỏ qua lần đầu (resumeSignal = 0)
+  // vì lúc đó scanner còn đang start, chưa hề pause.
+  useEffect(() => {
+    if (!resumeSignal) return;
+    alreadyScannedRef.current = false;
+    try {
+      // resume() THROW ĐỒNG BỘ nếu scanner không ở trạng thái paused
+      // (vd camera vừa fail) — cùng loại gotcha với stop().
+      scannerRef.current?.resume();
+    } catch {
+      /* chưa paused — không có gì để mở lại */
+    }
+  }, [resumeSignal]);
 
   // Sau khi camera active, poll cho đến khi video element + srcObject sẵn sàng
   // để lấy track cho zoom/torch/autofocus

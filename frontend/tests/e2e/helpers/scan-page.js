@@ -44,6 +44,19 @@ export class ScanPagePOM {
     await this.triggerScan(qrText);
   }
 
+  /**
+   * Bật/tắt chế độ quét liên tục TRƯỚC khi trang load.
+   * ScanPage đọc localStorage trong useState initializer nên phải set qua
+   * addInitScript — gọi sau goto() sẽ không có tác dụng cho lần mount đó.
+   */
+  async setContinuousMode(on) {
+    await this.page.addInitScript((v) => {
+      localStorage.setItem("qr_continuous_scan", v);
+    }, on ? "1" : "0");
+  }
+
+  get continuousToggle() { return this.page.getByRole("switch"); }
+
   /** Clear offline queue and device_id between tests for isolation. */
   async clearStorage() {
     try {

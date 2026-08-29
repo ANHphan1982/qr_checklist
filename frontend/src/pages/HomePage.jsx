@@ -14,6 +14,7 @@ import { getReports, getChecklistStations, getStationParamConfigs, emailChecklis
 // exportExcel (kéo theo xlsx ~800KB) nạp lười bằng import() trong handler —
 // không nằm trong bundle khởi động vì chỉ cần khi bấm nút Excel/Email.
 import { getShiftAt } from "../lib/shifts";
+import { useLiveNow } from "../hooks/useLiveNow";
 import { getPeriodAt, vnDatesInRange, frequencyShortLabel } from "../lib/frequencies";
 import { getEffectiveFrequencySetting, loadFrequencyOverrides } from "../lib/checklistFrequency";
 import { computeCoverage, selectChecklistShiftLogs, checklistCardCounts, summarizeCoverage } from "../lib/checklistCoverage";
@@ -25,6 +26,7 @@ import { saveRecentChecklist, loadRecentChecklist } from "../lib/recentChecklist
 import { saveEmployeeName, loadEmployeeName } from "../lib/employeeName";
 import { shouldShowOnboarding, markOnboardingSeen } from "../lib/onboarding";
 import { useToast } from "../components/ui/Toast";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 // Chỉ hiện ô tìm kiếm khi danh sách dài; ít mục thì search chỉ gây nhiễu.
 const SEARCH_MIN_ITEMS = 8;
@@ -187,7 +189,7 @@ function ChecklistCard({ item, progress = 0, total = item.stations, onClick }) {
           <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
             <div className={["h-full rounded-full transition-all", ACCENT[item.accent].bar].join(" ")} style={{ width: `${pct}%` }} />
           </div>
-          <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500 tabular-nums flex-shrink-0">
+          <span className="text-[12px] font-semibold text-slate-500 dark:text-slate-400 tabular-nums flex-shrink-0">
             {progress}/{total} trạm
           </span>
         </div>
@@ -208,10 +210,11 @@ export default function HomePage() {
   const [showTips, setShowTips] = useState(() => shouldShowOnboarding());
   const dismissTips = () => { markOnboardingSeen(); setShowTips(false); };
 
-  // Mốc "bây giờ" cố định trong phiên xem → ca + chu kỳ tính nhất quán.
-  const [now] = useState(() => Date.now());
+  // Mốc "bây giờ" ổn định trong phiên xem → ca + chu kỳ tính nhất quán, nhưng
+  // tự làm mới khi vượt mốc giao ca / nửa đêm (app dán trên máy trực không reload).
+  const now = useLiveNow();
   // Ca hiện tại (cho thẻ tổng quan) — coverage từng checklist dùng chu kỳ riêng.
-  const [shift] = useState(() => getShiftAt(new Date(now)));
+  const shift = useMemo(() => getShiftAt(new Date(now)), [now]);
   // Tần suất admin override (localStorage, theo thiết bị). Đọc 1 lần khi mount.
   const [freqOverrides] = useState(() => loadFrequencyOverrides());
   const [scans, setScans] = useState([]);
@@ -295,6 +298,9 @@ export default function HomePage() {
 
   // Trạng thái gửi email theo từng checklist: undefined|"sending"|"sent"|"error"
   const [emailState, setEmailState] = useState({});
+  // Checklist đang chờ xác nhận gửi email. Gửi mail cho quản lý là hành động ra
+  // ngoài, không undo được — và nút nằm sát nút Excel nên rất dễ tap nhầm.
+  const [emailConfirm, setEmailConfirm] = useState(null);
 
   const checklistLogs = (item) => {
     const stationNames = getStationsFor(assignments, item.id);
@@ -382,7 +388,7 @@ export default function HomePage() {
     <div className="max-w-md mx-auto flex flex-col gap-5 py-1">
       {/* Greeting */}
       <div className="px-1">
-        <div className="text-[13px] font-medium text-slate-400 dark:text-slate-500">
+        <div className="text-[13px] font-medium text-slate-500 dark:text-slate-400">
           {greeting()} 👋
         </div>
         <h1 className="text-[27px] font-extrabold text-slate-900 dark:text-slate-100 tracking-tight leading-tight">
@@ -465,10 +471,10 @@ export default function HomePage() {
 
       {/* Section label */}
       <div className="flex items-center justify-between px-1 -mb-1">
-        <h2 className="text-[13px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+        <h2 className="text-[13px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           Tất cả checklist
         </h2>
-        <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500 tabular-nums">
+        <span className="text-[12px] font-semibold text-slate-500 dark:text-slate-400 tabular-nums">
           {filtered.length} bộ
         </span>
       </div>
@@ -506,17 +512,18 @@ export default function HomePage() {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                       onClick={() => exportChecklist(item)}
-                      className="flex items-center gap-1 text-[12px] font-semibold text-blue-600 dark:text-blue-400 px-2 py-1 rounded-lg active:bg-blue-50 dark:active:bg-blue-500/10"
+                      aria-label={`Xuất Excel checklist ${item.title}`}
+                      className="min-h-[44px] flex items-center gap-1 text-[12px] font-semibold text-blue-600 dark:text-blue-400 px-3 rounded-lg active:bg-blue-50 dark:active:bg-blue-500/10"
                     >
                       <FileSpreadsheet className="w-3.5 h-3.5" aria-hidden />
                       Excel
                     </button>
                     <button
-                      onClick={() => emailChecklist(item)}
+                      onClick={() => setEmailConfirm(item)}
                       disabled={emailState[item.id] === "sending"}
                       aria-label={`Gửi email checklist ${item.title}`}
                       className={[
-                        "flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-lg disabled:opacity-60",
+                        "min-h-[44px] flex items-center gap-1 text-[12px] font-semibold px-3 rounded-lg disabled:opacity-60",
                         emailState[item.id] === "sent"
                           ? "text-emerald-600 dark:text-emerald-400"
                           : emailState[item.id] === "error"
@@ -546,13 +553,32 @@ export default function HomePage() {
           );
         })}
         {filtered.length === 0 && (
-          <div className="flex flex-col items-center text-center py-12 text-slate-400 dark:text-slate-500">
+          <div className="flex flex-col items-center text-center py-12 text-slate-500 dark:text-slate-400">
             <SearchX className="w-10 h-10 mb-3 opacity-70" aria-hidden />
             <div className="text-[15px] font-medium">Không tìm thấy checklist nào</div>
             <div className="text-[13px] mt-0.5">Thử từ khóa khác xem sao</div>
           </div>
         )}
       </div>
+
+      {/* Xác nhận trước khi gửi email cho quản lý — không có bước hoàn tác */}
+      <ConfirmDialog
+        open={!!emailConfirm}
+        title="Gửi email báo cáo?"
+        message={
+          emailConfirm
+            ? `File Excel checklist "${emailConfirm.title}" (${periods[emailConfirm.id].label}) sẽ được gửi tới email quản lý ngay bây giờ.`
+            : ""
+        }
+        confirmLabel="Gửi ngay"
+        cancelLabel="Huỷ"
+        onConfirm={() => {
+          const item = emailConfirm;
+          setEmailConfirm(null);
+          if (item) emailChecklist(item);
+        }}
+        onCancel={() => setEmailConfirm(null)}
+      />
     </div>
   );
 }

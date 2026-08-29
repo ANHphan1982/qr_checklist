@@ -39,9 +39,11 @@
     U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* Prevent iOS Safari auto-zoom on inputs (requires font-size >= 16px) */
+/* Prevent iOS Safari auto-zoom on inputs (requires font-size >= 16px).
+   max() thay vì 16px cứng: ở PWA standalone html được boost lên 20px và mọi thứ
+   scale theo rem — 16px cứng khiến riêng ô nhập nhỏ hơn hẳn phần còn lại. */
 input, select, textarea {
-  font-size: 16px;
+  font-size: max(16px, 1rem);
 }
 
 /* Prevent double-tap zoom on buttons/links (Android Chrome) */

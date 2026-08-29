@@ -74,6 +74,9 @@ test.describe("Online scan flow", () => {
 
   test("successful scan shows success result card", async ({ page }) => {
     const sp = new ScanPagePOM(page);
+    // Flow cổ điển: camera đóng sau check-in → phải tắt chế độ quét liên tục
+    // (mặc định BẬT). Chế độ liên tục có describe riêng bên dưới.
+    await sp.setContinuousMode(false);
     await sp.goto();
 
     await sp.startAndScan("Cổng A");
@@ -99,6 +102,7 @@ test.describe("Online scan flow", () => {
 
   test("continue button dismisses result and returns to idle", async ({ page }) => {
     const sp = new ScanPagePOM(page);
+    await sp.setContinuousMode(false);
     await sp.goto();
 
     await sp.startAndScan("Cổng A");
@@ -112,6 +116,7 @@ test.describe("Online scan flow", () => {
 
   test("dismiss (×) button on result card returns to idle", async ({ page }) => {
     const sp = new ScanPagePOM(page);
+    await sp.setContinuousMode(false);
     await sp.goto();
 
     await sp.startAndScan("Cổng A");
@@ -200,6 +205,7 @@ test.describe("Online scan flow", () => {
 
   test("can scan multiple times in sequence", async ({ page }) => {
     const sp = new ScanPagePOM(page);
+    await sp.setContinuousMode(false);
     await sp.goto();
 
     // First scan
@@ -212,5 +218,91 @@ test.describe("Online scan flow", () => {
     await sp.startAndScan("Trạm B");
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
     await expect(sp.resultCard).toContainText("Trạm B");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Chế độ quét liên tục (mặc định BẬT) — camera sống qua nhiều trạm liền.
+// Một vòng checklist tới 13 trạm; flow cũ khởi động lại camera mỗi trạm.
+// ---------------------------------------------------------------------------
+test.describe("Quét liên tục", () => {
+  test.beforeEach(async ({ page }) => {
+    await mockApiSuccess(page);
+  });
+
+  test("mặc định bật", async ({ page }) => {
+    const sp = new ScanPagePOM(page);
+    await sp.goto();
+    await expect(sp.continuousToggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("camera KHÔNG đóng sau check-in, quét thẳng được trạm kế", async ({ page }) => {
+    const sp = new ScanPagePOM(page);
+    await sp.goto();
+
+    await sp.startAndScan("Cổng A");
+    await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
+    await expect(sp.resultCard).toContainText("Cổng A");
+
+    // Khác hẳn flow cũ: camera còn nguyên, không có nút "Quét tiếp"
+    await expect(sp.qrReader).toBeVisible();
+    await expect(sp.continueButton).toHaveCount(0);
+    await expect(sp.stopButton).toBeVisible();
+
+    // Trạm kế tiếp — không phải bấm nút nào
+    await sp.triggerScan("Trạm B");
+    await expect(sp.resultCard).toContainText("Trạm B", { timeout: 10_000 });
+    await expect(sp.qrReader).toBeVisible();
+  });
+
+  test("đóng thẻ kết quả không tắt camera", async ({ page }) => {
+    const sp = new ScanPagePOM(page);
+    await sp.goto();
+
+    await sp.startAndScan("Cổng A");
+    await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
+
+    await page.locator('[aria-label="Đóng"]').click();
+
+    await expect(sp.resultCard).toHaveCount(0);
+    await expect(sp.qrReader).toBeVisible();
+  });
+
+  test("Dừng Camera đưa về idle", async ({ page }) => {
+    const sp = new ScanPagePOM(page);
+    await sp.goto();
+
+    await sp.startAndScan("Cổng A");
+    await expect(sp.stopButton).toBeVisible({ timeout: 10_000 });
+
+    await sp.stopButton.click();
+
+    await expect(sp.startButton).toBeVisible();
+    await expect(sp.qrReader).toHaveCount(0);
+  });
+
+  test("tắt toggle → quay lại flow đóng camera sau check-in", async ({ page }) => {
+    const sp = new ScanPagePOM(page);
+    await sp.goto();
+
+    await sp.continuousToggle.click();
+    await expect(sp.continuousToggle).toHaveAttribute("aria-checked", "false");
+
+    await sp.startAndScan("Cổng A");
+    await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
+    await expect(sp.qrReader).toHaveCount(0);
+    await expect(sp.continueButton).toBeVisible();
+  });
+
+  test("lựa chọn tắt được nhớ qua lần mở app sau", async ({ page }) => {
+    const sp = new ScanPagePOM(page);
+    await sp.goto();
+
+    await sp.continuousToggle.click();
+    await expect(sp.continuousToggle).toHaveAttribute("aria-checked", "false");
+
+    await page.reload();
+    await page.waitForSelector("button:has-text('Bắt đầu Scan')");
+    await expect(sp.continuousToggle).toHaveAttribute("aria-checked", "false");
   });
 });

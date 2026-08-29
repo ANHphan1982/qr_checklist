@@ -5,9 +5,18 @@
  * icon: tên icon SVG (lucide) — "camera" | "stop" | null.
  * Các bước loading không có icon vì spinner đã hiển thị.
  *
+ * Chế độ quét liên tục (`continuous`): ở bước `done` camera vẫn sống và sẽ tự
+ * decode lại sau RESUME_MS, nên nút phải là "Dừng Camera" — nếu hiện "Quét tiếp"
+ * thì nhãn sẽ nhấp nháy đổi lại sau chưa đầy 2 giây và người dùng dễ bấm nhầm.
+ *
+ * @param {string} step
+ * @param {boolean} [continuous]
  * @returns {{ show, variant, loading, label, icon }}
  */
-export function resolveButtonState(step) {
+export function resolveButtonState(step, continuous = false) {
+  if (continuous && step === "done") {
+    return { show: true, variant: "secondary", loading: false, label: "Dừng Camera", icon: "stop" };
+  }
   switch (step) {
     case "idle":
       return { show: true, variant: "primary",   loading: false, label: "Bắt đầu Scan",      icon: "camera" };

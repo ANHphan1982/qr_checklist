@@ -4,6 +4,7 @@ import { QRScanner } from "../components/QRScanner";
 import ScanResult from "../components/ScanResult";
 import { postScan, postQueuedScan, pingServer, checkConnectivity, getReports, getChecklistStations } from "../lib/api";
 import { getShiftAt } from "../lib/shifts";
+import { useLiveNow } from "../hooks/useLiveNow";
 import { buildScanChecklistInfo, splitMissingStations } from "../lib/scanChecklist";
 import { getDeviceId } from "../lib/utils";
 import { getCurrentPosition, checkGpsPermission, startGpsWatch, saveLastFix, loadLastFix } from "../lib/geolocation";
@@ -19,7 +20,12 @@ import { resolveStatusBanner } from "../lib/statusBanner";
 import { resolveButtonState } from "../lib/buttonState";
 import { resolveStepDisplay } from "../lib/stepDisplay";
 import { triggerVibration } from "../lib/haptics";
-import { Camera, Square, Clock, Trash2, PlugZap, Satellite, UploadCloud, MapPin, HelpCircle, X, ChevronDown, ChevronUp } from "lucide-react";
+import { buildCachedGpsData, createGpsSkipHandle, GPS_SKIPPED, GPS_SLOW_HINT_MS } from "../lib/gpsFallback";
+import {
+  shouldShowCamera, shouldIgnoreDuplicate, loadContinuousMode, saveContinuousMode,
+  RESUME_MS, IDLE_TIMEOUT_MS,
+} from "../lib/continuousScan";
+import { Camera, Square, Clock, Trash2, PlugZap, Satellite, UploadCloud, MapPin, HelpCircle, X, ChevronDown, ChevronUp, SendHorizonal, Repeat } from "lucide-react";
 import Button from "../components/ui/Button";
 import Banner from "../components/ui/Banner";
 /**
@@ -89,12 +95,35 @@ export default function ScanPage() {
   const [isTestingConn, setIsTestingConn] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [gpsHelpOpen, setGpsHelpOpen] = useState(false);
+  // Cold-fix GPS có thể treo tới 90s trong hầm bồn/nhà xưởng. Sau GPS_SLOW_HINT_MS
+  // hiện nút "Gửi không kèm GPS" để nhân viên không kẹt giữa flow (QR đã quét rồi).
+  const [gpsSlow, setGpsSlow] = useState(false);
+  const gpsSkipRef = useRef(null);
+
+  // --- Quét liên tục: camera sống qua nhiều trạm liền (xem lib/continuousScan) ---
+  const [continuousMode, setContinuousMode] = useState(() => loadContinuousMode());
+  // Tăng 1 mỗi lần cần mở lại decode loop → QRScanner nghe qua prop resumeSignal.
+  const [resumeSignal, setResumeSignal] = useState(0);
+  // Lần quét được CHẤP NHẬN gần nhất {text, ts} — chặn quét lại chính mã đó khi
+  // camera vẫn đang chĩa vào nó sau lúc resume.
+  const lastAcceptedRef = useRef(null);
+
+  const toggleContinuous = () => {
+    setContinuousMode((on) => {
+      const next = !on;
+      saveContinuousMode(next);
+      return next;
+    });
+  };
 
   // --- Ngữ cảnh checklist đang quét (header + danh sách trạm còn thiếu) ---
   // type lấy từ URL /scan/:type. Tải mapping trạm + scan trong ca để biết còn
   // trạm nào chưa check-in. Lỗi mạng → bỏ qua (offline-safe), header gọn lại.
   const { type } = useParams();
-  const [shift] = useState(() => getShiftAt(new Date()));
+  // Mốc thời gian tự làm mới khi sang ca / sang ngày — nếu giữ nguyên mốc lúc
+  // mount, sau 18:00 danh sách "trạm còn thiếu" vẫn tính theo ca cũ.
+  const now = useLiveNow();
+  const shift = useMemo(() => getShiftAt(new Date(now)), [now]);
   const [scans, setScans] = useState([]);
   const [assignments, setAssignments] = useState({});
 
@@ -317,31 +346,58 @@ export default function ScanPage() {
     wakeLockRef.current = null;
   }, []);
 
-  // Acquire wake lock trong toàn bộ flow scan, release khi về idle/done.
+  // Bước nào cần giữ màn hình sáng. Ở chế độ liên tục, "done" cũng tính là đang
+  // trong luồng: camera còn sống chờ resume, nhả wake lock rồi xin lại ngay sau
+  // 1.8s khiến màn hình chớp tối mỗi trạm.
+  const wakeLockActive =
+    step === "permission" || step === "scanning" || step === "gps" ||
+    step === "sending" || step === "params" || (continuousMode && step === "done");
+
+  // Acquire wake lock trong toàn bộ flow scan, release khi về idle.
   // Đảm bảo OS không suspend chip GPS khi user đang dùng app.
   useEffect(() => {
-    const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending" || step === "params";
-    if (active) acquireWakeLock();
+    if (wakeLockActive) acquireWakeLock();
     else releaseWakeLock();
-  }, [step, acquireWakeLock, releaseWakeLock]);
+  }, [wakeLockActive, acquireWakeLock, releaseWakeLock]);
 
   // Khi user back ra rồi quay lại tab, Wake Lock bị browser thu hồi → xin lại nếu đang scan.
   useEffect(() => {
     const onVisible = () => {
-      const active = step === "permission" || step === "scanning" || step === "gps" || step === "sending" || step === "params";
-      if (document.visibilityState === "visible" && active) {
+      if (document.visibilityState === "visible" && wakeLockActive) {
         acquireWakeLock();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [step, acquireWakeLock]);
+  }, [wakeLockActive, acquireWakeLock]);
 
   // Release wake lock khi unmount.
   useEffect(() => () => releaseWakeLock(), [releaseWakeLock]);
 
+  // Bộ lọc ĐỒNG BỘ cho QRScanner: chặn quét lại đúng mã vừa quét khi camera
+  // còn đang chĩa vào nó sau lúc resume. Trả false = scanner cứ decode tiếp.
+  const acceptScan = useCallback((qrText) => {
+    const text = String(qrText).trim();
+    const now = Date.now();
+    if (shouldIgnoreDuplicate(lastAcceptedRef.current, text, now)) return false;
+    lastAcceptedRef.current = { text, ts: now };
+    return true;
+  }, []);
+
+  // Mở lại decode loop cho lượt quét kế. KHÔNG xoá `result` — giữ thẻ kết quả
+  // trạm vừa xong hiển thị trong lúc nhân viên đi tới trạm tiếp theo.
+  const resumeScanning = useCallback(() => {
+    setGpsSlow(false);
+    setPendingParamsScanId(null);
+    setPendingParamConfig(null);
+    setPendingQueuedAt(null);
+    setResumeSignal((n) => n + 1);
+    setStep("scanning");
+  }, []);
+
   const handleStart = async () => {
     setResult(null);
+    lastAcceptedRef.current = null;
     setStep("permission");
     const perm = await checkGpsPermission();
     setGpsPermission(perm);
@@ -367,6 +423,10 @@ export default function ScanPage() {
   };
 
   const handleStop = () => {
+    // Dừng có chủ đích → nhả chốt trùng mã, mở lại vẫn quét được đúng trạm đó.
+    lastAcceptedRef.current = null;
+    // Về 0 để lần mount camera sau không chạy effect resume với giá trị cũ.
+    setResumeSignal(0);
     setStep("idle");
   };
 
@@ -410,28 +470,37 @@ export default function ScanPage() {
     //  2. getCurrentPosition trực tiếp (cold-fix)
     //  3. Cache localStorage (fallback khi chip GPS fail tại điểm này)
     setStep("gps");
+    setGpsSlow(false);
     let gpsData = null;
-    try {
-      const latest = latestGpsRef.current;
-      if (latest && Date.now() - latest.ts < GPS_FIX_MAX_AGE_MS) {
-        gpsData = latest;
-      } else {
-        gpsData = await getCurrentPosition();
-        saveLastFix({ ...gpsData, ts: Date.now() });
-      }
-    } catch (gpsErr) {
-      console.warn("[GPS]", gpsErr.message);
-      // Fallback: dùng fix cũ trong localStorage nếu < 30 phút.
-      // Server nhận geo_cached=true để admin biết đây là vị trí cache, không phải GPS thật.
-      const cached = loadLastFix();
-      if (cached) {
-        gpsData = {
-          lat: cached.lat,
-          lng: cached.lng,
-          accuracy: cached.accuracy,
-          cached: true,
-          cache_age_ms: Date.now() - cached.ts,
-        };
+
+    const latest = latestGpsRef.current;
+    if (latest && Date.now() - latest.ts < GPS_FIX_MAX_AGE_MS) {
+      // Fix warm từ watchPosition — tức thời, không cần đường thoát.
+      gpsData = latest;
+    } else {
+      // Cold-fix: chạy đua với nút "Gửi không kèm GPS" do user bấm.
+      const handle = createGpsSkipHandle();
+      gpsSkipRef.current = handle;
+      const slowTimer = setTimeout(() => setGpsSlow(true), GPS_SLOW_HINT_MS);
+      try {
+        const fix = await Promise.race([getCurrentPosition(), handle.promise]);
+        if (fix === GPS_SKIPPED) {
+          // User chủ động bỏ qua — vẫn thử fix cũ trong localStorage trước khi
+          // chấp nhận no_gps, vị trí gần đúng tốt hơn không có gì.
+          gpsData = buildCachedGpsData(loadLastFix());
+        } else {
+          gpsData = fix;
+          saveLastFix({ ...fix, ts: Date.now() });
+        }
+      } catch (gpsErr) {
+        console.warn("[GPS]", gpsErr.message);
+        // Fallback: dùng fix cũ trong localStorage nếu < 30 phút.
+        // Server nhận geo_cached=true để admin biết đây là vị trí cache, không phải GPS thật.
+        gpsData = buildCachedGpsData(loadLastFix());
+      } finally {
+        clearTimeout(slowTimer);
+        gpsSkipRef.current = null;
+        setGpsSlow(false);
       }
     }
 
@@ -503,7 +572,9 @@ export default function ScanPage() {
           setPendingParamConfig(paramConfig);
           setStep("params");
         } else {
-          setStep("idle");
+          // Liên tục: về "done" để auto-resume tiếp quản, thẻ lỗi vẫn hiển thị.
+          // Thường: về idle, camera đóng như trước.
+          setStep(continuousMode ? "done" : "idle");
         }
       }
     } finally {
@@ -514,7 +585,10 @@ export default function ScanPage() {
 
   const handleReset = () => {
     clearPendingParams();
+    lastAcceptedRef.current = null;
+    setResumeSignal(0);
     setStep("idle");
+    setGpsSlow(false);
     setResult(null);
     setPendingParamsScanId(null);
     setPendingParamConfig(null);
@@ -560,14 +634,50 @@ export default function ScanPage() {
     if (step === "done") refreshChecklistData();
   }, [step, refreshChecklistData]);
 
+  // Quét liên tục: xong 1 trạm → chờ RESUME_MS rồi mở lại decode loop.
+  // Độ trễ này để nhân viên kịp hạ máy khỏi mã vừa quét (kèm chốt trùng mã).
+  useEffect(() => {
+    if (!continuousMode || step !== "done") return;
+    const t = setTimeout(resumeScanning, RESUME_MS);
+    return () => clearTimeout(t);
+  }, [continuousMode, step, resumeScanning]);
+
+  // Tự tắt camera khi không quét thêm được gì — quãng đi bộ giữa hai trạm có thể
+  // dài, giữ camera + wake lock suốt thời gian đó rất tốn pin.
+  // Chỉ áp dụng SAU lần quét đầu (result != null): lúc đó camera do app tự mở
+  // lại, không phải do user chủ động bấm — bấm Bắt đầu thì tôn trọng ý user.
+  useEffect(() => {
+    if (!continuousMode || step !== "scanning" || !result) return;
+    const t = setTimeout(() => {
+      lastAcceptedRef.current = null;
+      setResumeSignal(0);
+      setStep("idle");
+    }, IDLE_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [continuousMode, step, result]);
+
   const isScanning = step === "scanning";
   const isParams = step === "params";
+  // Chế độ liên tục giữ camera sống qua gps/sending/params/done.
+  const showCamera = shouldShowCamera(step, continuousMode);
 
   const banner     = resolveStatusBanner({ isOnline, syncMsg, coldStart, gpsPermission, step, paramCacheCount });
-  const btnState   = resolveButtonState(step);
+  const btnState   = resolveButtonState(step, continuousMode);
   const stepDisplay = resolveStepDisplay(step);
 
-  const handleBtnClick = step === "scanning" ? handleStop : step === "done" ? handleReset : handleStart;
+  const handleBtnClick =
+    step === "scanning" ? handleStop
+    : step === "done"   ? (continuousMode ? handleStop : handleReset)
+    : handleStart;
+
+  // Liên tục: đóng thẻ kết quả chỉ dọn thẻ, không tắt camera đang chạy.
+  const dismissResult = () => setResult(null);
+
+  // Thẻ kết quả: ở chế độ liên tục hiển thị TRÊN camera để nhìn thấy ngay mà
+  // không phải cuộn; chế độ thường giữ nguyên vị trí dưới camera như trước.
+  const resultNode = (
+    <ScanResult result={result} onDismiss={continuousMode ? dismissResult : handleReset} />
+  );
 
   // ---------------------------------------------------------------------------
   // UI
@@ -681,9 +791,16 @@ export default function ScanPage() {
         </Banner>
       )}
 
-      {/* Camera */}
-      {isScanning && (
-        <QRScanner onScan={handleScan} />
+      {/* Liên tục: kết quả trạm vừa xong nằm TRÊN camera, thấy ngay không cần cuộn */}
+      {continuousMode && resultNode}
+
+      {/* Camera — chế độ liên tục giữ mount qua gps/sending/params/done */}
+      {showCamera && (
+        <QRScanner
+          onScan={handleScan}
+          shouldAccept={acceptScan}
+          resumeSignal={resumeSignal}
+        />
       )}
 
       {/* Confirm xóa queue — thay window.confirm */}
@@ -698,8 +815,8 @@ export default function ScanPage() {
         onCancel={() => setConfirmClearOpen(false)}
       />
 
-      {/* Kết quả scan */}
-      <ScanResult result={result} onDismiss={handleReset} />
+      {/* Kết quả scan — chế độ thường giữ nguyên vị trí dưới camera */}
+      {!continuousMode && resultNode}
 
       {/* Operational params modal */}
       {isParams && result?.location && pendingParamConfig && (
@@ -723,16 +840,76 @@ export default function ScanPage() {
           data-scan-btn
           className="w-full"
         >
-          {step === "done" && checklistInfo?.hasAssignments && checklistInfo.missing.length > 0
+          {!continuousMode && step === "done" && checklistInfo?.hasAssignments && checklistInfo.missing.length > 0
             ? `Quét trạm tiếp theo (còn ${checklistInfo.missing.length})`
             : btnState.label}
         </Button>
       )}
 
+      {/* Bật/tắt quét liên tục. Hiện ở idle (trước khi mở camera) và khi đang quét,
+          ẩn lúc gps/sending/params để không gây nhiễu giữa lúc đang xử lý. */}
+      {(step === "idle" || isScanning) && (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={continuousMode}
+          onClick={toggleContinuous}
+          className="w-full min-h-[56px] px-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center gap-3 active:bg-slate-50 dark:active:bg-slate-700/60 transition-colors"
+        >
+          <Repeat
+            className={[
+              "w-5 h-5 flex-shrink-0",
+              continuousMode ? "text-blue-600 dark:text-blue-400" : "text-slate-500 dark:text-slate-400",
+            ].join(" ")}
+            aria-hidden
+          />
+          <span className="flex-1 min-w-0 text-left">
+            <span className="block text-[15px] font-semibold text-slate-800 dark:text-slate-100">
+              Quét liên tục
+            </span>
+            <span className="block text-[13px] text-slate-500 dark:text-slate-400 leading-tight">
+              {continuousMode
+                ? "Camera giữ mở, quét thẳng trạm kế tiếp"
+                : "Tắt camera sau mỗi lần check-in"}
+            </span>
+          </span>
+          <span
+            className={[
+              "w-12 h-7 rounded-full flex-shrink-0 flex items-center px-0.5 transition-colors",
+              continuousMode ? "bg-blue-600 justify-end" : "bg-slate-300 dark:bg-slate-600 justify-start",
+            ].join(" ")}
+            aria-hidden
+          >
+            <span className="w-6 h-6 rounded-full bg-white shadow" />
+          </span>
+        </button>
+      )}
+
+      {/* Đường thoát khi cold-fix GPS treo — QR đã quét xong, không để user kẹt.
+          Gửi luôn với vị trí cache (nếu có) hoặc không kèm GPS (geo_status=no_gps). */}
+      {step === "gps" && gpsSlow && (
+        <div className="flex flex-col gap-2">
+          <Banner variant="amber" icon={Satellite}>
+            <span>
+              GPS chưa bắt được tín hiệu tại chỗ này. Bạn có thể chờ thêm, hoặc gửi
+              check-in ngay — lượt quét vẫn được lưu, chỉ là không xác thực vị trí.
+            </span>
+          </Banner>
+          <Button
+            variant="outline"
+            icon={SendHorizonal}
+            onClick={() => gpsSkipRef.current?.skip()}
+            className="w-full"
+          >
+            Gửi không kèm GPS
+          </Button>
+        </div>
+      )}
+
       {/* Step progress bar — ẩn khi idle/done */}
       <StepProgressBar stepDisplay={stepDisplay} />
 
-      <p className="text-center text-sm text-slate-400 dark:text-slate-500 flex items-center justify-center gap-1.5 flex-wrap">
+      <p className="text-center text-sm text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1.5 flex-wrap">
         Yêu cầu HTTPS · Camera · GPS giúp xác thực vị trí
         <button
           onClick={() => setGpsHelpOpen(true)}
@@ -887,7 +1064,7 @@ function StatusBanner({ banner }) {
 function StepProgressBar({ stepDisplay }) {
   if (!stepDisplay.shouldShow) return null;
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" role="status" aria-live="polite">
       <div className="flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
         <span className="font-medium">{stepDisplay.label}</span>
         <span>{stepDisplay.progressPct}%</span>

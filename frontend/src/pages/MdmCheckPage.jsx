@@ -257,7 +257,7 @@ export default function MdmCheckPage() {
       {hasResults && !running && <SummaryBox results={results} />}
 
       <div className="pt-2 space-y-2">
-        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-1">
+        <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-1">
           Hướng dẫn cho IT Admin (ManageEngine MDM Plus)
         </div>
 

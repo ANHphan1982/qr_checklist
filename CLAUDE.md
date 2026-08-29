@@ -30,7 +30,7 @@ offline queue tự đồng bộ khi có mạng, cache cấu hình thông số tr
 | Hosting FE | Vercel (free)                      | CI/CD tự động từ GitHub              |
 | Hosting BE | Render (free tier)                 | Cold start ~30s                      |
 | Test BE    | pytest (mock session, không DB thật)| `backend/tests/`                    |
-| Test FE    | Vitest (unit) + Playwright (e2e)   | e2e chạy từ `frontend/`, suite 77    |
+| Test FE    | Vitest (unit) + Playwright (e2e)   | e2e chạy từ `frontend/`, suite 87    |
 
 ---
 
@@ -74,9 +74,13 @@ qr-checklist/
 │   │   │                            StationDisplayPage (rotating QR), MdmCheckPage
 │   │   ├── components/            ← QRScanner, ScanResult, OperationalParamsModal, ChecklistArt
 │   │   │                            (icon checklist cho HomePage), ConfirmDialog, admin/*, ui/*
+│   │   ├── hooks/                 ← useLiveNow (mốc thời gian tự làm mới khi sang ca/ngày)
 │   │   └── lib/                   ← api.js, offlineQueue, pendingParams, geolocation,
 │   │                                builtinConfigs, stationsConfig (alias offline),
-│   │                                exportExcel, statusBanner/buttonState/stepDisplay...
+│   │                                exportExcel, statusBanner/buttonState/stepDisplay,
+│   │                                timeWindow (mốc ca/ngày), swUpdate (SW chờ user),
+│   │                                gpsFallback (đường thoát cold-fix GPS),
+│   │                                continuousScan (quét liên tục nhiều trạm)...
 │   └── tests/e2e/                 ← Playwright specs (scan online/offline, admin...)
 │
 └── qr-generator/                  ← generate_qr.py + stations.json (QR PNG in dán trạm)
@@ -203,7 +207,9 @@ VITE_API_URL=https://qr-checklist-api.onrender.com
    `no_gps`. GPS watch chạy từ lúc mount để giữ chip GPS warm (WiFi nội bộ không có A-GPS)
 5. **Offline-first** — SW cache app shell; scan offline vào localStorage queue, giữ nguyên
    `scanned_at` khi retry; thông số nhập offline ghi vào queue item (`pendingParams` restore
-   modal nếu user thoát app giữa chừng)
+   modal nếu user thoát app giữa chừng). SW mới KHÔNG tự reload tab: nằm ở trạng thái
+   `waiting`, app hiện banner "Có bản cập nhật" và chỉ postMessage `SKIP_WAITING` khi user
+   bấm — reload cưỡng bức giữa lúc đang nhập thông số sẽ mất dữ liệu (`lib/swUpdate.js`)
 6. **Chống duplicate** — unique index (device_id, location, scanned_at) + check tầng app
    TRƯỚC rate-limit; client timeout 8s rồi retry sẽ nhận lại scan_id cũ, không tạo bản ghi mới
 7. **Email không chặn request** — gửi qua background thread SAU commit; `email_sent`
@@ -215,6 +221,13 @@ VITE_API_URL=https://qr-checklist-api.onrender.com
    `send_threshold_alert_email` gửi email khẩn NGAY, LUÔN gửi kể cả `EMAIL_ALERTS_ONLY=true`
    (cảnh báo ≠ check-in thường). Chạy ở cả `process_scan` (param inline) lẫn route PATCH
    (nhập qua modal sau scan). Frontend `lib/paramStatus.js` dùng cùng logic → viền đỏ khớp email
+10. **Quét liên tục** (`lib/continuousScan.js`, MẶC ĐỊNH BẬT, toggle lưu theo thiết bị) —
+   camera giữ mount qua cả `gps/sending/params/done` rồi tự `resume()` sau 1.8s, thay vì
+   unmount ngay khi QR vừa decode. Vòng 13 trạm không còn phải khởi động lại camera mỗi
+   trạm (mất luôn zoom + trạng thái đèn đã chỉnh). Ba chốt an toàn: cooldown 10s chặn quét
+   lại ĐÚNG mã vừa quét — lọc ĐỒNG BỘ trong callback decode, pause rồi mới bỏ qua là
+   scanner kẹt vĩnh viễn; tự tắt camera sau 60s không quét được gì (tiết kiệm pin quãng đi
+   bộ giữa 2 trạm, chỉ áp dụng sau lần quét đầu); tắt toggle → về đúng flow cũ
 
 ---
 
@@ -230,10 +243,15 @@ VITE_API_URL=https://qr-checklist-api.onrender.com
   (đã làm với `src/lib/vendor/qrcode-generator.js`)
 - `backend/tests/test_e2e_live.py` bắn vào **PROD Render thật** — 400 khi chạy lại
   là rate limit, không phải regression. Chạy suite thường: `--ignore=tests/test_e2e_live.py`
-- Playwright e2e phải chạy từ `frontend/` — suite chuẩn 66 test; gotcha: `setOffline`
+- Playwright e2e phải chạy từ `frontend/` — suite chuẩn 87 test; gotcha: `setOffline`
   + vite dev reload
 - Test backend mock session bằng MagicMock — query chain mới (vd dedupe `.first()`)
   phải set return_value tường minh, nếu không MagicMock truthy phá logic
+- **KHÔNG đóng băng `Date.now()` trong `useState` initializer** cho ca/chu kỳ — app là PWA
+  dán trên máy trực, không bao giờ reload; dùng `useLiveNow()` để mốc tự làm mới khi
+  vượt 06:00/18:00 hoặc nửa đêm
+- `npm run test:coverage` FAIL sẵn từ trước (branches ~69%, functions ~76% < ngưỡng 80
+  cấu hình trong vite.config.js) — không phải regression. Suite thường `npm test` xanh
 
 ---
 

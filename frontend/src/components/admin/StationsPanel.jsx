@@ -77,7 +77,7 @@ export default function StationsPanel({ stations, client, onRefresh, flash }) {
             className={INPUT_CLS}
           />
           {editing && (
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Đổi tên sẽ cập nhật cả thông số, alias và lịch sử scan. QR cũ in tên cũ vẫn quét được.
             </p>
           )}
@@ -90,7 +90,7 @@ export default function StationsPanel({ stations, client, onRefresh, flash }) {
               placeholder="VD: 052-PG-071"
               className={INPUT_CLS}
             />
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Điền để hệ thống tự nhận diện QR → trạm. Bỏ trống nếu QR đã ghi đúng tên trạm.
             </p>
           </div>

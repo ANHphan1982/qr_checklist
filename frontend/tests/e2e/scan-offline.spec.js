@@ -106,13 +106,11 @@ test.describe("Offline scan flow", () => {
     await sp.startButton.click();
     await sp.triggerScan("Cổng A");
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
-    await sp.continueButton.click();
-    await expect(sp.startButton).toBeVisible();
 
-    // Second scan
-    await sp.startButton.click();
+    // Quét liên tục (mặc định): camera vẫn mở → quét thẳng trạm kế, không bấm nút
+    await expect(sp.qrReader).toBeVisible();
     await sp.triggerScan("Trạm B");
-    await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
+    await expect(sp.resultCard).toContainText("Trạm B", { timeout: 10_000 });
 
     await expect(sp.pendingOffline).toContainText("2 scan đang chờ");
   });
@@ -145,7 +143,8 @@ test.describe("Offline scan flow", () => {
     await sp.startButton.click();
     await sp.triggerScan("Cổng A");
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
-    await sp.continueButton.click();
+    // Chế độ quét liên tục (mặc định) không có nút "Quét tiếp" — hàng đợi đã
+    // ghi nhận ngay khi scan xong, đi thẳng sang phần kiểm tra đồng bộ.
     await expect(sp.pendingOffline).toBeVisible();
 
     // Restore network — auto-sync fires via the "online" listener
@@ -264,7 +263,8 @@ test.describe("Offline scan flow", () => {
     await sp.startButton.click();
     await sp.triggerScan("Cổng A");
     await expect(sp.resultCard).toBeVisible({ timeout: 10_000 });
-    await sp.continueButton.click();
+    // Chế độ quét liên tục (mặc định) không có nút "Quét tiếp" — hàng đợi đã
+    // ghi nhận ngay khi scan xong, đi thẳng sang phần kiểm tra đồng bộ.
     await expect(sp.pendingOffline).toBeVisible();
 
     // Go back online but server returns 500 → auto-sync will fail

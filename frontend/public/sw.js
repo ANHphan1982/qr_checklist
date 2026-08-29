@@ -1,7 +1,7 @@
 // Logic phân loại request tách ra sw-routing.js để unit-test được (vitest).
 importScripts("/sw-routing.js");
 
-const CACHE = "qr-checklist-v10";
+const CACHE = "qr-checklist-v11";
 
 // App shell phụ — cache lúc install để mở app offline có đủ icon/font ngay cả
 // khi runtime cache chưa kịp lưu (vd cài PWA xong tắt mạng luôn).
@@ -16,24 +16,28 @@ const SHELL_OPTIONAL = [
   "/fonts/inter-vietnamese-wght-normal.woff2",
 ];
 
-// true = đây là UPDATE (đã có SW cũ đang chạy), false = cài lần đầu.
-// Chỉ UPDATE mới cần force-reload tab; reload ở lần cài đầu vừa vô nghĩa
-// vừa phá flow đang chạy (user vừa mở app đã bị reload).
-let isUpdate = false;
-
-// Install: cache shell — index.html bắt buộc, phần còn lại best-effort
+// Install: cache shell — index.html bắt buộc, phần còn lại best-effort.
+//
+// KHÔNG gọi skipWaiting() ở đây: SW mới phải nằm chờ (waiting) cho tới khi user
+// bấm "Cập nhật" trong app. Trước đây SW tự skipWaiting rồi clients.navigate()
+// reload mọi tab — deploy đúng lúc nhân viên đang gõ thông số trong modal là
+// mất sạch số đã nhập. Xem src/lib/swUpdate.js cho phía app.
 self.addEventListener("install", (e) => {
-  isUpdate = !!self.registration.active;
   e.waitUntil(
     caches.open(CACHE).then(async (c) => {
       await c.add("/index.html"); // bắt buộc — fallback cho mọi navigation offline
       await Promise.allSettled(SHELL_OPTIONAL.map((url) => c.add(url)));
     })
   );
-  self.skipWaiting(); // kích hoạt SW mới ngay lập tức
 });
 
-// Activate: xóa cache cũ → claim clients → reload tab NẾU là update (deploy mới)
+// App gọi khi user đồng ý cập nhật → SW mới rời hàng chờ và activate.
+self.addEventListener("message", (e) => {
+  if (e.data && e.data.type === "SKIP_WAITING") self.skipWaiting();
+});
+
+// Activate: xóa cache cũ → claim clients.
+// Tab sẽ tự reload qua sự kiện controllerchange ở phía app (chỉ khi user đã đồng ý).
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
@@ -41,10 +45,6 @@ self.addEventListener("activate", (e) => {
         Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
       )
       .then(() => self.clients.claim())
-      .then(() => (isUpdate ? self.clients.matchAll({ type: "window" }) : []))
-      .then((clients) => {
-        clients.forEach((c) => c.navigate(c.url)); // tự reload — không cần cài lại
-      })
   );
 });
 

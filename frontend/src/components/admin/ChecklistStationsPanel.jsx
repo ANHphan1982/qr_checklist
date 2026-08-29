@@ -88,7 +88,7 @@ export default function ChecklistStationsPanel({ stations, client, onRefresh, fl
             );
           })}
         </div>
-        <p className="text-xs text-slate-400 dark:text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           Một trạm có thể thuộc nhiều checklist. Lưu trên máy chủ → mọi điện thoại thấy giống nhau.
         </p>
       </div>
@@ -147,7 +147,7 @@ export default function ChecklistStationsPanel({ stations, client, onRefresh, fl
               <span className="flex-1 min-w-0">
                 <span className="block font-semibold text-slate-800 dark:text-slate-100 truncate">{st.name}</span>
                 {otherTitles.length > 0 && (
-                  <span className="block text-xs text-slate-400 dark:text-slate-500 truncate">
+                  <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
                     Cũng thuộc: {otherTitles.join(", ")}
                   </span>
                 )}

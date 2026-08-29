@@ -18,10 +18,16 @@ export default function ScanResult({ result, onDismiss }) {
 
   const StatusIcon = isOk ? CheckCircle2 : isOffline ? CloudOff : isOutOfRange ? MapPinOff : XCircle;
 
+  // Kết quả check-in là thông tin quan trọng nhất màn hình — phải được đọc lên.
+  // Lỗi/ngoài phạm vi dùng alert (ngắt lời) vì user cần biết ngay để quét lại.
+  const isProblem = !isOk && !isOffline;
+
   return (
     <div
       data-testid="scan-result"
       data-status={isOk ? "ok" : isOffline ? "offline" : isOutOfRange ? "out_of_range" : "error"}
+      role={isProblem ? "alert" : "status"}
+      aria-live={isProblem ? "assertive" : "polite"}
       className={`anim-card-in rounded-2xl border p-4 flex flex-col gap-3 ${cardStyle}`}
     >
       <div className="flex items-start justify-between gap-2">

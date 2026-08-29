@@ -83,3 +83,68 @@ test.describe("HomePage — chọn checklist", () => {
     expect(box.width).toBeGreaterThanOrEqual(44);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Hàng nút Excel/Email chỉ render khi checklist đã được gán trạm (có coverage).
+// Gửi email cho quản lý là hành động ra ngoài, không hoàn tác được, và nút nằm
+// sát nút Excel → phải hỏi xác nhận trước.
+// ---------------------------------------------------------------------------
+test.describe("HomePage — gửi email checklist", () => {
+  let emailCalls;
+
+  test.beforeEach(async ({ page }) => {
+    emailCalls = 0;
+    await mockApiSuccess(page);
+    await page.route("**/api/checklist-stations", (r) =>
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ assignments: { pump: ["PUMP_STATION_6"] } }),
+      })
+    );
+    await page.route("**/api/email-checklist", (r) => {
+      emailCalls += 1;
+      r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "ok" }),
+      });
+    });
+    await page.goto("/");
+  });
+
+  const emailBtn = (page) =>
+    page.getByRole("button", { name: /Gửi email checklist Pump Check List/i });
+
+  test("bấm Email mở hộp xác nhận, KHÔNG gửi ngay", async ({ page }) => {
+    await emailBtn(page).click();
+
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByText("Gửi email báo cáo?")).toBeVisible();
+    expect(emailCalls).toBe(0);
+  });
+
+  test("Huỷ → đóng hộp thoại, không gửi gì", async ({ page }) => {
+    await emailBtn(page).click();
+    await page.getByRole("button", { name: "Huỷ", exact: true }).click();
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(emailCalls).toBe(0);
+  });
+
+  test("Gửi ngay → gọi API email đúng 1 lần", async ({ page }) => {
+    await emailBtn(page).click();
+    await page.getByRole("button", { name: "Gửi ngay", exact: true }).click();
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(emailBtn(page)).toContainText(/Đã gửi|Lỗi/);
+    expect(emailCalls).toBe(1);
+  });
+
+  test("nút Excel và Email đạt touch target 44px", async ({ page }) => {
+    for (const name of [/Xuất Excel checklist Pump/i, /Gửi email checklist Pump/i]) {
+      const box = await page.getByRole("button", { name }).boundingBox();
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+});

@@ -59,7 +59,7 @@ function StatCard({ icon: Icon, label, value, hint, tone = "default" }) {
         <span className="truncate">{label}</span>
       </div>
       <div className={`text-2xl font-bold tabular-nums ${toneClass}`}>{value}</div>
-      {hint && <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">{hint}</div>}
+      {hint && <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{hint}</div>}
     </div>
   );
 }
@@ -144,7 +144,7 @@ function GeoBreakdown({ geo }) {
                 </div>
                 <span className="w-20 flex-shrink-0 text-right text-xs tabular-nums text-slate-700 dark:text-slate-200">
                   <span className="font-semibold">{c}</span>
-                  <span className="text-slate-400 dark:text-slate-500"> · {formatPercent(c / total)}</span>
+                  <span className="text-slate-500 dark:text-slate-400"> · {formatPercent(c / total)}</span>
                 </span>
               </div>
             );
@@ -294,7 +294,7 @@ function DashboardEmpty({ days }) {
       <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
         Chưa có lượt quét nào trong {days} ngày qua
       </p>
-      <p className="text-xs text-slate-400 dark:text-slate-500 max-w-xs">
+      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs">
         Dữ liệu sẽ xuất hiện khi nhân viên quét QR tại trạm. Thử chọn khoảng thời gian dài hơn.
       </p>
     </div>
@@ -364,7 +364,7 @@ export default function DashboardPage() {
       </div>
 
       {updatedAt && !loading && !error && (
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 -mt-2">
+        <p className="text-[11px] text-slate-500 dark:text-slate-400 -mt-2">
           Cập nhật lúc {fmtTime(updatedAt)}
         </p>
       )}
