@@ -105,6 +105,12 @@ def create_scan():
             oil_level_mm=oil_level_mm,
             param_values=param_values,
         )
+        # DB chưa cấu hình → 503, kiểm tra TRƯỚC nhánh out_of_range: không có DB
+        # thì chẳng có gì được lưu, trả 403 kèm scan_id rỗng sẽ gây hiểu nhầm.
+        # 5xx để frontend lưu offline và tự retry (xem lib/apiError.js).
+        if result.get("code") == "DB_UNAVAILABLE":
+            return jsonify(result), 503
+
         # OUT_OF_RANGE: đã lưu DB nhưng trả 403 để frontend hiện cảnh báo
         if geo_status == "out_of_range":
             return jsonify({

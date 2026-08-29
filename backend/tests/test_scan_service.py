@@ -374,3 +374,47 @@ class TestDedupe:
         assert result["scan_id"] == 9
         session.rollback.assert_called_once()
         mock_dispatch.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Guard DB chưa cấu hình — POST /scan phải trả 503 như mọi route DB khác
+#
+# Trước đây process_scan gọi thẳng `with SessionLocal() as session:` không guard.
+# Thiếu DATABASE_URL thì SessionLocal là None → TypeError → handler bắt Exception
+# rồi trả 500 kèm nguyên chuỗi lỗi Python ra client:
+#     {"status":"error","message":"'NoneType' object is not callable"}
+# Trong khi reports/dashboard/admin và cả route PATCH params cùng file đều trả 503.
+# ---------------------------------------------------------------------------
+class TestDbNotConfigured:
+    def test_process_scan_tra_ve_ma_db_unavailable(self):
+        from services.scan_service import process_scan
+
+        with patch("services.scan_service.SessionLocal", None):
+            result = process_scan(location="TK-5211A", device_id="dev-1")
+        assert result["status"] == "error"
+        assert result["code"] == "DB_UNAVAILABLE"
+
+    def test_khong_lo_chuoi_loi_python_ra_client(self):
+        from services.scan_service import process_scan
+
+        with patch("services.scan_service.SessionLocal", None):
+            result = process_scan(location="TK-5211A", device_id="dev-1")
+        assert "NoneType" not in result["message"]
+
+    def test_route_post_scan_tra_503(self, flask_app):
+        with patch("services.scan_service.SessionLocal", None):
+            resp = flask_app.test_client().post(
+                "/api/scan",
+                json={"location": "TK-5211A", "device_id": "dev-1"},
+                content_type="application/json",
+            )
+        assert resp.status_code == 503
+        assert "NoneType" not in resp.get_json()["message"]
+
+    def test_validate_payload_van_chay_truoc_guard(self, flask_app):
+        # Thiếu location là lỗi client, không phụ thuộc DB → vẫn 400 chứ không 503
+        with patch("services.scan_service.SessionLocal", None):
+            resp = flask_app.test_client().post(
+                "/api/scan", json={"device_id": "dev-1"}, content_type="application/json"
+            )
+        assert resp.status_code == 400

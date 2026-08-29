@@ -196,6 +196,20 @@ def process_scan(
                 oil_level_mm = float(v)
                 break
 
+    # Thiếu DATABASE_URL → SessionLocal là None. Guard đặt SAU toàn bộ validate
+    # đầu vào (location, scanned_at) để lỗi client vẫn được báo đúng, và NGAY
+    # trước chỗ thực sự cần DB. Nếu không, `with SessionLocal()` ném TypeError
+    # rồi handler lộ chuỗi lỗi Python ra client kèm HTTP 500.
+    # Mã riêng DB_UNAVAILABLE để route map sang 503 — cùng hợp đồng với reports/
+    # dashboard/admin và route PATCH params. Chỉ trả status=error thì route map
+    # thành 400, frontend hiểu là lỗi client và KHÔNG lưu offline → mất scan.
+    if SessionLocal is None:
+        return {
+            "status": "error",
+            "code": "DB_UNAVAILABLE",
+            "message": "Database chưa được cấu hình",
+        }
+
     with SessionLocal() as session:
         # --- Dedupe (PHẢI trước rate limit) ---
         # Retry từ offline queue gửi lại scan server đã lưu (frontend timeout 8s
