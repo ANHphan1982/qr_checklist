@@ -2,8 +2,10 @@
 Admin API — quản lý stations và QR aliases.
 Bảo vệ bằng header X-Admin-Key khớp với ADMIN_SECRET env var.
 """
+import base64
 import hmac
-from flask import Blueprint, request, jsonify
+from io import BytesIO
+from flask import Blueprint, request, jsonify, send_file
 from config import SessionLocal, ADMIN_SECRET
 from models import Station, QrAlias, StationParam, ScanLog, resolve_checklist_list
 from sqlalchemy.exc import IntegrityError
@@ -337,6 +339,68 @@ def delete_station_param(param_id):
         s.delete(sp)
         s.commit()
     return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Import cấu hình hàng loạt từ Excel template (Trạm / QR Alias / Thông số)
+# ---------------------------------------------------------------------------
+
+XLSX_MIMETYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@admin_bp.route("/admin/import-config", methods=["POST"])
+def import_config():
+    """Upload file template .xlsx (base64) → upsert Trạm/Alias/Thông số.
+
+    Body: {file_base64, dry_run}. dry_run=true chạy đối chiếu DB rồi rollback
+    (xem trước), ngược lại commit. Logic dùng chung với tools/import_config.py.
+    """
+    err = _auth()
+    if err:
+        return err
+    if not SessionLocal:
+        return _db_unavailable()
+
+    from openpyxl import load_workbook
+    from services.import_service import import_workbook
+
+    data = request.get_json(silent=True) or {}
+    file_b64 = data.get("file_base64") or ""
+    dry_run = bool(data.get("dry_run"))
+    if not file_b64:
+        return jsonify({"error": "Thiếu file_base64"}), 400
+    try:
+        wb = load_workbook(BytesIO(base64.b64decode(file_b64)), data_only=True)
+    except Exception:
+        return jsonify({"error": "Không đọc được file — cần file .xlsx đúng template"}), 400
+
+    with SessionLocal() as s:
+        result = import_workbook(s, wb)
+        if all(result[k] is None for k in ("stations", "aliases", "params")):
+            s.rollback()
+            return jsonify({"error": "File không đúng template — không có sheet "
+                                     "'Trạm' / 'QR Alias' / 'Thông số' nào"}), 400
+        if dry_run:
+            s.rollback()
+        else:
+            s.commit()
+
+    result["dry_run"] = dry_run
+    return jsonify(result)
+
+
+@admin_bp.route("/admin/import-template", methods=["GET"])
+def download_import_template():
+    """Tải file template .xlsx để điền dữ liệu import."""
+    err = _auth()
+    if err:
+        return err
+    from services.import_service import build_template_workbook
+    buf = BytesIO()
+    build_template_workbook().save(buf)
+    buf.seek(0)
+    return send_file(buf, mimetype=XLSX_MIMETYPE, as_attachment=True,
+                     download_name="cau_hinh_template.xlsx")
 
 
 # ---------------------------------------------------------------------------

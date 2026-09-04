@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Settings, MapPin, Link2, SlidersHorizontal, ListChecks, Timer, BarChart3, Download, CheckCircle2, XCircle } from "lucide-react";
+import { Settings, MapPin, Link2, SlidersHorizontal, ListChecks, Timer, BarChart3, Download, CheckCircle2, XCircle, FileUp } from "lucide-react";
 import { getAdminStationParams } from "../lib/api";
 import { api, SESSION_KEY } from "../components/admin/adminApi";
 import LoginGate from "../components/admin/LoginGate";
@@ -9,6 +9,7 @@ import AliasesPanel from "../components/admin/AliasesPanel";
 import StationParamsPanel from "../components/admin/StationParamsPanel";
 import ChecklistStationsPanel from "../components/admin/ChecklistStationsPanel";
 import ChecklistFrequencyPanel from "../components/admin/ChecklistFrequencyPanel";
+import ImportConfigPanel from "../components/admin/ImportConfigPanel";
 import DashboardPage from "./DashboardPage";
 
 /**
@@ -104,11 +105,14 @@ function AdminDashboard({ adminKey, onLogout }) {
           <button onClick={() => setTab("frequency")} className={`${TAB_BTN_BASE} ${tab === "frequency" ? TAB_BTN_ACTIVE : TAB_BTN_IDLE}`}>
             <span className="flex items-center gap-1.5"><Timer className="w-4 h-4" aria-hidden />Tần suất</span>
           </button>
+          <button onClick={() => setTab("import")} className={`${TAB_BTN_BASE} ${tab === "import" ? TAB_BTN_ACTIVE : TAB_BTN_IDLE}`}>
+            <span className="flex items-center gap-1.5"><FileUp className="w-4 h-4" aria-hidden />Import</span>
+          </button>
           <button onClick={() => setTab("dashboard")} className={`${TAB_BTN_BASE} ${tab === "dashboard" ? TAB_BTN_ACTIVE : TAB_BTN_IDLE}`}>
             <span className="flex items-center gap-1.5"><BarChart3 className="w-4 h-4" aria-hidden />Thống kê</span>
           </button>
         </div>
-        {tab !== "params" && tab !== "dashboard" && tab !== "checklists" && tab !== "frequency" && (
+        {tab !== "params" && tab !== "dashboard" && tab !== "checklists" && tab !== "frequency" && tab !== "import" && (
           <button
             onClick={async () => {
               // exportExcel (xlsx ~800KB) nạp lười — chỉ tải khi bấm Xuất Excel
@@ -134,6 +138,7 @@ function AdminDashboard({ adminKey, onLogout }) {
         {tab === "params"    && <StationParamsPanel stationParams={stationParams} stations={stations} adminKey={adminKey} onRefresh={loadAll} flash={flash} />}
         {tab === "checklists" && <ChecklistStationsPanel stations={stations} client={client} onRefresh={loadAll} flash={flash} />}
         {tab === "frequency" && <ChecklistFrequencyPanel flash={flash} />}
+        {tab === "import"    && <ImportConfigPanel client={client} onRefresh={loadAll} flash={flash} />}
         {tab === "dashboard" && <DashboardPage />}
       </div>
     </div>

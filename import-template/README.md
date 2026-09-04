@@ -2,7 +2,14 @@
 
 Thay cho việc gõ tay từng dòng trên trang Admin.
 
-## Quy trình
+## Cách dễ nhất — qua trang Admin (không cần Python)
+
+Trang **Admin → tab Import**: bấm **Tải template** → điền dữ liệu → chọn file →
+**Xem trước** (dry-run, chưa ghi DB) → **Import thật**. Xong.
+
+Cách dưới đây (CLI) vẫn dùng được, cùng logic import.
+
+## Quy trình CLI
 
 1. **Tạo / lấy template**
 

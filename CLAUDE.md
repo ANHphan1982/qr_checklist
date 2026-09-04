@@ -160,6 +160,8 @@ BẤT KỲ bản ghi DB nào thì DB nắm toàn quyền trạm đó (kể cả 
 | `GET/POST /api/admin/stations`, `PUT/DELETE /api/admin/stations/<name>` | CRUD trạm (DELETE = soft, set active=false). PUT nhận `name` để ĐỔI TÊN trạm: cascade station_params + qr_aliases + scan_logs cùng transaction, tự tạo alias tên cũ → tên mới (QR đã in vẫn quét được); trùng tên khác → 409 |
 | `GET/POST /api/admin/qr-aliases`, `DELETE /api/admin/qr-aliases/<id>` | CRUD alias QR |
 | `GET/POST /api/admin/station-params`, `PUT/DELETE /api/admin/station-params/<id>` | CRUD thông số |
+| `POST /api/admin/import-config` | Nhập hàng loạt từ Excel template (base64 trong body `file_base64`); `dry_run:true` → chạy + rollback để xem trước. Logic dùng chung `services/import_service.py` với CLI `tools/import_config.py`. UI: AdminPage tab Import |
+| `GET /api/admin/import-template` | Tải file `cau_hinh_template.xlsx` (sinh từ `build_template_workbook`) |
 | `POST /api/admin/purge` | Xóa scan cũ hơn `older_than_days` (mặc định 7) |
 | `GET /api/reports/trigger-summary?period=morning\|evening` | Gửi email tổng hợp. Nhận `?key=` cho cron-job.org |
 | `GET /api/debug/email-config`, `POST /api/debug/email-test` | Chẩn đoán email (khóa để không bị đốt quota) |
