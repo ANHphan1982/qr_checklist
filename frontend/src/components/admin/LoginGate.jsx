@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Lock } from "lucide-react";
 import { api, SESSION_KEY, INPUT_CLS } from "./adminApi";
+import { adminLoginError } from "../../lib/adminLoginError";
 
 export default function LoginGate({ onLogin }) {
   const [key, setKey] = useState("");
@@ -15,8 +16,10 @@ export default function LoginGate({ onLogin }) {
       await api(key).get("/api/admin/stations");
       sessionStorage.setItem(SESSION_KEY, key);
       onLogin(key);
-    } catch {
-      setErr("Sai mật khẩu admin hoặc server lỗi");
+    } catch (apiErr) {
+      // Chỉ 401 mới là sai mật khẩu — 500/503/mất mạng phải nói đúng nguyên nhân,
+      // nếu không admin lại ngồi đoán mò như lần Supabase pause (2026-09-25).
+      setErr(adminLoginError(apiErr, navigator.onLine).message);
     } finally {
       setLoading(false);
     }
